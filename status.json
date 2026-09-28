@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": 1,
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "1.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,13 +12,14 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-01-executor-report.md",
+  "result_expected": "results/phase-01-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "do not modify public contracts without cross-team confirmation",
-    "Phase 1 only implements 03 §5 core",
-    "core must be independent of unresolved DSH runtime API"
+    "Phase 1.1 only fixes Planner review blockers",
+    "DeepSeek API is allowed later only behind a replaceable adapter",
+    "no DeepSeek/network dependency in deterministic core"
   ],
   "latest_commit": "5cfafc39637138c836a6c4590f9b05c6aa4b4275",
-  "planner_review": null
+  "planner_review": "planner/phase-01-review.md"
 }
