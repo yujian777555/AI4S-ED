@@ -1,285 +1,256 @@
-# Phase 2 Plan — §5.4 Atomic Ingest & KB Version Snapshot
+# Phase 2.1 Plan — Persistence, Recovery & Rollback Correctness
 
 **Planner:** ChatGPT  
 **Executor:** MiMo  
 **State:** READY_FOR_EXECUTOR  
-**Accepted baseline:** `e88eabad1b42304d2a9ebade6308c9eb16c24573`
+**Base implementation:** `dee9ba4a881096349a65eecb40df2544164dfd29`
 
 ## 0. Read first
 
 1. `docs/01-总体架构与数据流设计.md`
 2. `docs/03-文献自动调研与知识入库流水线.md`
 3. `planner/KNOWLEDGE_CURATOR_BOUNDARY.md`
-4. `planner/phase-01-2-review.md`
+4. `planner/phase-02-review.md`
 5. `planner/CONTRACT_GAPS.md`
 6. `status.json`
 
-Phase 1 §5.1–§5.3 behavior is frozen. Do not rewrite it while implementing §5.4.
+Phase 1 §5.1–§5.3 remains frozen.
 
-## 1. Scope
+This round only closes §5.4 persistence/recovery correctness. Do not start §6 or §7.
 
-Implement only the `knowledge_curator` side of **03 §5.4 原子入库与版本快照**.
+## 1. Separate lifecycle state from structural knowledge persistence
 
-Required document semantics:
+The current `DocumentCommitStore` is the lifecycle/idempotency store. Do not count `record.admitted` as the actual graph/assertion write.
 
-- transaction boundary = one document;
-- structural knowledge write + metadata + USDO registration form one document commit unit;
-- vector upsert participates through staged/two-phase/compensation semantics;
-- vector failure must be recoverable through `pending_vector` replay;
-- idempotency key = `(ref_id, source_fingerprint)`;
-- successful publish creates a KB version and snapshot with content-hash manifest;
-- downstream must see only fully committed/published versions;
-- rollback must restore a previously committed snapshot;
-- do not physically delete historical versions.
+Add an **internal temporary structural knowledge Port** (name is flexible, e.g. `StructuralKnowledgeStore`) with the minimum semantics needed for §5.4:
 
-Do **not** implement §6 retrieval/QA or §7 update governance in this phase.
+- stage one document's admitted assertion records + document metadata;
+- commit/finalize the staged document;
+- abort/discard an uncommitted stage;
+- retrieve committed records for tests/audit;
+- staged records must not appear in committed/downstream-visible reads.
 
-## 2. Architecture rule
+Use an in-memory adapter only. Do not hard-code SQLite.
 
-Production L2 APIs are still unfrozen, so do not hard-code SQLite/FAISS/filesystem.
+Do not modify the Phase 1 conflict-query semantics except where an adapter can later bridge the same production L2 backend.
 
-Extend internal Ports/Adapters only as needed.
+## 2. Stage/commit visibility for USDO
 
-Recommended internal structure (names may vary slightly):
+Refactor the internal USDO Port/adapter so records can be staged and then made committed/visible with the document structural commit, or can be aborted/compensated before publish.
 
-```text
-knowledge_curator/
-├── core/
-│   ├── curator.py
-│   └── commit.py              # document commit orchestration
-├── schemas/
-│   └── commit.py              # internal temporary commit models
-├── ports/
-│   ├── knowledge_repository.py
-│   ├── vector_index.py
-│   ├── usdo_store.py
-│   └── version_store.py
-├── adapters/
-│   ├── in_memory_repository.py
-│   ├── in_memory_vector_index.py
-│   ├── in_memory_usdo_store.py
-│   └── in_memory_version_store.py
-└── tests/
-    └── test_atomic_commit.py
-```
+Required invariant:
 
-Do not claim these internal Ports are the final cross-team L2 contract.
+> Before structural commit succeeds, no downstream-visible API may return the document's staged assertion/metadata/USDO payloads.
 
-## 3. Commit input
+A failed pre-structural commit may retain a lifecycle/audit record, but committed knowledge reads must remain clean.
 
-The commit stage must consume the existing curated result rather than rerunning or bypassing §5.1–§5.3.
+## 3. Structural commit orchestration
 
-A commit request should contain enough information to bind:
-
-- source `ref_id`;
-- source fingerprint/hash;
-- original/curated document identity;
-- `CurationReport`;
-- assertions and payloads required for this document;
-- trace/provenance identifiers when available.
-
-Do not invent a new public AssertionSet.
-
-## 4. Eligibility rules
-
-The commit coordinator must not blindly persist everything as an active fact.
-
-At minimum:
-
-- `RETURN_UPSTREAM` -> not publishable;
-- all-rejected document -> not publishable;
-- `ACCEPT` assertions -> eligible for normal persisted knowledge state;
-- `DOWNGRADE` assertions may be persisted with their downgraded confidence/status, but must not be promoted;
-- `PENDING_REVIEW` may be persisted as pending/auditable state, but must not be exposed as committed high/verified fact;
-- `REJECT` assertions are not admitted to the active knowledge face.
-
-Keep lifecycle/visibility metadata internal if the shared schema is not frozen.
-
-Do not redesign §6 filtering in this phase.
-
-## 5. Atomic visibility model
-
-Because vector storage is not a relational transaction, implement **atomic visibility**, not fake cross-store ACID.
-
-Required state progression:
+Required conceptual order:
 
 ```text
-PREPARING
-  -> STRUCTURAL_STAGED
-  -> STRUCTURAL_COMMITTED
-  -> VECTOR_PENDING / VECTOR_COMMITTED
-  -> SNAPSHOT_CREATED
-  -> PUBLISHED
+validate CommitRequest binding
+  -> create lifecycle record
+  -> build admission set
+  -> stage structural assertions + metadata
+  -> stage USDO
+  -> finalize structural visibility as one document boundary
+  -> mark STRUCTURAL_COMMITTED
+  -> vector upsert
+  -> snapshot
+  -> idempotent version publish
 ```
 
-Safe semantics:
+If any failure occurs before structural visibility finalization:
+- abort staged structural/USDO state;
+- no committed structural knowledge;
+- no snapshot/version.
 
-### Before structural commit
-Any failure:
-- rollback staged structural metadata/assertion/USDO writes;
-- no KB version published;
-- no snapshot published.
+You may implement a small internal transaction token/stage id; do not invent a project-wide public API.
 
-### Vector failure after structural commit
-- retain recoverable structural state;
-- mark document commit `pending_vector`;
-- do **not** expose a new published KB version to downstream;
-- replay must retry vector work without duplicating structural records.
+## 4. Strong CommitRequest integrity validation
 
-### Vector replay success
-- clear `pending_vector`;
-- create/finalize snapshot;
-- publish exactly one KB version for the document commit.
+Before creating any staged data, validate deterministically:
 
-This reconciles §5.4's rollback discipline with its explicit `pending_vector` replay rule without pretending FAISS can participate in SQLite ACID.
+- source fingerprint is non-empty;
+- `source.ref_id == assertion_set.ref_id == report.source_ref_id`;
+- assertion ids in the AssertionSet are unique;
+- decision ids in the report are unique;
+- exactly one decision exists for every assertion in the AssertionSet;
+- no decision references an assertion outside the AssertionSet.
 
-## 6. Idempotency
+On failure:
+- fail closed;
+- no commit record that looks publishable;
+- no structural/USDO/vector/snapshot/version side effects.
 
-Use `(ref_id, source_fingerprint)` as the idempotency key.
+Add explicit regression tests for each mismatch class.
 
-Required behavior:
+## 5. Version-safe vector identities
 
-- a retry of the same in-progress `pending_vector` commit resumes/replays instead of duplicating structural records;
-- a retry of an already published exact same fingerprint returns the existing committed result and must not duplicate assertions/vectors/snapshots;
-- same `ref_id` with a **different fingerprint** is treated as a new source version and may produce a new KB version.
+Vector ids must be immutable per committed document version/content.
 
-If the wording "重复提交仅做 merge/version bump" in §5.4 creates ambiguity for exact same fingerprint, record it in CONTRACT_GAPS rather than silently producing duplicate versions. For Phase 2, prefer safe exact-retry idempotency (no duplicate publish).
+Do not use only:
+`ref_id + assertion_id`.
 
-## 7. Content-hash manifest
-
-A snapshot must contain a deterministic manifest of committed content, sufficient to audit/reproduce the document commit.
-
-At minimum include stable hashes/identifiers for:
-- source fingerprint;
-- admitted assertion records;
-- USDO/payload registration records;
-- vector payload identities;
-- metadata record;
-- relevant curation report identity.
-
-Do not hash ephemeral fields such as random report-generation timestamps unless intentionally part of the content identity.
-
-Tests must prove identical content produces identical manifest hashes.
-
-## 8. KB version
-
-Do not invent a project-wide final version format.
-
-The VersionStore Port may issue an opaque version id.
+Include a stable version discriminator such as:
+- source fingerprint,
+- commit content hash,
+- assertion content hash,
+or a combination.
 
 Requirements:
-- exactly one version published per successful document commit;
-- pending/failed commit is not listed as published;
-- each published version points to its snapshot/manifest and prior committed version when available;
-- downstream-facing read method returns only published versions.
+- same exact retry reuses the same vector ids;
+- same ref_id + different fingerprint does not overwrite old vectors;
+- older snapshot vector ids remain resolvable after newer versions publish.
 
-## 9. Rollback
+Extend the in-memory vector adapter with the minimum read method needed to assert the stored payload by id.
 
-Implement rollback semantics in the in-memory adapter:
+## 6. Idempotent version publication
 
-- rollback target must be an existing published snapshot/version;
-- rollback changes the current visible KB version pointer;
-- historical later snapshots remain retained/auditable;
-- rollback must not physically delete versions or assertions;
-- invalid/nonexistent rollback target fails explicitly.
+Make `publish_version` idempotent for the same snapshot/document commit.
 
-Do not implement §7 revision workflows yet; this is only §5.4 snapshot rollback mechanics.
+Recommended internal semantics:
+- a snapshot can map to at most one published version;
+- repeated publish for the same snapshot returns the existing version;
+- version publication can accept an internal idempotency key if needed.
 
-## 10. Failure injection
+Handle failures explicitly:
+- snapshot creation failure should remain resumable at the appropriate pre-snapshot state; do not relabel it as a vector failure unless vector is actually missing;
+- publish failure should leave `SNAPSHOT_CREATED` resumable;
+- retry must not create duplicate versions.
 
-In-memory/fake adapters must support deterministic failure injection so tests can verify:
+Add deterministic failure tests for:
+1. publish operation fails before side effect;
+2. publish side effect succeeds but lifecycle acknowledgement/update fails;
+3. retry returns/uses exactly the original version.
 
-- structural write failure;
-- USDO registration failure before publish;
-- vector upsert failure;
-- snapshot creation/finalization failure if modeled.
+To test post-side-effect failures, improve `FailureInjection` if necessary (e.g. fail-on-nth-call or explicit after-side-effect hook). Do not rely on mutable object aliasing.
 
-A failure must leave states consistent with §5.4 recovery semantics.
+## 7. In-memory persistence semantics must model real boundaries
 
-## 11. Integration with KnowledgeCurator
+`InMemoryDocumentCommitStore` currently stores mutable record objects by reference.
 
-Do not automatically commit inside every `curate()` call unless doing so preserves the current API and tests cleanly.
+That can make a local mutation appear "persisted" even if `update()` fails, which weakens failure tests.
 
-Preferred separation:
+Use copy-on-write/deep-copy semantics at the store boundary so:
+- `create/update` persists a copy;
+- `find_by_key` returns a safe copy;
+- a failed update does not magically mutate the persisted record.
 
-```python
-report = await curator.curate(assertion_set)
-commit_result = await commit_coordinator.commit(assertion_set, report, source_fingerprint=...)
-```
+Tests must demonstrate this.
 
-or a thin explicit `curate_and_commit` convenience method that composes the two.
+## 8. SUPERSEDE safety
 
-The deterministic curation step must remain independently testable.
+Do not persist `CurationAction.SUPERSEDE` as ACTIVE.
 
-## 12. Required tests
+Until CG-008 is frozen:
+- retain it in a non-active historical/superseded visibility, or fail it closed from the active surface;
+- preserve auditability;
+- do not physically delete it.
 
-Keep all current **68** tests green and add at least these:
+This is an internal visibility rule, not a new public confidence value.
 
-### A. Success
-- valid curated document commits and publishes one version;
-- returned result has non-empty commit/snapshot/version identifiers;
-- snapshot manifest is deterministic.
+## 9. Snapshot hash completeness
 
-### B. Pre-publish rollback
-- structural failure leaves no published version;
-- USDO failure before structural finalization leaves no published version.
+Keep the manifest deterministic, but make the assertion record hash cover all stable scientific fields that materially define the committed assertion, including at least:
 
-### C. Vector compensation
-- vector failure -> `pending_vector`;
-- no new published KB version while pending;
-- retry succeeds;
-- retry creates exactly one version;
-- structural assertions are not duplicated.
+- subject canonical id and relevant stable subject fields;
+- property;
+- object value/unit/value_type/**uncertainty**;
+- conditions;
+- provenance locator and stable sentence/cell pointer if present;
+- claim type;
+- source claim origin;
+- assertion quality if it is part of the persisted assertion record.
 
-### D. Idempotency
-- exact same `(ref_id,fingerprint)` after publish returns existing result;
-- no duplicate assertion/vector/snapshot/version;
-- same ref_id + changed fingerprint can create a new version.
+Decision confidence/visibility/action may remain in decision hashes.
 
-### E. Eligibility
-- return_upstream report cannot publish;
-- rejected assertions are not active facts;
-- pending_review does not become high/verified through commit;
-- downgrade keeps downgraded confidence.
+Exclude ephemeral runtime fields.
 
-### F. Rollback
-- publish V1 then V2;
-- rollback current pointer to V1;
-- V2 remains historically present;
-- nonexistent target fails explicitly.
+Add a test showing a change in uncertainty or stable provenance changes the manifest content hash.
 
-### G. Boundaries
-- no SQLite/FAISS/DeepSeek/DSH imports in the Phase 2 core;
-- no §6/§7 implementation added.
+## 10. Required regression tests
 
-## 13. DeepSeek policy
+Keep all existing **85** tests green and add tests for:
 
-DeepSeek API is still approved as a temporary future LLM backend.
+### Structural persistence
+- successful publish has committed structural assertions/metadata in the structural store;
+- lifecycle record alone is not used as proof of structural persistence;
+- failed pre-structural stage leaves no committed structural data.
 
-**Phase 2 does not require DeepSeek. Do not add network calls or API credentials.**
+### USDO visibility
+- staged USDO not visible before commit;
+- failure after USDO staging aborts/hides it;
+- successful structural commit exposes it exactly once.
 
-## 14. Report
+### Request binding
+- ref_id mismatch fails closed;
+- empty fingerprint fails closed;
+- missing decision fails closed;
+- extra/foreign decision fails closed;
+- duplicate assertion/decision ids fail closed.
+
+### Vector immutability/versioning
+- V1 and V2 same ref_id + same assertion id + changed content have distinct vector ids;
+- both vector payloads remain retrievable;
+- V1 snapshot still references V1 vector after V2 publish.
+
+### Publish failure window
+- publish failure returns a recoverable result/state;
+- retry publishes once;
+- simulated publish-success/lifecycle-update-failure does not create a second version on retry.
+
+### Store copy semantics
+- mutating a fetched lifecycle record without successful `update()` does not change persisted state.
+
+### Supersede
+- SUPERSEDE is never ACTIVE.
+
+### Manifest
+- stable assertion-field change (e.g. uncertainty) changes manifest hash.
+
+### Rollback
+- after V1/V2 publish, rollback to V1 leaves V2 historical and V1 snapshot dependencies resolvable.
+
+## 11. CG-012 / CG-013
+
+Keep both unless an architecture owner changes them.
+
+Do not create a new CONTRACT_GAP merely for an implementation bug fixed in this round.
+
+If a genuinely new cross-team ambiguity is discovered, document it.
+
+## 12. DeepSeek / DSH
+
+DeepSeek API remains approved for future reasoning behind an adapter.
+
+**Do not use DeepSeek or DSH in Phase 2.1.**
+
+## 13. Completion report
 
 Create:
 
-`results/phase-02-executor-report.md`
+`results/phase-02-1-executor-report.md`
 
 Include:
-- files changed;
-- state machine implemented;
-- idempotency behavior;
-- failure/recovery behavior;
-- snapshot/version/rollback behavior;
-- complete test command and counts;
+- exact persistence model;
+- structural/USDO stage-commit-abort behavior;
+- vector identity format;
+- version publish idempotency;
+- failure-window behavior;
+- request-binding validation;
+- snapshot hash coverage;
+- test totals;
 - CONTRACT_GAPS changes;
 - whether public contracts changed (must be NO);
 - implementation commit SHA.
 
 Update `status.json`:
-- phase = 2
-- actor = executor
-- state = executor_complete
+- phase = "2.1"
+- actor = "executor"
+- state = "executor_complete"
 - latest_commit = actual implementation SHA
-- result_expected = results/phase-02-executor-report.md
+- result_expected = results/phase-02-1-executor-report.md
 
-Stop after Phase 2. Do not begin §6.
+Stop after Phase 2.1. Do not begin §6.
