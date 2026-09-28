@@ -1,6 +1,7 @@
-"""USDO store port — content-addressed payload registration boundary.
+"""USDO store port — staged/committed payload registration boundary.
 
-Do not hard-code filesystem/HTTP. Formal L2 API is not frozen (CG-004).
+Staged records must not appear in committed/downstream-visible reads
+before structural commit finalization.
 """
 
 from __future__ import annotations
@@ -14,14 +15,22 @@ from knowledge_curator.schemas.commit import USDORecord
 class USDOStore(Protocol):
     """Registration boundary for USDO / source payload records."""
 
-    def register(self, records: list[USDORecord]) -> None:
-        """Register USDO records. Must be idempotent on record_id."""
+    def stage(self, stage_id: str, records: list[USDORecord]) -> None:
+        """Stage USDO records for a document commit. Not downstream-visible."""
         ...
 
-    def has_records(self, record_ids: list[str]) -> bool:
-        """True when all record ids are registered."""
+    def commit_stage(self, stage_id: str) -> None:
+        """Make staged USDO records committed/visible."""
+        ...
+
+    def abort_stage(self, stage_id: str) -> None:
+        """Discard staged (uncommitted) USDO records."""
         ...
 
     def list_for_ref(self, ref_id: str) -> list[USDORecord]:
-        """Return registered USDO records for a source document."""
+        """Return only committed USDO records for a source document."""
+        ...
+
+    def has_records(self, record_ids: list[str]) -> bool:
+        """True when all record ids are present (staged or committed)."""
         ...

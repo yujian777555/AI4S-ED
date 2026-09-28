@@ -11,6 +11,7 @@ from knowledge_curator.adapters import (
     FakeMechanismValidator,
     InMemoryDocumentCommitStore,
     InMemoryKnowledgeRepository,
+    InMemoryStructuralKnowledgeStore,
     InMemoryUSDOStore,
     InMemoryVectorIndex,
     InMemoryVersionStore,
@@ -36,6 +37,7 @@ def _run(coro):
 def _stack(*, seed=None, failures=None):
     failures = failures or FailureInjection()
     commit_store = InMemoryDocumentCommitStore(failures=failures)
+    structural_store = InMemoryStructuralKnowledgeStore(failures=failures)
     vector_index = InMemoryVectorIndex(failures=failures)
     usdo_store = InMemoryUSDOStore(failures=failures)
     version_store = InMemoryVersionStore(failures=failures)
@@ -46,6 +48,7 @@ def _stack(*, seed=None, failures=None):
     )
     coordinator = DocumentCommitCoordinator(
         commit_store=commit_store,
+        structural_store=structural_store,
         vector_index=vector_index,
         usdo_store=usdo_store,
         version_store=version_store,
@@ -54,6 +57,7 @@ def _stack(*, seed=None, failures=None):
         "curator": curator,
         "coordinator": coordinator,
         "commit_store": commit_store,
+        "structural_store": structural_store,
         "vector_index": vector_index,
         "usdo_store": usdo_store,
         "version_store": version_store,
@@ -121,7 +125,7 @@ def test_p2_curate_and_commit_convenience():
 
 def test_p2_structural_failure_leaves_no_published_version():
     s = _stack()
-    s["failures"].fail_on("usdo.register")
+    s["failures"].fail_on("usdo.stage")
     aset = make_assertion_set([make_assertion("AS-1")])
     report = _run(s["curator"].curate(aset))
     result = _run(s["coordinator"].commit(_commit_request(aset, report)))
@@ -132,7 +136,7 @@ def test_p2_structural_failure_leaves_no_published_version():
 
 def test_p2_usdo_failure_before_finalize_no_publish():
     s = _stack()
-    s["failures"].fail_on("usdo.register")
+    s["failures"].fail_on("usdo.stage")
     aset = make_assertion_set([make_assertion("AS-1")])
     report = _run(s["curator"].curate(aset))
     result = _run(s["coordinator"].commit(_commit_request(aset, report)))
@@ -178,7 +182,9 @@ def test_p2_pending_vector_retry_publishes_exactly_one_version_without_dup_struc
     assert second.version_id is not None
     assert before_count == after_count == 1
     assert len(s["version_store"].list_published_versions()) == 1
-    assert s["vector_index"].has_ids([f"vec-{aset.ref_id}-AS-1"])
+    record = s["commit_store"].find_by_key(aset.ref_id, "fp-001")
+    assert s["vector_index"].has_ids([v.vector_id for v in record.vector_payloads])
+    assert s["structural_store"].is_committed(first.commit_id)
 
 
 # ---------------------------------------------------------------------------

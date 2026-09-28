@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "2.1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,6 +23,6 @@
     "no §6/§7 implementation in this round",
     "no DeepSeek/DSH/network dependency in Phase 2.1"
   ],
-  "latest_commit": "dee9ba4a881096349a65eecb40df2544164dfd29",
+  "latest_commit": "PENDING_UPDATE",
   "planner_review": "planner/phase-02-review.md"
 }

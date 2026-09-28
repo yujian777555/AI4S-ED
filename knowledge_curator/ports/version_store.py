@@ -1,7 +1,7 @@
 """Version store port — KB version / snapshot / rollback boundary.
 
-Opaque version ids. Do not invent project-wide final version format.
-Do not hard-code production storage (CG-004).
+publish_version must be idempotent per snapshot so a retry after a
+lifecycle-ack failure cannot create a second KB version.
 """
 
 from __future__ import annotations
@@ -35,11 +35,19 @@ class VersionStore(Protocol):
         ...
 
     def publish_version(self, snapshot_id: str) -> VersionRecord:
-        """Publish exactly one KB version for a snapshot."""
+        """Publish exactly one KB version for a snapshot.
+
+        Idempotent: repeated publish for the same snapshot returns the
+        already-created version.
+        """
         ...
 
     def get_version(self, version_id: str) -> Optional[VersionRecord]:
         """Lookup a version record (published or historical)."""
+        ...
+
+    def get_version_by_snapshot(self, snapshot_id: str) -> Optional[VersionRecord]:
+        """Lookup the published version for a snapshot, if any."""
         ...
 
     def list_published_versions(self) -> list[VersionRecord]:

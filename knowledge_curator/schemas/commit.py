@@ -33,6 +33,7 @@ class AssertionVisibility(str, Enum):
     ACTIVE = "active"
     DOWNGRADED = "downgraded"
     PENDING = "pending"
+    SUPERSEDED = "superseded"
     # REJECT is not admitted at all
 
 
