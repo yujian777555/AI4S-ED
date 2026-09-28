@@ -136,8 +136,10 @@ Phase 字段仍精确反映 `VECTOR_PENDING` / `VECTOR_COMMITTED` / `SNAPSHOT_CR
 ## 13. Implementation commit SHA
 
 ```
-implementation commit: <pending>
+implementation commit: 381ae0da2a7e4b2fcfd79d28a594bdd6b0253490
 ```
+
+`status.json.latest_commit` 已记录该实现提交。
 
 ---
 
