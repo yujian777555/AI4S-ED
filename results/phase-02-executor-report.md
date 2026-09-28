@@ -156,5 +156,7 @@ CG-001~CG-011 保持不变。
 ## 13. Git commit hash
 
 ```
-implementation commit: <pending>
+implementation commit: dee9ba4a881096349a65eecb40df2544164dfd29
 ```
+
+`status.json.latest_commit` 已记录该实现提交。

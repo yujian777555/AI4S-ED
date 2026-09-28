@@ -21,6 +21,6 @@
     "no §6/§7 implementation in this round",
     "DeepSeek API remains future adapter-only; no network calls in Phase 2"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "dee9ba4a881096349a65eecb40df2544164dfd29",
   "planner_review": "planner/phase-01-2-review.md"
 }
