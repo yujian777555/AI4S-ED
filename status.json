@@ -20,6 +20,6 @@
     "DeepSeek API is allowed later only behind a replaceable adapter",
     "no DeepSeek/network dependency in deterministic core"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "9611bb2e86720bad6c548c2ac30c4cb8c0e36361",
   "planner_review": "planner/phase-01-review.md"
 }
