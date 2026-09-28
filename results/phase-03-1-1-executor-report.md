@@ -107,5 +107,5 @@ linked result 配对、unlinked 拒绝、direct≠tool 失败、tool≠final 失
 ## 11. Implementation commit SHA
 
 ```
-implementation commit: <pending>
+implementation commit: 47bd16cc467905810246bf8049008d5748f97ecf
 ```

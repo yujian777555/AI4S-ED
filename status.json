@@ -25,7 +25,7 @@
     "no secrets committed or logged",
     "knowledge_curator core remains runtime-independent"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "47bd16cc467905810246bf8049008d5748f97ecf",
   "planner_review": "planner/phase-03-1-review.md",
   "live_smoke": "LIVE_STRICT_MCP_SMOKE_PASS_ABC_MATCH"
 }
