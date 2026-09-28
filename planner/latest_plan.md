@@ -1,256 +1,220 @@
-# Phase 2.1 Plan — Persistence, Recovery & Rollback Correctness
+# Phase 2.2 Plan — Final §5.4 Atomic Visibility & Versioned Read Closure
 
 **Planner:** ChatGPT  
 **Executor:** MiMo  
 **State:** READY_FOR_EXECUTOR  
-**Base implementation:** `dee9ba4a881096349a65eecb40df2544164dfd29`
+**Base implementation:** `3d6e49e51995eec8bff6dd9e6a467ebd61166903`
 
 ## 0. Read first
 
 1. `docs/01-总体架构与数据流设计.md`
 2. `docs/03-文献自动调研与知识入库流水线.md`
 3. `planner/KNOWLEDGE_CURATOR_BOUNDARY.md`
-4. `planner/phase-02-review.md`
+4. `planner/phase-02-1-review.md`
 5. `planner/CONTRACT_GAPS.md`
 6. `status.json`
 
-Phase 1 §5.1–§5.3 remains frozen.
+This is the **final §5.4 closure round**. Do not start §6 or §7.
 
-This round only closes §5.4 persistence/recovery correctness. Do not start §6 or §7.
+## 1. Fix structural + USDO atomic visibility
 
-## 1. Separate lifecycle state from structural knowledge persistence
+Current sequential finalization can expose one store when the other fails.
 
-The current `DocumentCommitStore` is the lifecycle/idempotency store. Do not count `record.admitted` as the actual graph/assertion write.
+Implement one of these internal approaches:
 
-Add an **internal temporary structural knowledge Port** (name is flexible, e.g. `StructuralKnowledgeStore`) with the minimum semantics needed for §5.4:
+### Preferred: explicit compensation
+Both stores support:
+- stage
+- commit/finalize
+- compensate/uncommit **only for an unpublished failed document**
+- abort staged state
 
-- stage one document's admitted assertion records + document metadata;
-- commit/finalize the staged document;
-- abort/discard an uncommitted stage;
-- retrieve committed records for tests/audit;
-- staged records must not appear in committed/downstream-visible reads.
+Coordinator behavior:
+1. stage structural
+2. stage USDO
+3. finalize structural
+4. finalize USDO
+5. only then mark lifecycle `STRUCTURAL_COMMITTED`
 
-Use an in-memory adapter only. Do not hard-code SQLite.
+If any failure occurs before lifecycle `STRUCTURAL_COMMITTED` is durably acknowledged:
+- compensate any already-finalized structural/USDO side effects;
+- abort remaining staged state;
+- no committed-visible structural/USDO data may remain.
 
-Do not modify the Phase 1 conflict-query semantics except where an adapter can later bridge the same production L2 backend.
+Compensation of a pre-publish failed document does **not** violate append-only published history because no KB version was ever published.
 
-## 2. Stage/commit visibility for USDO
+A shared internal visibility token/gate is also acceptable if it is simpler and all committed-read methods honor it.
 
-Refactor the internal USDO Port/adapter so records can be staged and then made committed/visible with the document structural commit, or can be aborted/compensated before publish.
+### Required tests
+- structural commit succeeds, USDO commit fails-before -> neither visible
+- structural commit succeeds, USDO commit fails-after-side-effect -> neither visible
+- structural commit fail-after-side-effect -> neither visible
+- lifecycle `STRUCTURAL_COMMITTED` acknowledgement fails -> failed/retryable state does not leak half-visible knowledge
+- successful commit exposes structural+USDO exactly once
 
-Required invariant:
+## 2. Make snapshot creation idempotent
 
-> Before structural commit succeeds, no downstream-visible API may return the document's staged assertion/metadata/USDO payloads.
+Use deterministic manifest `content_hash` or another stable internal idempotency key.
 
-A failed pre-structural commit may retain a lifecycle/audit record, but committed knowledge reads must remain clean.
+Required:
+- same manifest retry returns/reuses the same snapshot;
+- `create_snapshot` fail-after-side-effect followed by retry does not create a second snapshot;
+- snapshot lookup by content hash/idempotency identity is available internally;
+- no duplicate/orphan snapshot from retry windows.
 
-## 3. Structural commit orchestration
+Do not invent a project-wide final snapshot id format.
 
-Required conceptual order:
+## 3. Allow exact retry after transient FAILED pre-publish commit
+
+For an existing lifecycle record with:
+- same `(ref_id, fingerprint)`;
+- no published version;
+- no irrecoverable published side effect;
+- failed structural staging/finalization already compensated;
+
+the next exact commit request should restart/resume safely rather than returning permanently FAILED.
+
+Required:
+- same commit id may be reused, or lifecycle may enter an explicit retry generation; choose the simpler internal design;
+- structural/USDO/vector/version records must not duplicate;
+- all request-binding validation still runs before retry.
+
+Add tests for transient:
+- structural.stage failure then exact retry;
+- usdo.commit failure then exact retry;
+- lifecycle structural-ack failure then exact retry.
+
+## 4. Add a minimal version-scoped storage read view
+
+This is **not §6 retrieval/RAG**. It is only §5.4 storage/version resolution.
+
+Add an internal runtime-independent component such as:
 
 ```text
-validate CommitRequest binding
-  -> create lifecycle record
-  -> build admission set
-  -> stage structural assertions + metadata
-  -> stage USDO
-  -> finalize structural visibility as one document boundary
-  -> mark STRUCTURAL_COMMITTED
-  -> vector upsert
-  -> snapshot
-  -> idempotent version publish
+VersionedKnowledgeView / SnapshotResolver
 ```
 
-If any failure occurs before structural visibility finalization:
-- abort staged structural/USDO state;
-- no committed structural knowledge;
-- no snapshot/version.
+Given:
+- an explicit `version_id`, or
+- the current visible version pointer,
 
-You may implement a small internal transaction token/stage id; do not invent a project-wide public API.
+it must resolve exactly the immutable storage dependencies of that snapshot:
 
-## 4. Strong CommitRequest integrity validation
+- structural document record id(s);
+- USDO record id(s);
+- vector payload id(s);
+- manifest/snapshot metadata.
 
-Before creating any staged data, validate deterministically:
+If necessary, extend the internal temporary `SnapshotManifest` with stable storage identities such as:
+- structural record/stage id(s);
+- USDO record id(s).
 
-- source fingerprint is non-empty;
-- `source.ref_id == assertion_set.ref_id == report.source_ref_id`;
-- assertion ids in the AssertionSet are unique;
-- decision ids in the report are unique;
-- exactly one decision exists for every assertion in the AssertionSet;
-- no decision references an assertion outside the AssertionSet.
+These are internal temporary commit fields, not a public cross-team schema.
 
-On failure:
-- fail closed;
-- no commit record that looks publishable;
-- no structural/USDO/vector/snapshot/version side effects.
+Add store accessors needed for exact id-based resolution.
 
-Add explicit regression tests for each mismatch class.
+### Required V1/V2/rollback test
 
-## 5. Version-safe vector identities
+Use the same `ref_id` and same `assertion_id`, but changed fingerprint/content:
 
-Vector ids must be immutable per committed document version/content.
+```text
+V1 -> publish
+V2 -> publish
+current = V2
+rollback_to(V1)
+current = V1
+```
 
-Do not use only:
-`ref_id + assertion_id`.
+Then assert:
+- current view resolves V1 structural record;
+- current view resolves V1 USDO record;
+- current view resolves V1 vector payload;
+- none of those identities are substituted by V2;
+- explicit resolve(V2) still returns V2 historical dependencies.
 
-Include a stable version discriminator such as:
-- source fingerprint,
-- commit content hash,
-- assertion content hash,
-or a combination.
+This is the acceptance test for rollback reproducibility.
 
-Requirements:
-- same exact retry reuses the same vector ids;
-- same ref_id + different fingerprint does not overwrite old vectors;
-- older snapshot vector ids remain resolvable after newer versions publish.
+## 5. Separate recovery statuses
 
-Extend the in-memory vector adapter with the minimum read method needed to assert the stored payload by id.
+Keep:
+- `PENDING_VECTOR` only when vector write/replay is required.
 
-## 6. Idempotent version publication
+Add an internal status such as:
+- `PENDING_FINALIZE`
 
-Make `publish_version` idempotent for the same snapshot/document commit.
+for:
+- snapshot creation recovery;
+- version publish recovery;
+- lifecycle acknowledgement after publish.
 
-Recommended internal semantics:
-- a snapshot can map to at most one published version;
-- repeated publish for the same snapshot returns the existing version;
-- version publication can accept an internal idempotency key if needed.
+The phase field should still communicate the exact state (`VECTOR_COMMITTED`, `SNAPSHOT_CREATED`, etc.).
 
-Handle failures explicitly:
-- snapshot creation failure should remain resumable at the appropriate pre-snapshot state; do not relabel it as a vector failure unless vector is actually missing;
-- publish failure should leave `SNAPSHOT_CREATED` resumable;
-- retry must not create duplicate versions.
+Update existing tests accordingly.
 
-Add deterministic failure tests for:
-1. publish operation fails before side effect;
-2. publish side effect succeeds but lifecycle acknowledgement/update fails;
-3. retry returns/uses exactly the original version.
+Do not change the global confidence vocabulary.
 
-To test post-side-effect failures, improve `FailureInjection` if necessary (e.g. fail-on-nth-call or explicit after-side-effect hook). Do not rely on mutable object aliasing.
+## 6. Clean staged state
 
-## 7. In-memory persistence semantics must model real boundaries
+On successful structural/USDO finalization:
+- remove stale staged copies;
+- retain committed copies/history.
 
-`InMemoryDocumentCommitStore` currently stores mutable record objects by reference.
+Tests should confirm no stale prepared bucket remains if the adapter exposes diagnostic counts.
 
-That can make a local mutation appear "persisted" even if `update()` fails, which weakens failure tests.
+## 7. Failure injection
 
-Use copy-on-write/deep-copy semantics at the store boundary so:
-- `create/update` persists a copy;
-- `find_by_key` returns a safe copy;
-- a failed update does not magically mutate the persisted record.
+Use the existing before/after-side-effect injection to cover the real failure windows.
 
-Tests must demonstrate this.
+Do not add tests that only fail before the side effect if the bug is specifically a post-side-effect window.
 
-## 8. SUPERSEDE safety
+## 8. Preserve current guarantees
 
-Do not persist `CurationAction.SUPERSEDE` as ACTIVE.
+Keep all current behavior:
 
-Until CG-008 is frozen:
-- retain it in a non-active historical/superseded visibility, or fail it closed from the active surface;
-- preserve auditability;
-- do not physically delete it.
+- Phase 1 confidence/conflict rules frozen;
+- exact published retry is idempotent;
+- version-safe vectors;
+- SUPERSEDE non-active;
+- deterministic assertion/manifest hashing;
+- version publish idempotent;
+- no public contract changes;
+- CG-012/CG-013 remain documented.
 
-This is an internal visibility rule, not a new public confidence value.
+## 9. Test requirements
 
-## 9. Snapshot hash completeness
+Keep all **109** current tests green and add regression tests for all items above.
 
-Keep the manifest deterministic, but make the assertion record hash cover all stable scientific fields that materially define the committed assertion, including at least:
+Mechanically report the real per-file counts. Note: Phase 2.1 added **24** tests in `test_phase21_persistence.py`, not 26.
 
-- subject canonical id and relevant stable subject fields;
-- property;
-- object value/unit/value_type/**uncertainty**;
-- conditions;
-- provenance locator and stable sentence/cell pointer if present;
-- claim type;
-- source claim origin;
-- assertion quality if it is part of the persisted assertion record.
+## 10. DeepSeek / DSH
 
-Decision confidence/visibility/action may remain in decision hashes.
+Do not use DeepSeek or DSH in Phase 2.2.
 
-Exclude ephemeral runtime fields.
+DeepSeek remains allowed later behind an adapter when §6 genuinely needs semantic reasoning.
 
-Add a test showing a change in uncertainty or stable provenance changes the manifest content hash.
-
-## 10. Required regression tests
-
-Keep all existing **85** tests green and add tests for:
-
-### Structural persistence
-- successful publish has committed structural assertions/metadata in the structural store;
-- lifecycle record alone is not used as proof of structural persistence;
-- failed pre-structural stage leaves no committed structural data.
-
-### USDO visibility
-- staged USDO not visible before commit;
-- failure after USDO staging aborts/hides it;
-- successful structural commit exposes it exactly once.
-
-### Request binding
-- ref_id mismatch fails closed;
-- empty fingerprint fails closed;
-- missing decision fails closed;
-- extra/foreign decision fails closed;
-- duplicate assertion/decision ids fail closed.
-
-### Vector immutability/versioning
-- V1 and V2 same ref_id + same assertion id + changed content have distinct vector ids;
-- both vector payloads remain retrievable;
-- V1 snapshot still references V1 vector after V2 publish.
-
-### Publish failure window
-- publish failure returns a recoverable result/state;
-- retry publishes once;
-- simulated publish-success/lifecycle-update-failure does not create a second version on retry.
-
-### Store copy semantics
-- mutating a fetched lifecycle record without successful `update()` does not change persisted state.
-
-### Supersede
-- SUPERSEDE is never ACTIVE.
-
-### Manifest
-- stable assertion-field change (e.g. uncertainty) changes manifest hash.
-
-### Rollback
-- after V1/V2 publish, rollback to V1 leaves V2 historical and V1 snapshot dependencies resolvable.
-
-## 11. CG-012 / CG-013
-
-Keep both unless an architecture owner changes them.
-
-Do not create a new CONTRACT_GAP merely for an implementation bug fixed in this round.
-
-If a genuinely new cross-team ambiguity is discovered, document it.
-
-## 12. DeepSeek / DSH
-
-DeepSeek API remains approved for future reasoning behind an adapter.
-
-**Do not use DeepSeek or DSH in Phase 2.1.**
-
-## 13. Completion report
+## 11. Completion report
 
 Create:
 
-`results/phase-02-1-executor-report.md`
+`results/phase-02-2-executor-report.md`
 
 Include:
-- exact persistence model;
-- structural/USDO stage-commit-abort behavior;
-- vector identity format;
-- version publish idempotency;
-- failure-window behavior;
-- request-binding validation;
-- snapshot hash coverage;
-- test totals;
-- CONTRACT_GAPS changes;
-- whether public contracts changed (must be NO);
+- atomic visibility/compensation design;
+- snapshot idempotency;
+- FAILED exact-retry behavior;
+- version-scoped read-view design;
+- V1/V2/rollback resolution proof;
+- recovery status semantics;
+- full test count;
+- CONTRACT_GAPS;
+- public contract changed? -> NO;
 - implementation commit SHA.
 
 Update `status.json`:
-- phase = "2.1"
+- phase = "2.2"
 - actor = "executor"
 - state = "executor_complete"
 - latest_commit = actual implementation SHA
-- result_expected = results/phase-02-1-executor-report.md
+- result_expected = results/phase-02-2-executor-report.md
 
-Stop after Phase 2.1. Do not begin §6.
+Stop after Phase 2.2. Do not begin §6.
