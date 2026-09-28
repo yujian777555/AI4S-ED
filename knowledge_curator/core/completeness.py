@@ -152,6 +152,7 @@ def _check_metadata(
 
 
 def _check_charts(assertion_set: AssertionSet) -> list[CompletenessIssue]:
+    """Validate chart objects without mutating the input ChartObjectInfo."""
     issues: list[CompletenessIssue] = []
     low_ids: list[str] = []
     for chart in assertion_set.charts:
@@ -160,7 +161,6 @@ def _check_charts(assertion_set: AssertionSet) -> list[CompletenessIssue]:
             low_ids.append(chart.id)
             continue
         if not complete:
-            chart.quality_low = True
             low_ids.append(chart.id)
     if low_ids:
         issues.append(

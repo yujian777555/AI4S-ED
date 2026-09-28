@@ -17,3 +17,4 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 | CG-009 | 03 §3.5 / §5.1 | ChartObject 上游字段（caption/axes/units/not_digitizable）正式 schema 未冻结。 | temporary `ChartObjectInfo` 最小兼容字段；不完整或 quality_low 时不参与 verified。 | 否 | 02/08 |
 
 | CG-010 | DeepSeek API | 临时模型后端已获允许，但具体模型、鉴权配置、超时/重试/结构化输出契约尚未冻结 | 后续需要 LLM reasoning 时新增 Port/Adapter；API key 仅环境变量/secret 注入，不入仓库；Phase 1.1 不引入网络调用 | 否 | Planner/08 |
+| CG-011 | 03 §5.3 多源一致性 / 来源独立性 | “多源一致”所需 source-family / 来源独立性 schema 未冻结（同一课题组多篇、同一数据库转引等是否算独立） | Phase 1.1 按 Planner 指示使用 non-self `ref_id` 作为独立性代理；同 ref_id 不自证，跨 ref_id 且数值 consistent + primary 才可升 high。局限已知，不发明全局 source-family schema | 否 | Planner/02/08 |

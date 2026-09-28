@@ -83,21 +83,14 @@ def compare_pair(
 ) -> Optional[ConflictFinding]:
     """Compare one new assertion with one existing assertion.
 
+    Condition-domain compatibility is evaluated BEFORE numeric and
+    relation/enum conflict classification (P1-03). Different operating
+    conditions yield condition_difference and never a numeric/relation conflict.
+
     Returns a ConflictFinding, or None when the pair is unopposed
     (including empty/none comparisons).
     """
-    # Relation / enum / bool opposite → relation_conflict
-    if new.object.value_type in (ValueType.ENUM, ValueType.TEXT) or existing.object.value_type in (
-        ValueType.ENUM,
-        ValueType.TEXT,
-    ):
-        return _compare_relation(new, existing)
-
-    if new.object.value_type == ValueType.FORMULA or existing.object.value_type == ValueType.FORMULA:
-        return None
-
-    # Numeric / range comparison
-    # Critical rule: different operating conditions are NOT numeric conflicts.
+    # P1-03: operating-condition compatibility first (numeric and relation alike).
     if not ontology.are_conditions_compatible(new.conditions, existing.conditions):
         return ConflictFinding(
             conflict_type=ConflictType.CONDITION_DIFFERENCE,
@@ -110,6 +103,17 @@ def compare_pair(
             },
         )
 
+    # Relation / enum / bool opposite -> relation_conflict (same condition domain)
+    if new.object.value_type in (ValueType.ENUM, ValueType.TEXT) or existing.object.value_type in (
+        ValueType.ENUM,
+        ValueType.TEXT,
+    ):
+        return _compare_relation(new, existing)
+
+    if new.object.value_type == ValueType.FORMULA or existing.object.value_type == ValueType.FORMULA:
+        return None
+
+    # Numeric / range comparison (same condition domain)
     new_interval = new.numeric_interval()
     existing_interval = existing.numeric_interval()
     if new_interval is None or existing_interval is None:
@@ -173,12 +177,16 @@ def _intervals_compatible(
     right: tuple[float, float],
     config: ConflictConfig,
 ) -> bool:
-    """True when intervals overlap or endpoints are within tolerance."""
+    """True when intervals overlap or endpoints are within tolerance.
+
+    P1-04: relative tolerance scales with actual value/interval magnitude.
+    absolute_tolerance is the only near-zero floor (no implicit 1.0 scale).
+    """
     l_lo, l_hi = left
     r_lo, r_hi = right
-    # Expand both intervals by relative/absolute tolerance
+
     def expand(lo: float, hi: float) -> tuple[float, float]:
-        span = max(abs(lo), abs(hi), 1.0)
+        span = max(abs(lo), abs(hi))
         pad = max(config.relative_tolerance * span, config.absolute_tolerance)
         return (lo - pad, hi + pad)
 

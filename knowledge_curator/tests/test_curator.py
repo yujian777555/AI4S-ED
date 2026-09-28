@@ -245,13 +245,15 @@ def test_secondary_origin_cannot_auto_reach_high():
 
 
 def test_verified_is_not_auto_granted():
+    """P1-01: single-source verified must not remain verified/high."""
     curator = make_curator()
     aset = make_assertion_set(
         [make_assertion("AS-V", confidence=Confidence.VERIFIED)],
     )
     report = _run(curator.curate(aset))
     decision = report.decisions[0]
-    assert decision.confidence == Confidence.HIGH
+    assert decision.confidence not in (Confidence.VERIFIED, Confidence.HIGH)
+    assert decision.confidence == Confidence.MEDIUM
     assert any("verified" in w.lower() for w in decision.warnings)
 
 

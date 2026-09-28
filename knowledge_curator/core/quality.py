@@ -134,6 +134,9 @@ def _penalty(
         score -= cfg.penalty_conflict_hang
     if any(f.conflict_type == ConflictType.MECHANISM_VIOLATION for f in conflicts):
         score -= cfg.penalty_mechanism_review
-    if any(c.quality_low or c.not_digitizable for c in assertion_set.charts):
+    if any(
+        c.quality_low or c.not_digitizable or not (c.caption_complete and c.axes_complete and c.units_complete)
+        for c in assertion_set.charts
+    ):
         score -= cfg.penalty_chart_low
     return max(0.0, score)

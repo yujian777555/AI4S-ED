@@ -1,9 +1,16 @@
-"""Curation decision rules (docs/03 §5 routing + latest_plan actions)."""
+"""Curation decision rules (docs/03 §5 routing + latest_plan actions).
+
+Phase 1.1 confidence gate (planner/phase-01-review.md P1-01/P1-02):
+  * clean single-source primary -> at most medium
+  * secondary source -> at most medium
+  * high requires compatible multi-source evidence (non-self ref_id) + primary + no conflict
+  * verified is never auto-granted
+"""
 
 from __future__ import annotations
 
 from knowledge_curator.config import CuratorConfig, DEFAULT_CONFIG
-from knowledge_curator.schemas.assertions import Assertion, Confidence, QualityGrade
+from knowledge_curator.schemas.assertions import Assertion, Confidence, SourceClaimOrigin
 from knowledge_curator.schemas.curation import (
     AssertionDecision,
     CompletenessResult,
@@ -26,11 +33,11 @@ def decide_assertion(
 
     Decision order is deterministic:
       1. document-level gates (return_upstream / exclude / manual)
-      2. mechanism violation → reject
-      3. numeric/relation conflict → pending_review
-      4. missing unit / locator → downgrade to hypothesis
-      5. consistent multi-source / condition_difference → accept
-      6. otherwise accept at current confidence (clamped)
+      2. mechanism violation -> reject
+      3. numeric/relation conflict -> pending_review
+      4. missing unit / locator / speculative wording -> downgrade to hypothesis
+      5. consistent multi-source / condition_difference -> accept (confidence gated)
+      6. clean single-source -> accept at most medium
 
     Args:
         assertion: The assertion under review.
@@ -45,7 +52,7 @@ def decide_assertion(
     cfg = config or DEFAULT_CONFIG
     warnings: list[str] = []
 
-    # Document-level gate: metadata incomplete → return_upstream
+    # Document-level gate: metadata incomplete -> return_upstream
     if completeness.requires_return_upstream:
         return AssertionDecision(
             assertion_id=assertion.id,
@@ -97,7 +104,7 @@ def decide_assertion(
             warnings=["must not participate in verified/high reasoning before human verdict"],
         )
 
-    # Completeness / quality downgrade rules
+    # Completeness / quality downgrade rules -> always hypothesis
     missing_unit = assertion.missing_unit or (
         assertion.is_numeric
         and (assertion.object.unit is None or str(assertion.object.unit).strip() == "")
@@ -139,52 +146,83 @@ def decide_assertion(
             warnings=["manual review before formal knowledge face"],
         )
 
-    # Consistent with existing multi-source evidence → accept, possibly elevate
     consistent = [f for f in conflicts_for if f.conflict_type == ConflictType.CONSISTENT]
     condition_diff = [
         f for f in conflicts_for if f.conflict_type == ConflictType.CONDITION_DIFFERENCE
     ]
+    is_primary = assertion.source_claim_origin == SourceClaimOrigin.PRIMARY
 
+    # Multi-source consistent support (non-self ref_id is the Phase 1 independence proxy).
     if consistent:
-        target = Confidence.HIGH
-        if assertion.source_claim_origin.value == "primary":
-            target = Confidence.HIGH
+        # P1-02: secondary evidence cannot reach high even when consistent.
+        if not is_primary:
+            return AssertionDecision(
+                assertion_id=assertion.id,
+                action=CurationAction.ACCEPT,
+                confidence=Confidence.MEDIUM,
+                reason="consistent with existing assertions but secondary origin (not high)",
+                conflict_type=ConflictType.CONSISTENT,
+                warnings=[
+                    "secondary origin — at most medium until primary back-trace",
+                    "source-family independence unavailable; non-self ref_id used as proxy",
+                ],
+            )
+        # primary + independent existing evidence + no blocking conflict -> high
         return AssertionDecision(
             assertion_id=assertion.id,
             action=CurationAction.ACCEPT,
-            confidence=target,
-            reason="consistent with existing graph assertions (multi-source)",
+            confidence=Confidence.HIGH,
+            reason="primary assertion consistent with independent existing evidence",
             conflict_type=ConflictType.CONSISTENT,
-            warnings=warnings,
+            warnings=[
+                "high via multi-source consistency (non-self ref_id independence proxy)",
+            ],
         )
 
     if condition_diff:
+        # Condition difference is not support for the same conditional claim.
         return AssertionDecision(
             assertion_id=assertion.id,
             action=CurationAction.ACCEPT,
-            confidence=_clamp_confidence(assertion.confidence),
+            confidence=_cap_single_source(assertion, is_primary, warnings),
             reason="condition_difference — conditional assertion, not a conflict",
             conflict_type=ConflictType.CONDITION_DIFFERENCE,
             warnings=warnings,
         )
 
-    # Clean single-source acceptance
-    confidence = _clamp_confidence(assertion.confidence)
-    if assertion.source_claim_origin.value == "secondary" and confidence == Confidence.HIGH:
-        confidence = Confidence.MEDIUM
-        warnings.append("secondary origin — cannot reach verified/high until back-traced")
-    if confidence == Confidence.VERIFIED:
-        # verified requires human/experimental confirmation, not auto-granted
-        confidence = Confidence.HIGH
-        warnings.append("verified is not auto-granted; clamped to high")
-
+    # Clean single-source acceptance — P1-01 confidence gate.
+    confidence = _cap_single_source(assertion, is_primary, warnings)
     return AssertionDecision(
         assertion_id=assertion.id,
         action=CurationAction.ACCEPT,
         confidence=confidence,
-        reason="completeness OK and no blocking conflict",
+        reason="completeness OK and no blocking conflict (single-source cap applied)",
         warnings=warnings,
     )
+
+
+def _cap_single_source(
+    assertion: Assertion,
+    is_primary: bool,
+    warnings: list[str],
+) -> Confidence:
+    """Apply Phase 1.1 single-source confidence caps.
+
+    Semantics (03 §5.3 / latest_plan §A):
+      * secondary -> at most medium
+      * single-source primary -> at most medium
+      * high requires multi-source consistency (handled in consistent branch)
+      * verified is never auto-granted (no frozen trusted signal in Phase 1 model)
+    """
+    if assertion.confidence == Confidence.VERIFIED:
+        warnings.append(
+            "verified is not auto-granted; no frozen trusted human/experimental signal"
+        )
+    if not is_primary:
+        warnings.append("secondary origin — at most medium until primary back-trace")
+        return Confidence.MEDIUM
+    warnings.append("single-source primary — at most medium (high needs multi-source)")
+    return Confidence.MEDIUM
 
 
 def _clamp_confidence(value: Confidence) -> Confidence:
