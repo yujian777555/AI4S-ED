@@ -8,28 +8,59 @@
   "public_tool_name": "mcp__knowledge_curator__curate_assertion_set",
   "tool_discovered": true,
   "tool_called": true,
-  "tool_call_count": 7,
-  "expected_result_summary": {
+  "tool_call_count": 1,
+  "matching_tool_result_count": 1,
+  "matching_call_events": [
+    {
+      "seq": 10,
+      "callId": "call_00_KD6i3fzAJUA2LUE2rsG60162",
+      "name": "mcp__knowledge_curator__curate_assertion_set",
+      "turn": 1,
+      "step": 1,
+      "arguments_hash": "9e2ebada9c6e47eb",
+      "arguments_fixture_ref_id": "ED-2025-0042"
+    }
+  ],
+  "matching_result_events": [
+    {
+      "seq": 11,
+      "sourceEventSeqs": [
+        "10"
+      ],
+      "callId": "call_00_KD6i3fzAJUA2LUE2rsG60162",
+      "name": "mcp__knowledge_curator__curate_assertion_set",
+      "isError": false,
+      "tool_result_summary": {
+        "status": "successful",
+        "action": "accept",
+        "confidence": "medium",
+        "ok": true
+      }
+    }
+  ],
+  "direct_core_summary": {
     "status": "successful",
     "action": "accept",
     "confidence": "medium"
   },
-  "observed_result_summary": {
-    "finish_reason": "completed",
-    "final_snippet": "status=successful\naction=accept\nconfidence=medium",
-    "tool_name_hits": [
-      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
-      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
-      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
-      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
-      "[{'name': 'mcp__knowledge_curator__curate_assertion_set', 'description': 'Curate one AssertionSet through KnowledgeCurator §5.1–§5.3 (completeness, conflict, quality, decision) and return a CurationRe"
-    ],
-    "matches_expected": true
+  "tool_result_summary": {
+    "status": "successful",
+    "action": "accept",
+    "confidence": "medium",
+    "ok": true
   },
+  "final_response_summary": {
+    "status": "successful",
+    "action": "accept",
+    "confidence": "medium",
+    "nonempty": true
+  },
+  "summaries_match": true,
   "final_response_nonempty": true,
   "finish_reason": "completed",
   "live_test_passed": true,
-  "secret_present": true,
+  "credential_available": true,
+  "secret_leaked": false,
   "errors": [],
   "warnings": [
     "DSH target 0.1.5rc1 vs reviewed 0.2.0-rc.1 (CG-015)"

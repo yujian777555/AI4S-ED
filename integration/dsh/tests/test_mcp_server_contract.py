@@ -104,26 +104,24 @@ def test_call_tool_matches_direct_core_result():
     assert observed_report["decisions"][0]["confidence"] == expected["decisions"][0]["confidence"]
 
 
-def test_malformed_payload_returns_structured_error():
+def test_malformed_payload_returns_mcp_is_error():
+    """Official mcp 2.2.0: ToolError maps to CallToolResult(is_error=True) on the wire."""
+    import pytest
+    from mcp.server.mcpserver.exceptions import ToolError
+
     server = create_mcp_server()
 
     async def _run():
         return await server.call_tool(PUBLIC_TOOL_NAME, {"assertion_set": {"ref_id": "x"}})
 
-    result = anyio.run(_run)
-    text = ""
-    structured = None
-    if hasattr(result, "content") and result.content:
-        text = " ".join(getattr(c, "text", "") or "" for c in result.content)
-    if hasattr(result, "structuredContent"):
-        structured = result.structuredContent
-    assert structured is not None or text
-    if isinstance(structured, dict):
-        assert structured.get("ok") is False
-        assert "error" in structured
+    with pytest.raises(ToolError):
+        anyio.run(_run)
 
 
-def test_invalid_enum_payload_errors():
+def test_invalid_enum_payload_mcp_is_error():
+    import pytest
+    from mcp.server.mcpserver.exceptions import ToolError
+
     payload = _fixture_payload()
     payload["assertions"][0]["confidence"] = "not-a-confidence"
     server = create_mcp_server()
@@ -131,15 +129,8 @@ def test_invalid_enum_payload_errors():
     async def _run():
         return await server.call_tool(PUBLIC_TOOL_NAME, {"assertion_set": payload})
 
-    result = anyio.run(_run)
-    structured = getattr(result, "structuredContent", None)
-    text = ""
-    if hasattr(result, "content") and result.content:
-        text = " ".join(getattr(c, "text", "") or "" for c in result.content)
-    if isinstance(structured, dict):
-        assert structured.get("ok") is False
-    else:
-        assert text
+    with pytest.raises(ToolError):
+        anyio.run(_run)
 
 
 def test_health_tool_is_diagnostic_only():

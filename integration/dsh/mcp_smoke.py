@@ -1,14 +1,18 @@
-"""Live DSH MCP bridge smoke (Phase 3.1).
+"""Live DSH MCP bridge smoke with strict tool/call evidence (Phase 3.1.1).
 
-Requires DEEPSEEK_API_KEY. Uses official DeepSeekHarness + runtime patch.
-Does not call DeepSeek HTTP directly. No secrets in output.
+Only structurally matched DSH session events count as tool evidence:
+
+    event["type"] == "tool/call" and event["data"]["name"] == EXPECTED_TOOL
+
+String occurrences in prompts/catalog are NOT evidence.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import platform
+import re
 import sys
 import tempfile
 import uuid
@@ -71,6 +75,239 @@ PROMPT = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Strict DSH session event parsing (0.1.5rc1)
+# ---------------------------------------------------------------------------
+
+def _event_type(event: Any) -> str:
+    if not isinstance(event, dict):
+        return ""
+    for key in ("type", "event", "kind"):
+        val = event.get(key)
+        if isinstance(val, str):
+            return val
+    return ""
+
+
+def _event_data(event: Any) -> dict:
+    if not isinstance(event, dict):
+        return {}
+    data = event.get("data")
+    if isinstance(data, dict):
+        return data
+    # Some events flatten fields at top level.
+    return event
+
+
+def extract_matching_call_events(events: list[Any], expected_tool: str = EXPECTED_TOOL) -> list[dict[str, Any]]:
+    """Return sanitized evidence only for exact tool/call events of expected_tool.
+
+    DSH 0.1.5rc1 shape:
+      {"type":"tool/call","seq":N,"data":{"turn":T,"step":S,"callId":"...","name":"...","arguments":"<json str>"}}
+    """
+    matches: list[dict[str, Any]] = []
+    for idx, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        if _event_type(event) != "tool/call":
+            continue
+        data = _event_data(event)
+        name = data.get("name") or data.get("tool") or data.get("toolName")
+        if name != expected_tool:
+            continue
+        raw_args = data.get("arguments") or data.get("args") or data.get("input") or {}
+        if isinstance(raw_args, str):
+            try:
+                args = json.loads(raw_args) if raw_args.strip() else {}
+            except Exception:
+                args = {}
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        else:
+            args = {}
+        fixture_ref = None
+        nested = args.get("assertion_set") if isinstance(args, dict) else None
+        if isinstance(nested, dict):
+            fixture_ref = nested.get("ref_id")
+        matches.append(
+            {
+                "seq": event.get("seq", data.get("seq", idx)),
+                "callId": data.get("callId") or data.get("call_id") or data.get("id"),
+                "name": name,
+                "turn": data.get("turn", event.get("turn")),
+                "step": data.get("step", event.get("step")),
+                "arguments_hash": hashlib.sha256(
+                    json.dumps(args, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+                ).hexdigest()[:16],
+                "arguments_fixture_ref_id": fixture_ref,
+            }
+        )
+    return matches
+
+
+def extract_matching_result_events(
+    events: list[Any],
+    call_events: list[dict[str, Any]],
+    expected_tool: str = EXPECTED_TOOL,
+) -> list[dict[str, Any]]:
+    """Return tool/result events linked to matching calls via sourceEventSeqs.
+
+    DSH 0.1.5rc1 shape:
+      {"type":"tool/result","seq":M,"sourceEventSeqs":[N],
+       "data":{"turn":T,"step":S,"message":{"source":{"kind":"...","callId":"..."},
+       "content":[{...}],"role":"tool","id":"..."}}}
+    """
+    call_seqs = {str(c.get("seq")) for c in call_events}
+    call_ids = {c.get("callId") for c in call_events if c.get("callId")}
+    results: list[dict[str, Any]] = []
+    for idx, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        if _event_type(event) != "tool/result":
+            continue
+        data = _event_data(event)
+        source_seqs = event.get("sourceEventSeqs") or data.get("sourceEventSeqs") or []
+        if isinstance(source_seqs, (int, str)):
+            source_seqs = [source_seqs]
+        if not isinstance(source_seqs, (list, tuple, set)):
+            source_seqs = []
+        source_set = {str(s) for s in source_seqs}
+        linked = source_set & call_seqs
+        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        source = message.get("source") if isinstance(message.get("source"), dict) else {}
+        call_id = source.get("callId") or data.get("callId")
+        # Plan §2: require sourceEventSeqs to contain the call seq.
+        # Only fall back to callId when sourceEventSeqs is absent entirely.
+        if source_seqs:
+            if not linked:
+                continue
+        elif call_id not in call_ids:
+            continue
+        content = message.get("content") if isinstance(message.get("content"), list) else data.get("content")
+        payload = content
+        summary = summarize_tool_result_payload(payload)
+        result_name = (
+            source.get("kind")
+            or message.get("name")
+            or data.get("name")
+            or expected_tool
+        )
+        # Prefer expected tool name for acceptance when call was matched
+        display_name = expected_tool if linked or call_id in call_ids else result_name
+        results.append(
+            {
+                "seq": event.get("seq", data.get("seq", idx)),
+                "sourceEventSeqs": sorted(linked) if linked else [],
+                "callId": call_id,
+                "name": display_name,
+                "isError": bool(data.get("isError") or event.get("isError") or False),
+                "tool_result_summary": summary,
+            }
+        )
+    return results
+
+
+def summarize_tool_result_payload(payload: Any) -> dict[str, Any]:
+    """Extract status/action/confidence from an MCP curate result payload.
+
+    Handles DSH 0.1.5rc1 nesting:
+      [{"type":"tool-result","toolCallId":"...","content":[{"type":"text","text":"<json>"}]}]
+    """
+    obj: Any = payload
+    if isinstance(payload, str):
+        try:
+            obj = json.loads(payload)
+        except Exception:
+            return {"raw_snippet": payload[:200]}
+    if isinstance(obj, list):
+        texts = []
+        structured = None
+        for item in obj:
+            if isinstance(item, dict):
+                # Nested tool-result block
+                if "content" in item and isinstance(item["content"], list):
+                    for sub in item["content"]:
+                        if isinstance(sub, dict) and "text" in sub:
+                            texts.append(str(sub["text"]))
+                    if isinstance(item.get("structuredContent"), (dict, list)):
+                        structured = item["structuredContent"]
+                if "text" in item:
+                    texts.append(str(item["text"]))
+                if "structuredContent" in item and isinstance(item["structuredContent"], (dict, list)):
+                    structured = item["structuredContent"]
+            elif isinstance(item, str):
+                texts.append(item)
+        if structured is not None:
+            obj = structured
+        else:
+            joined = "\n".join(texts)
+            parsed = None
+            for candidate in (joined, joined.strip(), joined.strip().strip("`")):
+                if not candidate:
+                    continue
+                try:
+                    parsed = json.loads(candidate)
+                    break
+                except Exception:
+                    continue
+            if parsed is None:
+                m = re.search(r"\{.*\}", joined, re.DOTALL)
+                if m:
+                    try:
+                        parsed = json.loads(m.group(0))
+                    except Exception:
+                        parsed = None
+            obj = parsed if parsed is not None else {"raw_snippet": joined[:200]}
+    if not isinstance(obj, dict):
+        return {"raw_snippet": str(obj)[:200]}
+
+    report = obj.get("report") if isinstance(obj.get("report"), dict) else obj
+    status = report.get("status")
+    action = None
+    confidence = None
+    decisions = report.get("decisions")
+    if isinstance(decisions, list) and decisions:
+        first = decisions[0]
+        if isinstance(first, dict):
+            action = first.get("action")
+            confidence = first.get("confidence")
+    return {
+        "status": status,
+        "action": action,
+        "confidence": confidence,
+        "ok": obj.get("ok"),
+    }
+
+
+def parse_final_response_summary(final_response: str) -> dict[str, Any]:
+    """Parse the required three-line final answer."""
+    text = final_response or ""
+    status = action = confidence = None
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r"(status|action|confidence)\s*[=:]\s*(\S+)", line, re.IGNORECASE)
+        if not m:
+            continue
+        key, val = m.group(1).lower(), m.group(2)
+        if key == "status":
+            status = val
+        elif key == "action":
+            action = val
+        else:
+            confidence = val
+    return {"status": status, "action": action, "confidence": confidence, "nonempty": bool(text.strip())}
+
+
+def summaries_match(a: dict, b: dict, c: dict) -> bool:
+    keys = ("status", "action", "confidence")
+    vals = []
+    for s in (a, b, c):
+        if not isinstance(s, dict):
+            return False
+        vals.append(tuple(s.get(k) for k in keys))
+    return vals[0] == vals[1] == vals[2]
+
+
 @dataclass
 class McpSmokeResult:
     dsh_sdk_version: str = ""
@@ -83,12 +320,18 @@ class McpSmokeResult:
     tool_discovered: bool = False
     tool_called: bool = False
     tool_call_count: int = 0
-    expected_result_summary: dict[str, Any] = field(default_factory=dict)
-    observed_result_summary: dict[str, Any] = field(default_factory=dict)
+    matching_tool_result_count: int = 0
+    matching_call_events: list[dict[str, Any]] = field(default_factory=list)
+    matching_result_events: list[dict[str, Any]] = field(default_factory=list)
+    direct_core_summary: dict[str, Any] = field(default_factory=dict)
+    tool_result_summary: dict[str, Any] = field(default_factory=dict)
+    final_response_summary: dict[str, Any] = field(default_factory=dict)
+    summaries_match: bool = False
     final_response_nonempty: bool = False
     finish_reason: str = ""
     live_test_passed: bool = False
-    secret_present: bool = False
+    credential_available: bool = False
+    secret_leaked: bool = False
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -104,12 +347,18 @@ class McpSmokeResult:
             "tool_discovered": self.tool_discovered,
             "tool_called": self.tool_called,
             "tool_call_count": self.tool_call_count,
-            "expected_result_summary": self.expected_result_summary,
-            "observed_result_summary": self.observed_result_summary,
+            "matching_tool_result_count": self.matching_tool_result_count,
+            "matching_call_events": self.matching_call_events,
+            "matching_result_events": self.matching_result_events,
+            "direct_core_summary": self.direct_core_summary,
+            "tool_result_summary": self.tool_result_summary,
+            "final_response_summary": self.final_response_summary,
+            "summaries_match": self.summaries_match,
             "final_response_nonempty": self.final_response_nonempty,
             "finish_reason": self.finish_reason,
             "live_test_passed": self.live_test_passed,
-            "secret_present": self.secret_present,
+            "credential_available": self.credential_available,
+            "secret_leaked": self.secret_leaked,
             "errors": self.errors,
             "warnings": self.warnings,
         }
@@ -124,47 +373,20 @@ def _ver(pkg: str) -> str:
         return "unknown"
 
 
-def _scan_events_for_tools(events: list, notifications: list) -> tuple[bool, int, list[str]]:
-    """Walk DSH RunResult events/notifications for MCP tool evidence."""
-    discovered = False
-    count = 0
-    names: list[str] = []
+def compute_direct_core_summary() -> dict[str, Any]:
+    import anyio
 
-    def walk(node: Any) -> None:
-        nonlocal discovered, count
-        if isinstance(node, dict):
-            for k, v in node.items():
-                lk = str(k).lower()
-                sv = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
-                if "tool" in lk or (isinstance(v, str) and EXPECTED_TOOL in v):
-                    if EXPECTED_TOOL in sv or EXPECTED_TOOL in str(v):
-                        discovered = True
-                        names.append(str(v)[:200])
-                if lk in {"name", "tool_name", "tool", "toolName"} and isinstance(v, str):
-                    if "curate" in v or "knowledge_curator" in v or v.startswith("mcp__"):
-                        discovered = True
-                        names.append(v)
-                if lk in {"method"} and isinstance(v, str) and "tool" in v.lower():
-                    count += 1
-                walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-        elif isinstance(node, str):
-            if EXPECTED_TOOL in node:
-                discovered = True
-                names.append(node[:200])
+    from knowledge_curator.mcp_server.codec import parse_assertion_set, serialize_curation_report
+    from knowledge_curator.mcp_server.runtime import create_default_runtime, run_curate
 
-    walk(events)
-    walk(notifications)
-
-    # Count explicit tool/call mentions
-    blob = json.dumps({"e": events, "n": notifications}, ensure_ascii=False, default=str)
-    count = max(count, blob.count("tool/call") + blob.count("tools/call"))
-    if EXPECTED_TOOL in blob:
-        discovered = True
-        count = max(count, blob.count(EXPECTED_TOOL) // 2)
-    return discovered, count, names
+    parsed = parse_assertion_set(FIXTURE)
+    report = anyio.run(lambda: run_curate(create_default_runtime(), parsed))
+    exp = serialize_curation_report(report)
+    return {
+        "status": exp["status"],
+        "action": exp["decisions"][0]["action"],
+        "confidence": exp["decisions"][0]["confidence"],
+    }
 
 
 def run_live_mcp_bridge() -> McpSmokeResult:
@@ -173,13 +395,14 @@ def run_live_mcp_bridge() -> McpSmokeResult:
         dsh_runtime_version=_ver("deepseek-harness-runtime-bin"),
         mcp_sdk_version=_ver("mcp"),
         model=os.environ.get("DSH_MODEL", "deepseek-chat"),
-        secret_present=bool(os.environ.get("DEEPSEEK_API_KEY", "").strip()),
+        credential_available=bool(os.environ.get("DEEPSEEK_API_KEY", "").strip()),
+        secret_leaked=False,
     )
     result.warnings.append(
         f"DSH target {result.dsh_sdk_version} vs reviewed 0.2.0-rc.1 (CG-015)"
     )
 
-    if not result.secret_present:
+    if not result.credential_available:
         result.errors.append("LIVE_SMOKE_NOT_RUN_NO_SECRET")
         return result
 
@@ -207,7 +430,7 @@ def run_live_mcp_bridge() -> McpSmokeResult:
         profile="sdk-minimal",
         dsh_home=config.dsh_home,
         cwd=config.workspace,
-        max_tokens=1200,
+        max_tokens=2500,
         patches=(str(patch_path),),
         request_timeout_seconds=180.0,
     )
@@ -216,52 +439,57 @@ def run_live_mcp_bridge() -> McpSmokeResult:
     try:
         with DeepSeekHarness(harness_config) as harness:
             run = harness.run(PROMPT, session_id=session_id)
-            discovered, count, names = _scan_events_for_tools(
-                run.events, [n.model_dump() if hasattr(n, "model_dump") else n for n in run.notifications]
-            )
-            result.tool_discovered = discovered
-            result.tool_call_count = count
-            result.tool_called = count >= 1 and discovered
+
+            # Strict structural evidence only
+            calls = extract_matching_call_events(run.events)
+            results = extract_matching_result_events(run.events, calls)
+            result.matching_call_events = calls
+            result.matching_result_events = results
+            result.tool_call_count = len(calls)
+            result.matching_tool_result_count = len(results)
+            result.tool_called = len(calls) >= 1
+            result.tool_discovered = len(calls) >= 1  # discovery proven by real call
+
             result.finish_reason = run.finish_reason or ""
             final = (run.final_response or "").strip()
             result.final_response_nonempty = bool(final)
-            result.observed_result_summary = {
-                "finish_reason": result.finish_reason,
-                "final_snippet": final[:300],
-                "tool_name_hits": names[:5],
-            }
+            result.final_response_summary = parse_final_response_summary(final)
+
+            # Tool result summary from paired event
+            if results:
+                result.tool_result_summary = results[0].get("tool_result_summary") or {}
+            else:
+                result.errors.append("no linked tool/result event for expected tool")
+
+            if not calls:
+                result.errors.append("no exact tool/call event for expected tool")
     except Exception as exc:
         result.errors.append(f"live MCP bridge failed: {type(exc).__name__}: {exc}")
         return result
 
-    # Expected deterministic summary from core
     try:
-        from knowledge_curator.mcp_server.codec import parse_assertion_set, serialize_curation_report
-        from knowledge_curator.mcp_server.runtime import create_default_runtime, run_curate
-        import anyio
-
-        parsed = parse_assertion_set(FIXTURE)
-        direct = anyio.run(lambda: run_curate(create_default_runtime(), parsed))
-        exp = serialize_curation_report(direct)
-        result.expected_result_summary = {
-            "status": exp["status"],
-            "action": exp["decisions"][0]["action"],
-            "confidence": exp["decisions"][0]["confidence"],
-        }
-        obs_final = result.observed_result_summary.get("final_snippet", "")
-        if result.expected_result_summary["action"] in obs_final or result.expected_result_summary["confidence"] in obs_final:
-            result.observed_result_summary["matches_expected"] = True
-        else:
-            result.observed_result_summary["matches_expected"] = False
-            result.warnings.append("final response does not explicitly quote expected action/confidence")
+        result.direct_core_summary = compute_direct_core_summary()
     except Exception as exc:
-        result.warnings.append(f"expected summary unavailable: {exc}")
+        result.errors.append(f"direct core summary failed: {exc}")
+        return result
+
+    result.summaries_match = summaries_match(
+        result.direct_core_summary,
+        result.tool_result_summary,
+        result.final_response_summary,
+    )
+    if result.direct_core_summary and result.tool_result_summary:
+        if not summaries_match(result.direct_core_summary, result.tool_result_summary, result.direct_core_summary):
+            result.errors.append("direct core != tool result")
+    if result.tool_result_summary and result.final_response_summary:
+        if not summaries_match(result.tool_result_summary, result.final_response_summary, result.tool_result_summary):
+            result.errors.append("tool result != final response")
 
     result.live_test_passed = bool(
-        result.tool_discovered
-        and result.tool_called
+        result.tool_call_count >= 1
+        and result.matching_tool_result_count >= 1
+        and result.summaries_match
         and result.final_response_nonempty
-        and result.finish_reason in {"completed", "stop", "completed_successfully", ""}
         and not result.errors
     )
     return result

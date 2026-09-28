@@ -9,8 +9,9 @@ import json
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
-from knowledge_curator.mcp_server.codec import CodecError, parse_assertion_set, serialize_curation_report
+from knowledge_curator.mcp_server.codec import parse_assertion_set, serialize_curation_report
 from knowledge_curator.mcp_server.runtime import CuratorRuntime, create_default_runtime, run_curate
 
 PUBLIC_TOOL_NAME = "curate_assertion_set"
@@ -37,19 +38,11 @@ def create_mcp_server(runtime: CuratorRuntime | None = None) -> MCPServer:
         ),
     )
     async def curate_assertion_set(assertion_set: dict[str, Any]) -> dict[str, Any]:
+        # Official mcp 2.2.0 high-level error: raise ToolError -> CallToolResult(is_error=True).
         try:
             parsed = parse_assertion_set(assertion_set)
-        except CodecError as exc:
-            return {
-                "ok": False,
-                "error": {"type": "CodecError", "message": str(exc)},
-            }
-        except Exception as exc:  # noqa: BLE001 — structured tool failure
-            return {
-                "ok": False,
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-
+        except Exception as exc:
+            raise ToolError(f"invalid assertion_set: {exc}") from exc
         report = await run_curate(rt, parsed)
         return {
             "ok": True,

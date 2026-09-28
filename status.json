@@ -1,7 +1,7 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "3.1",
+  "phase": "3.1.1",
   "actor": "executor",
   "state": "executor_complete",
   "planner": "ChatGPT",
@@ -12,19 +12,20 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-03-1-executor-report.md",
+  "result_expected": "results/phase-03-1-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "§5.1-§5.4 is frozen",
-    "Phase 3.1 implements only Python MCP adapter + live DSH MCP bridge",
-    "executable DSH baseline is 0.1.5rc1 for this phase",
-    "keep CG-015 open; do not assume Agent Preset exists in 0.1.5rc1",
-    "no §6/§7 implementation in Phase 3.1",
+    "Phase 3.1.1 only hardens exact DSH tool-call/result evidence",
+    "DSH executable baseline remains 0.1.5rc1",
+    "MCP baseline remains 2.2.0 unless compatibility requires otherwise",
+    "keep CG-015 open",
+    "no Agent Preset / §6 / §7 implementation in this round",
     "no direct DeepSeek HTTP calls",
     "no secrets committed or logged",
     "knowledge_curator core remains runtime-independent"
   ],
-  "latest_commit": "f79eea915673048cce1c98a7d4abf56501d4db6c",
-  "planner_review": "planner/phase-03-0-review.md",
-  "live_smoke": "LIVE_MCP_BRIDGE_PASS_ON_DSH_0.1.5rc1_MCP_SDK_2.2.0"
+  "latest_commit": "PENDING_UPDATE",
+  "planner_review": "planner/phase-03-1-review.md",
+  "live_smoke": "LIVE_STRICT_MCP_SMOKE_PASS_ABC_MATCH"
 }
