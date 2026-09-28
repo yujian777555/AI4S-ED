@@ -1,0 +1,25 @@
+{
+  "sdk_version": "0.1.5rc1",
+  "runtime_version": "0.1.5rc1",
+  "reviewed_dsh_revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "reviewed_dsh_release": "0.2.0-rc.1",
+  "installed_sdk_matches_reviewed": false,
+  "python_version": "3.12.13",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "profile": "sdk-minimal",
+  "provider": "deepseek-official",
+  "model": "deepseek-chat",
+  "session_id": "ai4s-ed-dsh-smoke-de3b087d",
+  "live_test_attempted": true,
+  "live_test_passed": true,
+  "session_continuity_passed": true,
+  "finish_reasons": [
+    "completed",
+    "completed"
+  ],
+  "secret_present": true,
+  "errors": [],
+  "warnings": [
+    "SDK version 0.1.5rc1 != reviewed 0.2.0-rc.1"
+  ]
+}

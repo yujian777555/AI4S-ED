@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.0",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,6 +23,7 @@
     "no secrets committed or logged",
     "knowledge_curator deterministic core remains DSH-independent"
   ],
-  "latest_commit": "381ae0da2a7e4b2fcfd79d28a594bdd6b0253490",
-  "planner_review": "planner/phase-02-2-review.md"
+  "latest_commit": "PENDING_UPDATE",
+  "planner_review": "planner/phase-02-2-review.md",
+  "live_smoke": "LIVE_SMOKE_PASS_ON_SDK_0.1.5rc1_VS_REVIEWED_0.2.0-rc.1_MISMATCH"
 }
