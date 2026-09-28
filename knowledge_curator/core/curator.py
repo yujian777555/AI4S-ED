@@ -28,6 +28,13 @@ from knowledge_curator.schemas.curation import (
     CurationReport,
 )
 
+# Forward references for type hints only (runtime independence preserved)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from knowledge_curator.core.commit import DocumentCommitCoordinator
+    from knowledge_curator.schemas.commit import CommitResult
+
 
 class KnowledgeCurator:
     """Phase 1 curator: AssertionSet -> CurationReport.
@@ -145,7 +152,34 @@ class KnowledgeCurator:
                 "assertion_ids": [a.id for a in assertion_set.assertions],
             },
             # commit_id / kb_version / snapshot_id intentionally left None in Phase 1
+            # (filled by DocumentCommitCoordinator in Phase 2 commit path)
         )
+
+    async def curate_and_commit(
+        self,
+        assertion_set: AssertionSet,
+        source_fingerprint: str,
+        commit_coordinator: "DocumentCommitCoordinator",
+        context: Optional[dict[str, Any]] = None,
+    ) -> tuple[CurationReport, "CommitResult"]:
+        """Run deterministic curation then explicit document commit (§5.4).
+
+        The curation step remains independently testable; commit is a separate
+        coordinator call so Phase 1 §5.1–§5.3 semantics stay frozen.
+        """
+        from knowledge_curator.schemas.commit import CommitRequest, SourceIdentity
+
+        report = await self.curate(assertion_set, context=context)
+        request = CommitRequest(
+            source=SourceIdentity(
+                ref_id=assertion_set.ref_id,
+                source_fingerprint=source_fingerprint,
+            ),
+            assertion_set=assertion_set,
+            report=report,
+        )
+        commit_result = await commit_coordinator.commit(request)
+        return report, commit_result
 
 
 def _count_actions(decisions: list[AssertionDecision]) -> dict[CurationAction, int]:

@@ -15,6 +15,18 @@ from knowledge_curator.schemas.assertions import (
     Subject,
     ValueType,
 )
+from knowledge_curator.schemas.commit import (
+    AdmittedAssertion,
+    AssertionVisibility,
+    CommitPhase,
+    CommitRequest,
+    CommitResult,
+    CommitStatus,
+    SnapshotManifest,
+    SourceIdentity,
+    USDORecord,
+    VectorPayload,
+)
 from knowledge_curator.schemas.curation import (
     AssertionDecision,
     CompletenessIssue,
@@ -28,11 +40,17 @@ from knowledge_curator.schemas.curation import (
 )
 
 __all__ = [
+    "AdmittedAssertion",
     "Assertion",
-    "AssertionSet",
     "AssertionDecision",
+    "AssertionSet",
+    "AssertionVisibility",
     "ChartObjectInfo",
     "ClaimType",
+    "CommitPhase",
+    "CommitRequest",
+    "CommitResult",
+    "CommitStatus",
     "CompletenessIssue",
     "CompletenessResult",
     "CompletenessStatus",
@@ -47,7 +65,11 @@ __all__ = [
     "Provenance",
     "QualityBreakdown",
     "QualityGrade",
+    "SnapshotManifest",
     "SourceClaimOrigin",
+    "SourceIdentity",
     "Subject",
+    "USDORecord",
     "ValueType",
+    "VectorPayload",
 ]
