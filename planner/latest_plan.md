@@ -1,317 +1,212 @@
-# Phase 3.1 Plan — Python MCP Adapter + Live DSH MCP Bridge
+# Phase 3.1.1 Plan — Strict DSH Tool-Call Evidence Closure
 
 **Planner:** ChatGPT  
 **Executor:** MiMo  
-**State:** READY_FOR_EXECUTOR
+**State:** READY_FOR_EXECUTOR  
+**Base implementation:** `f79eea915673048cce1c98a7d4abf56501d4db6c`
 
-## 0. Baselines
+## 0. Scope
 
-Frozen business baseline:
-- knowledge_curator §5.1–§5.4
-- implementation `381ae0da2a7e4b2fcfd79d28a594bdd6b0253490`
+This is a **small evidence-hardening round only**.
 
-Current executable DSH baseline:
-- `deepseek-harness-sdk==0.1.5rc1`
-- `deepseek-harness-runtime-bin==0.1.5rc1`
-- profile/provider/model live smoke already passed
+Do not redesign:
+- knowledge_curator MCP server;
+- §5 core;
+- DSH patch architecture;
+- model/provider setup.
 
-Architecture reference:
-- DeepSeek Harness repository commit `4878cdabd87d4041bdaff61d04c966883b9fd07a`
+Do not begin Agent Preset, §6, or §7.
 
 Read:
-1. `docs/01-总体架构与数据流设计.md`
-2. `docs/03-文献自动调研与知识入库流水线.md`
-3. `planner/KNOWLEDGE_CURATOR_BOUNDARY.md`
-4. `planner/DSH_INTEGRATION_NOTES.md`
-5. `planner/phase-03-0-review.md`
-6. `planner/CONTRACT_GAPS.md`
-7. `status.json`
+1. `planner/phase-03-1-review.md`
+2. `planner/latest_plan.md`
+3. `planner/CONTRACT_GAPS.md`
+4. current `integration/dsh/mcp_smoke.py`
+5. official DSH 0.1.5rc1 event/session sources.
 
-## 1. Goal
+## 1. Replace heuristic call detection
 
-Create the **thin Python MCP boundary** for the existing knowledge_curator and prove the full live bridge:
+Delete/retire the heuristic that treats arbitrary string occurrences of:
+- `EXPECTED_TOOL`;
+- `tool/call`;
+- `tools/call`
 
-```text
-real DeepSeek model
- -> DSH 0.1.5rc1
- -> @deepseek-ai/dsh-mcp-client
- -> stdio MCP
- -> Python knowledge_curator MCP server
- -> existing KnowledgeCurator core
- -> CurationReport
- -> MCP result
- -> DSH model
+as evidence of a real call.
+
+Parse `RunResult.events` structurally.
+
+A matching call is only:
+
+```python
+event["type"] == "tool/call"
+and event["data"]["name"] == EXPECTED_TOOL
 ```
 
-This phase does not implement §6 or §7.
+Support the concrete 0.1.5rc1 SDK event representation only as actually observed; do not build a vague recursive string scanner.
 
-## 2. Official MCP Python SDK
+Persist a sanitized call evidence record containing:
+- event seq;
+- callId if present;
+- name;
+- turn;
+- step;
+- arguments hash or bounded non-secret fixture summary.
 
-Use the official Model Context Protocol Python SDK package `mcp`.
+Do not persist unnecessary raw prompts.
 
-Current official line supports the 2026-07-28 protocol and earlier revisions. Use a pinned version compatible with the executor environment and record the exact resolved version.
+## 2. Pair exact tool/result
 
-Do not hand-write JSON-RPC framing.
+For every matching call event:
+- obtain the call event `seq`;
+- find `event.type == "tool/result"`;
+- require its `sourceEventSeqs` to contain that call seq;
+- require exactly one corresponding successful result for the chosen acceptance call, unless DSH legitimately emits a documented multiplicity.
 
-Do not use a third-party MCP framework when the official `mcp` SDK is sufficient.
+Extract the MCP returned payload from the paired result.
 
-For v2, the high-level server class is `MCPServer`, not the old `FastMCP` name. If the resolved package is v1 for compatibility reasons, record that fact and its import path explicitly.
-
-## 3. Package structure
-
-Recommended:
-
-```text
-knowledge_curator/
-└── mcp_server/
-    ├── __init__.py
-    ├── app.py
-    ├── codec.py
-    ├── runtime.py
-    └── __main__.py
-
-integration/
-└── dsh/
-    ├── patches/
-    │   └── knowledge-curator-mcp.patch.yml
-    ├── mcp_smoke.py
-    └── tests/
-        ├── test_mcp_server_contract.py
-        ├── test_mcp_codec.py
-        └── test_dsh_mcp_patch.py
-```
-
-Names may vary, but keep:
-- MCP transport/codec thin;
-- deterministic core unchanged;
-- DSH configuration outside core.
-
-## 4. MCP tool scope
-
-Expose **one required business tool** in Phase 3.1:
-
-`curate_assertion_set`
-
-Input:
-- the current temporary compatibility `AssertionSet` JSON shape;
-- no new public cross-team schema.
-
-Output:
-- serialized `CurationReport`;
-- exact current confidence/action vocabulary;
-- warnings/completeness/conflicts/quality/decisions needed to inspect the result.
-
-Optional one diagnostic tool:
-- `knowledge_curator_health`
-
-If added, mark it integration/diagnostic and do not treat it as a permanent scientific API.
-
-Do **not** expose §6 search/evidence/revise tools yet.
-
-Do not expose a fake production commit tool backed by ephemeral storage. §5.4 remains internal until a production L2 adapter is frozen.
-
-## 5. Runtime composition inside Python
-
-Create a small MCP application/runtime factory that wires:
-
-```text
-KnowledgeCurator
- + current repository/ontology/mechanism Ports
-```
-
-For Phase 3.1 contract/live bridge tests, in-memory/fake implementations are acceptable and must be explicitly labeled integration-test adapters.
-
-The MCP layer must call the same existing `KnowledgeCurator.curate()`; it must not duplicate completeness/conflict/quality logic.
-
-## 6. JSON codec rules
-
-The MCP codec may translate JSON <-> existing dataclasses/enums, but must not redefine semantics.
-
-Required:
-- reject malformed input cleanly;
-- reject unknown/invalid confidence/action/value_type enum values;
-- preserve ref_id;
-- preserve evidence/provenance locator fields present in compatibility schema;
-- deterministic serialization;
-- no Python repr leakage;
-- no traceback dumped as successful tool result.
-
-Do not silently fill fields that the Phase 1 completeness gate is supposed to judge as missing.
-
-## 7. Direct MCP contract test without DSH/model
-
-First prove the Python MCP server itself.
-
-Using official MCP client/testing APIs or subprocess stdio:
-- start `python -m knowledge_curator.mcp_server`;
-- list tools;
-- confirm `curate_assertion_set` is present;
-- call it with a known fixture;
-- verify result maps to the expected deterministic CurationReport;
-- malformed payload yields structured MCP error/failure;
-- server exits cleanly.
-
-This test must not require DeepSeek API.
-
-## 8. DSH 0.1.5rc1 MCP patch
-
-Create a patch for the **actual executable baseline**.
-
-Expected row shape:
-
-```yaml
-- insert:
-    - id: mcp-knowledge-curator
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: knowledge_curator
-        transport: stdio
-        command: <python executable>
-        args:
-          - -m
-          - knowledge_curator.mcp_server
-        cwd: <repo/workspace path>
-        failOnStartupError: true
-        toolCallTimeoutMs: 60000
-```
-
-Do not hard-code a developer-specific absolute Python path into the committed patch.
-
-Use a generated runtime patch or environment-backed Loader expression/config where appropriate.
-
-Before live testing, verify on the real 0.1.5rc1 runtime that `@deepseek-ai/dsh-mcp-client` resolves. If it does not, capture exact error and use the official plugin/profile mechanism to install the **matching 0.1.5rc1 MCP package**, not a mixed 0.2.0 package.
-
-Do not mix DSH package minors in one runtime.
-
-## 9. Live DSH MCP bridge test
-
-With the real DeepSeek API key:
-
-Launch `DeepSeekHarness` using:
-- executable 0.1.5rc1 runtime;
-- `profile="sdk-minimal"` or `sdk` as actually required;
-- patch that inserts the knowledge_curator MCP client;
-- provider `deepseek-official`;
-- configurable model.
-
-Ask the model explicitly to call:
-
+Prove the result is from:
 `mcp__knowledge_curator__curate_assertion_set`
 
-with a small deterministic fixture.
+not from the model's final answer.
 
-The prompt should make tool use mandatory and request a concise report of returned status/confidence.
+## 3. Compare direct core -> MCP result -> final model answer
 
-Acceptance requires evidence that:
-- DSH discovered the MCP tool;
-- a real `tool/call` event occurred for the expected public tool name;
-- MCP server received the call;
-- result corresponds to deterministic core output;
-- model final response reflects the returned result;
-- finish_reason is completed;
-- no key/secret appears in artifacts.
+For the same fixture, record three summaries:
 
-Do not accept a model answer that merely describes what it *would* call.
+### A. direct_core
+- status
+- first action
+- first confidence
 
-## 10. Tool-call evidence
+### B. actual_tool_result
+Extracted from paired DSH `tool/result`.
 
-Persist a secret-free machine-readable artifact:
+### C. final_response
+Parsed from final three-line answer.
 
-`results/phase-03-1-dsh-mcp-smoke.json`
+Acceptance:
+`A == B == C`
 
-Include:
-- dsh sdk/runtime version;
-- mcp Python SDK version;
-- profile/provider/model;
-- public DSH tool name;
-- tool_discovered;
-- tool_called;
-- tool_call_count;
-- expected deterministic result summary;
-- observed tool result summary;
-- final_response_nonempty;
-- finish_reason;
-- secret_present=false;
-- errors/warnings.
+The live test fails if:
+- no exact matching call event exists;
+- no linked result exists;
+- tool result cannot be parsed;
+- tool result differs from deterministic core;
+- final response differs from tool result.
 
-Do not store full API secrets or unnecessary raw conversation.
+## 4. Exact counts
 
-## 11. Version skew rule
+`tool_call_count` must count only exact matching `tool/call` events.
 
-Phase 3.1 explicitly targets executable DSH `0.1.5rc1`.
+Also record:
+- `matching_tool_result_count`.
 
-Do not introduce Agent Preset.
+Do not infer count by occurrences in text.
 
-Do not copy 0.2.0-only package/config assumptions into the live patch.
+For the current prompt, preferably expect exactly one call. If model/runtime may legitimately retry, allow >1 only if every counted item is a real exact call event and the accepted result is clearly identified.
 
-Keep CG-015 open.
+## 5. Artifact semantics
 
-## 12. Tests
+Update `results/phase-03-1-dsh-mcp-smoke.json`.
 
-All existing:
-- 127 knowledge_curator tests;
-- 15 Phase 3.0 keyless DSH tests
+Replace ambiguous:
+- `secret_present`
 
-must remain green.
+with explicit fields:
+- `credential_available`
+- `secret_leaked`
 
-Add:
-- codec tests;
-- MCP server list/call/error tests;
-- patch/config tests;
-- optional live bridge test separated from keyless suite.
+For the live environment expected:
+- credential_available = true
+- secret_leaked = false
 
-Ordinary test suite must not require `DEEPSEEK_API_KEY`.
+A keyless run may use:
+- credential_available = false
+- secret_leaked = false.
 
-## 13. Secrets and telemetry
+Never serialize the credential.
 
-No secret values in repository or results.
+Add sanitized:
+- matching_call_events
+- matching_result_events
+- direct_core_summary
+- tool_result_summary
+- final_response_summary
+- summaries_match
 
-Because official DSH may have session-log/telemetry contributors depending on profile/config, the live test should use an isolated DSH_HOME and disable optional telemetry/session upload where the 0.1.5rc1 profile supports an explicit opt-out, unless required for the provider request itself.
+Do not dump full session history.
 
-Do not change model behavior to fake privacy; configure the runtime correctly.
+## 6. Tests
 
-## 14. Forbidden in Phase 3.1
+Keep:
+- 35 existing integration tests green;
+- 127 knowledge_curator tests green.
 
-Do not:
-- implement Agent Preset;
-- create final TypeScript DSH bundle;
-- implement §6 RAG/evidence/citation/Abstain;
-- implement §7 revision lifecycle;
-- add production SQLite/FAISS adapters;
-- rewrite Phase 1/2 core;
-- directly call DeepSeek with requests/httpx/OpenAI.
+Add keyless tests proving:
+- prompt text containing EXPECTED_TOOL alone does **not** count as a call;
+- tool catalog entry alone does **not** count as a call;
+- unrelated `tool/call` does not count;
+- exact `tool/call` does count;
+- exact linked `tool/result` is paired by `sourceEventSeqs`;
+- unlinked result is rejected;
+- direct/tool/final mismatch fails acceptance;
+- artifact contains no secret value and reports `secret_leaked=false`.
 
-## 15. Report
+Use fixture event dicts matching official DSH 0.1.5rc1 event shape.
+
+## 7. Optional MCP error semantics check
+
+Inspect official `mcp==2.2.0` supported server error mechanism.
+
+If there is a documented high-level method to return a sanitized tool error with MCP `isError=true`, update malformed payload handling and test it.
+
+If doing so requires private APIs or custom framing, do **not** change current behavior. Record:
+`STRUCTURED_OK_FALSE_RETAINED`.
+
+This optional item must not expand the round.
+
+## 8. Live smoke rerun
+
+Rerun the real bridge with:
+- DSH SDK/runtime 0.1.5rc1;
+- MCP 2.2.0;
+- isolated DSH_HOME;
+- provider deepseek-official;
+- configurable model.
+
+Live PASS requires exact structural evidence from DSH events.
+
+## 9. Report
 
 Create:
-
-`results/phase-03-1-executor-report.md`
+`results/phase-03-1-1-executor-report.md`
 
 Include:
-- MCP SDK/version;
-- exposed tools;
-- codec approach;
-- direct MCP contract test result;
-- DSH MCP client resolution on 0.1.5rc1;
-- live tool discovery/call evidence;
-- exact public DSH tool name;
-- deterministic expected vs observed result;
-- all test counts;
-- live smoke result;
-- version-skew note;
-- CONTRACT_GAPS;
-- public contracts changed? NO;
+- exact matching call count;
+- matching result count;
+- sanitized call seq/callId/name;
+- direct core summary;
+- actual tool-result summary;
+- final response summary;
+- equality result;
+- secret semantics;
+- keyless test counts;
+- knowledge_curator test counts;
+- live smoke status;
+- MCP malformed-input error-semantics decision;
+- public contract changed? NO;
+- CONTRACT_GAPS changes;
 - implementation commit SHA.
 
-## 16. status.json
+## 10. status.json
 
-Update on completion:
-- phase = "3.1"
+Set:
+- phase = "3.1.1"
 - actor = "executor"
 - state = "executor_complete"
 - latest_commit = actual implementation SHA
-- result_expected = "results/phase-03-1-executor-report.md"
+- result_expected = "results/phase-03-1-1-executor-report.md"
 
-Stop after Phase 3.1.
+Stop.
 
 Do not begin Phase 3.2.
