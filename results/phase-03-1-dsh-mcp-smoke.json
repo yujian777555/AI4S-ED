@@ -1,0 +1,37 @@
+{
+  "dsh_sdk_version": "0.1.5rc1",
+  "dsh_runtime_version": "0.1.5rc1",
+  "mcp_sdk_version": "2.2.0",
+  "profile": "sdk-minimal",
+  "provider": "deepseek-official",
+  "model": "deepseek-chat",
+  "public_tool_name": "mcp__knowledge_curator__curate_assertion_set",
+  "tool_discovered": true,
+  "tool_called": true,
+  "tool_call_count": 7,
+  "expected_result_summary": {
+    "status": "successful",
+    "action": "accept",
+    "confidence": "medium"
+  },
+  "observed_result_summary": {
+    "finish_reason": "completed",
+    "final_snippet": "status=successful\naction=accept\nconfidence=medium",
+    "tool_name_hits": [
+      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
+      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
+      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
+      "Call the tool mcp__knowledge_curator__curate_assertion_set with this assertion_set. Then reply with exactly three lines:\nstatus=<value>\naction=<first decision action>\nconfidence=<first decision confid",
+      "[{'name': 'mcp__knowledge_curator__curate_assertion_set', 'description': 'Curate one AssertionSet through KnowledgeCurator §5.1–§5.3 (completeness, conflict, quality, decision) and return a CurationRe"
+    ],
+    "matches_expected": true
+  },
+  "final_response_nonempty": true,
+  "finish_reason": "completed",
+  "live_test_passed": true,
+  "secret_present": true,
+  "errors": [],
+  "warnings": [
+    "DSH target 0.1.5rc1 vs reviewed 0.2.0-rc.1 (CG-015)"
+  ]
+}

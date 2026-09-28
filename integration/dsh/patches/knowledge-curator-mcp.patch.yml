@@ -1,0 +1,20 @@
+# DSH 0.1.5rc1 MCP patch template for knowledge_curator.
+# Do NOT hard-code developer absolute Python paths into the repository.
+# Generate the runtime patch with build_patch() which injects the current
+# interpreter and workspace path at launch time.
+
+version: 0.1.5rc1
+description: Insert knowledge_curator stdio MCP client into DSH sdk-minimal profile
+
+# Logical shape (values filled at runtime):
+# - insert:
+#   - id: mcp-knowledge-curator
+#     name: '@deepseek-ai/dsh-mcp-client'
+#     config:
+#       serverName: knowledge_curator
+#       transport: stdio
+#       command: <sys.executable>
+#       args: ['-m', 'knowledge_curator.mcp_server']
+#       cwd: <repo root>
+#       failOnStartupError: true
+#       toolCallTimeoutMs: 60000

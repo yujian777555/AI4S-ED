@@ -8,3 +8,5 @@ ai4s-ed.zip
 .venv-dsh/
 _wheels/
 
+_download_wheels.py
+
