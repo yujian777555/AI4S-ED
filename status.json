@@ -24,7 +24,7 @@
     "no secrets committed or logged",
     "knowledge_curator core remains runtime-independent"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "f79eea915673048cce1c98a7d4abf56501d4db6c",
   "planner_review": "planner/phase-03-0-review.md",
   "live_smoke": "LIVE_MCP_BRIDGE_PASS_ON_DSH_0.1.5rc1_MCP_SDK_2.2.0"
 }
