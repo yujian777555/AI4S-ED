@@ -151,5 +151,7 @@ TOTAL: 68 passed in 0.48s — failed 0
 ## 13. Git commit hash
 
 ```
-implementation commit: <pending>
+implementation commit: e88eabad1b42304d2a9ebade6308c9eb16c24573
 ```
+
+`status.json.latest_commit` 已记录该实现提交。
