@@ -22,3 +22,5 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 | CG-013 | 03 §5.4 跨存储事务 | 真正跨 SQLite/FAISS/文件的 ACID 不可行；文档未给出失败矩阵与补偿 SLA | Phase 2 实现 atomic visibility 状态机 + pending_vector 补偿重放；不假装跨存储 ACID。生产 L2 事务边界/隔离级别待冻结 | 否 | 02/08 |
 
 | CG-014 | knowledge_curator ↔ DSH bridge | DSH 官方插件本体为 TypeScript，而当前 `knowledge_curator` 主体为 Python；需要确定最终跨语言桥接包装 | 采用 DSH 原生 `@deepseek-ai/dsh-mcp-client` 作为首选边界：Python core 暴露本地 stdio MCP server，DSH 将发现的工具注册到 `ctx.tools`；agent preset 选择这些工具。Python MCP server 的具体 SDK/包版本在 Phase 3.0/3.1 冻结 | 否 | Planner/08 |
+
+| CG-015 | DSH published runtime vs reviewed repo | Phase 3.0 实测 PyPI `deepseek-harness-sdk==0.1.5rc1` / runtime-bin 0.1.5rc1 可通过真实 DeepSeek API；但 Planner 审阅的仓库状态为 `0.2.0-rc.1` / commit `4878cd...`。`dsh-v0.1.5-rc.1` 已有 `@deepseek-ai/dsh-mcp-client` 与 stdio MCP 配置，但尚无后续出现的 `agent-preset` / `agent-preset-registry` 包 | Phase 3.1 以实际可安装 `0.1.5rc1` 作为 MCP bridge 执行基线；不宣称与 0.2.0-rc.1 全量兼容。Phase 3.2 前必须重新冻结一个包含 Agent Preset 的 DSH runtime/source baseline，并做 SDK/protocol compatibility gate | 否 | Planner/08 |
