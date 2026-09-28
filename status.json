@@ -23,7 +23,7 @@
     "no secrets committed or logged",
     "knowledge_curator deterministic core remains DSH-independent"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "d17c77720cc9f83ca8221fc67f67ef24c12ae5f7",
   "planner_review": "planner/phase-02-2-review.md",
   "live_smoke": "LIVE_SMOKE_PASS_ON_SDK_0.1.5rc1_VS_REVIEWED_0.2.0-rc.1_MISMATCH"
 }

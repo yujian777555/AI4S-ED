@@ -115,8 +115,10 @@ PyPI `deepseek-harness-sdk` 最新为 `0.1.5rc1`，与审阅基准 `0.2.0-rc.1` 
 ## 12. Implementation commit SHA
 
 ```
-implementation commit: <pending>
+implementation commit: d17c77720cc9f83ca8221fc67f67ef24c12ae5f7
 ```
+
+`status.json.latest_commit` 已记录该实现提交。
 
 ## 13. 未做事项（按计划禁止）
 
