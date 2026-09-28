@@ -1,0 +1,53 @@
+"""Knowledge curator schemas package (temporary compatibility models)."""
+
+from knowledge_curator.schemas.assertions import (
+    Assertion,
+    AssertionSet,
+    ChartObjectInfo,
+    ClaimType,
+    Condition,
+    Confidence,
+    DocumentMetadata,
+    ObjectValue,
+    Provenance,
+    QualityGrade,
+    SourceClaimOrigin,
+    Subject,
+    ValueType,
+)
+from knowledge_curator.schemas.curation import (
+    AssertionDecision,
+    CompletenessIssue,
+    CompletenessResult,
+    CompletenessStatus,
+    ConflictFinding,
+    ConflictType,
+    CurationAction,
+    CurationReport,
+    QualityBreakdown,
+)
+
+__all__ = [
+    "Assertion",
+    "AssertionSet",
+    "AssertionDecision",
+    "ChartObjectInfo",
+    "ClaimType",
+    "CompletenessIssue",
+    "CompletenessResult",
+    "CompletenessStatus",
+    "Condition",
+    "Confidence",
+    "ConflictFinding",
+    "ConflictType",
+    "CurationAction",
+    "CurationReport",
+    "DocumentMetadata",
+    "ObjectValue",
+    "Provenance",
+    "QualityBreakdown",
+    "QualityGrade",
+    "SourceClaimOrigin",
+    "Subject",
+    "ValueType",
+]

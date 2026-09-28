@@ -1,0 +1,45 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\于舰\XiaomiMiMoProjects\AI4S-ED\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\于舰\XiaomiMiMoProjects\AI4S-ED
+configfile: pytest.ini
+collecting ... collected 36 items
+
+knowledge_curator/tests/test_completeness.py::test_t02_no_doi_but_stable_id_is_valid_metadata PASSED [  2%]
+knowledge_curator/tests/test_completeness.py::test_t03_missing_doi_and_stable_id_requires_return_upstream PASSED [  5%]
+knowledge_curator/tests/test_completeness.py::test_t04_numeric_missing_unit_flagged PASSED [  8%]
+knowledge_curator/tests/test_completeness.py::test_t05_missing_locator_flagged PASSED [ 11%]
+knowledge_curator/tests/test_completeness.py::test_no_assertions_without_explicit_no_data PASSED [ 13%]
+knowledge_curator/tests/test_completeness.py::test_explicit_no_structured_data_allowed PASSED [ 16%]
+knowledge_curator/tests/test_completeness.py::test_grade_c_requires_manual_review PASSED [ 19%]
+knowledge_curator/tests/test_completeness.py::test_grade_d_excluded_from_formal_face PASSED [ 22%]
+knowledge_curator/tests/test_completeness.py::test_chart_quality_low_when_incomplete PASSED [ 25%]
+knowledge_curator/tests/test_completeness.py::test_t01_normal_assertion_set_completeness_ok PASSED [ 27%]
+knowledge_curator/tests/test_conflict.py::test_t06_same_conditions_overlapping_intervals_is_consistent PASSED [ 30%]
+knowledge_curator/tests/test_conflict.py::test_t07_different_conditions_is_condition_difference_not_numeric_conflict PASSED [ 33%]
+knowledge_curator/tests/test_conflict.py::test_t08_same_conditions_non_overlapping_is_numeric_conflict PASSED [ 36%]
+knowledge_curator/tests/test_conflict.py::test_t09_mechanism_violation_via_port PASSED [ 38%]
+knowledge_curator/tests/test_conflict.py::test_relation_conflict_on_opposite_bool_enum PASSED [ 41%]
+knowledge_curator/tests/test_conflict.py::test_no_existing_assertions_yields_none_or_empty PASSED [ 44%]
+knowledge_curator/tests/test_curator.py::test_t01_normal_assertion_set_successful_curation PASSED [ 47%]
+knowledge_curator/tests/test_curator.py::test_t02_stable_id_without_doi_accepted PASSED [ 50%]
+knowledge_curator/tests/test_curator.py::test_t03_missing_doi_and_stable_id_return_upstream PASSED [ 52%]
+knowledge_curator/tests/test_curator.py::test_t04_missing_unit_downgrades_to_hypothesis PASSED [ 55%]
+knowledge_curator/tests/test_curator.py::test_t05_missing_locator_downgrades_to_hypothesis_with_warning PASSED [ 58%]
+knowledge_curator/tests/test_curator.py::test_t06_overlapping_same_condition_consistent_accept PASSED [ 61%]
+knowledge_curator/tests/test_curator.py::test_t07_different_conditions_condition_difference_accept PASSED [ 63%]
+knowledge_curator/tests/test_curator.py::test_t08_non_overlapping_same_condition_pending_review PASSED [ 66%]
+knowledge_curator/tests/test_curator.py::test_t09_mechanism_violation_rejects PASSED [ 69%]
+knowledge_curator/tests/test_curator.py::test_t10_core_does_not_depend_on_dsh_runtime PASSED [ 72%]
+knowledge_curator/tests/test_curator.py::test_secondary_origin_cannot_auto_reach_high PASSED [ 75%]
+knowledge_curator/tests/test_curator.py::test_verified_is_not_auto_granted PASSED [ 77%]
+knowledge_curator/tests/test_curator.py::test_report_counts_and_trace_fields PASSED [ 80%]
+knowledge_curator/tests/test_quality.py::test_quality_formula_components_present PASSED [ 83%]
+knowledge_curator/tests/test_quality.py::test_grade_b_deducts_20_percent_parse_score PASSED [ 86%]
+knowledge_curator/tests/test_quality.py::test_penalty_deducts_on_conflict_hang PASSED [ 88%]
+knowledge_curator/tests/test_quality.py::test_penalty_deducts_on_mechanism_and_chart_low PASSED [ 91%]
+knowledge_curator/tests/test_quality.py::test_n_novelty_higher_when_no_duplicates PASSED [ 94%]
+knowledge_curator/tests/test_quality.py::test_schema_rate_used_when_tracked PASSED [ 97%]
+knowledge_curator/tests/test_quality.py::test_evidence_score_uses_locator_and_primary_ratio PASSED [100%]
+
+============================= 36 passed in 0.29s ==============================

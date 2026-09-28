@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": 1,
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -19,6 +19,6 @@
     "Phase 1 only implements 03 §5 core",
     "core must be independent of unresolved DSH runtime API"
   ],
-  "latest_commit": null,
+  "latest_commit": "884baa7d9004115d7263bd3a2602b6d53943818e",
   "planner_review": null
 }
