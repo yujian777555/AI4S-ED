@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": 2,
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "2.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,15 +12,17 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-02-executor-report.md",
+  "result_expected": "results/phase-02-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "Phase 1 §5.1-§5.3 behavior is frozen",
-    "Phase 2 implements only 03 §5.4 atomic ingest/version snapshot",
+    "Phase 2.1 only closes §5.4 persistence/recovery correctness",
+    "lifecycle state must not substitute for structural knowledge persistence",
+    "old snapshot dependencies must remain immutable/addressable",
     "do not modify public contracts without cross-team confirmation",
     "no §6/§7 implementation in this round",
-    "DeepSeek API remains future adapter-only; no network calls in Phase 2"
+    "no DeepSeek/DSH/network dependency in Phase 2.1"
   ],
   "latest_commit": "dee9ba4a881096349a65eecb40df2544164dfd29",
-  "planner_review": "planner/phase-01-2-review.md"
+  "planner_review": "planner/phase-02-review.md"
 }
