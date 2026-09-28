@@ -1,7 +1,7 @@
 """Structural knowledge store port — staged/committed assertion persistence.
 
 Internal temporary L2 boundary (not the frozen cross-team contract).
-Lifecycle/idempotency state must NOT substitute for this store.
+Supports compensation of committed-but-unpublished documents (P2.2-01).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class StructuralDocumentRecord:
 
 @runtime_checkable
 class StructuralKnowledgeStore(Protocol):
-    """Stage/commit/abort boundary for structural assertion + metadata writes."""
+    """Stage/commit/compensate/abort boundary for structural writes."""
 
     def stage_document(self, record: StructuralDocumentRecord) -> None:
         """Stage one document's structural payload. Not downstream-visible."""
@@ -37,7 +37,15 @@ class StructuralKnowledgeStore(Protocol):
         ...
 
     def abort_stage(self, stage_id: str) -> None:
-        """Discard an uncommitted stage. Committed data is never removed."""
+        """Discard an uncommitted stage. Committed data is never removed here."""
+        ...
+
+    def compensate_committed(self, stage_id: str) -> None:
+        """Undo committed visibility for an unpublished failed document.
+
+        Only valid before any KB version publish. Used for pre-publish
+        atomic-visibility compensation (not history rewrite of published data).
+        """
         ...
 
     def list_committed_for_ref(self, ref_id: str) -> list[StructuralDocumentRecord]:
@@ -50,4 +58,8 @@ class StructuralKnowledgeStore(Protocol):
 
     def is_committed(self, stage_id: str) -> bool:
         """True when the stage has been finalized as committed."""
+        ...
+
+    def count_staged(self) -> int:
+        """Diagnostic: number of staged-but-uncommitted documents."""
         ...

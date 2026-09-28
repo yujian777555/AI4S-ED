@@ -1,18 +1,17 @@
-"""In-memory adapters for Phase 2.1 document commit / structural / version / vector / USDO.
+"""In-memory adapters for Phase 2.2 document commit / structural / version / vector / USDO.
 
 Models real persistence boundaries:
-  * copy-on-write lifecycle store (no aliasing mutations)
-  * staged vs committed visibility for structural + USDO
+  * copy-on-write lifecycle store
+  * staged vs committed visibility with compensation for unpublished docs
   * version-safe immutable vector identities
-  * idempotent version publish
+  * idempotent snapshot create + version publish
   * deterministic failure injection (before/after side effect)
 """
 
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 from knowledge_curator.ports.document_commit_store import DocumentCommitRecord, DocumentCommitStore
 from knowledge_curator.ports.structural_store import (
@@ -116,7 +115,7 @@ class InMemoryDocumentCommitStore(DocumentCommitStore):
 
 
 class InMemoryStructuralKnowledgeStore(StructuralKnowledgeStore):
-    """Staged/committed structural assertion + metadata store."""
+    """Staged/committed structural store with pre-publish compensation."""
 
     def __init__(self, failures: Optional[FailureInjection] = None) -> None:
         self._staged: dict[str, StructuralDocumentRecord] = {}
@@ -130,17 +129,25 @@ class InMemoryStructuralKnowledgeStore(StructuralKnowledgeStore):
     def commit_stage(self, stage_id: str) -> None:
         self._failures.check_before("structural.commit")
         if stage_id not in self._staged:
+            if stage_id in self._committed:
+                return  # idempotent re-commit
             raise ValueError(f"no staged structural document: {stage_id}")
         self._committed[stage_id] = copy.deepcopy(self._staged[stage_id])
+        # H2.2-02: clean stale staged copy after successful finalization
+        self._staged.pop(stage_id, None)
         self._failures.check_after("structural.commit")
 
     def abort_stage(self, stage_id: str) -> None:
         self._staged.pop(stage_id, None)
 
+    def compensate_committed(self, stage_id: str) -> None:
+        """Remove committed visibility for an unpublished failed document."""
+        self._failures.check_before("structural.compensate")
+        self._committed.pop(stage_id, None)
+        self._staged.pop(stage_id, None)
+
     def list_committed_for_ref(self, ref_id: str) -> list[StructuralDocumentRecord]:
-        return [
-            copy.deepcopy(r) for r in self._committed.values() if r.ref_id == ref_id
-        ]
+        return [copy.deepcopy(r) for r in self._committed.values() if r.ref_id == ref_id]
 
     def get_committed(self, stage_id: str) -> Optional[StructuralDocumentRecord]:
         record = self._committed.get(stage_id)
@@ -148,6 +155,9 @@ class InMemoryStructuralKnowledgeStore(StructuralKnowledgeStore):
 
     def is_committed(self, stage_id: str) -> bool:
         return stage_id in self._committed
+
+    def count_staged(self) -> int:
+        return len(self._staged)
 
 
 class InMemoryVectorIndex(VectorIndex):
@@ -160,7 +170,6 @@ class InMemoryVectorIndex(VectorIndex):
     def upsert(self, payloads: list[VectorPayload]) -> None:
         self._failures.check_before("vector.upsert")
         for item in payloads:
-            # Immutable identity: never mutate an existing different payload in place.
             self._vectors[item.vector_id] = copy.deepcopy(item)
         self._failures.check_after("vector.upsert")
 
@@ -176,11 +185,12 @@ class InMemoryVectorIndex(VectorIndex):
 
 
 class InMemoryUSDOStore(USDOStore):
-    """Staged/committed USDO registration adapter."""
+    """Staged/committed USDO store with pre-publish compensation."""
 
     def __init__(self, failures: Optional[FailureInjection] = None) -> None:
         self._staged: dict[str, dict[str, USDORecord]] = {}
         self._committed: dict[str, USDORecord] = {}
+        self._stage_owner: dict[str, str] = {}  # record_id -> stage_id
         self._failures = failures or FailureInjection()
 
     def stage(self, stage_id: str, records: list[USDORecord]) -> None:
@@ -188,33 +198,64 @@ class InMemoryUSDOStore(USDOStore):
         bucket = self._staged.setdefault(stage_id, {})
         for rec in records:
             bucket[rec.record_id] = copy.deepcopy(rec)
+            self._stage_owner[rec.record_id] = stage_id
 
     def commit_stage(self, stage_id: str) -> None:
         self._failures.check_before("usdo.commit")
         bucket = self._staged.pop(stage_id, None)
         if bucket is None:
+            # idempotent: already committed this stage
+            if any(self._stage_owner.get(rid) == stage_id for rid in self._committed):
+                self._failures.check_after("usdo.commit")
+                return
             raise ValueError(f"no staged USDO records: {stage_id}")
         for rec in bucket.values():
             self._committed[rec.record_id] = copy.deepcopy(rec)
+            self._stage_owner[rec.record_id] = stage_id
+        # H2.2-02: staged bucket already popped above
         self._failures.check_after("usdo.commit")
 
     def abort_stage(self, stage_id: str) -> None:
+        bucket = self._staged.pop(stage_id, None)
+        if bucket:
+            for rid in bucket:
+                self._stage_owner.pop(rid, None)
+
+    def compensate_committed(self, stage_id: str) -> None:
+        """Remove committed visibility for an unpublished failed document."""
+        self._failures.check_before("usdo.compensate")
+        to_remove = [rid for rid, sid in self._stage_owner.items() if sid == stage_id]
+        for rid in to_remove:
+            self._committed.pop(rid, None)
+            self._stage_owner.pop(rid, None)
         self._staged.pop(stage_id, None)
 
     def list_for_ref(self, ref_id: str) -> list[USDORecord]:
-        # Downstream-visible: committed only.
         return [copy.deepcopy(r) for r in self._committed.values() if r.ref_id == ref_id]
+
+    def get_by_id(self, record_id: str) -> Optional[USDORecord]:
+        rec = self._committed.get(record_id)
+        if rec is None:
+            for bucket in self._staged.values():
+                if record_id in bucket:
+                    rec = bucket[record_id]
+                    break
+        return copy.deepcopy(rec) if rec else None
 
     def has_records(self, record_ids: list[str]) -> bool:
         staged_ids = {rid for bucket in self._staged.values() for rid in bucket}
         return all(rid in self._committed or rid in staged_ids for rid in record_ids)
 
+    def count_staged(self) -> int:
+        return len(self._staged)
+
 
 class InMemoryVersionStore(VersionStore):
-    """Snapshot/version store with idempotent publish and visible pointer."""
+    """Snapshot/version store with idempotent snapshot create and publish."""
 
     def __init__(self, failures: Optional[FailureInjection] = None) -> None:
         self._snapshots: dict[str, SnapshotRecord] = {}
+        self._hash_to_snapshot: dict[str, str] = {}
         self._versions: dict[str, VersionRecord] = {}
         self._snapshot_to_version: dict[str, str] = {}
         self._published_order: list[str] = []
@@ -224,18 +265,32 @@ class InMemoryVersionStore(VersionStore):
 
     def create_snapshot(self, manifest: SnapshotManifest) -> SnapshotRecord:
         self._failures.check_before("version.create_snapshot")
+        content_hash = manifest.content_hash or ""
+        # Idempotent create by deterministic content hash (P2.2-02)
+        if content_hash and content_hash in self._hash_to_snapshot:
+            existing = self._snapshots[self._hash_to_snapshot[content_hash]]
+            self._failures.check_after("version.create_snapshot")
+            return copy.deepcopy(existing)
+
         self._counter += 1
         snapshot_id = f"snap-{self._counter:04d}"
         record = SnapshotRecord(snapshot_id=snapshot_id, manifest=copy.deepcopy(manifest))
         self._snapshots[snapshot_id] = record
+        if content_hash:
+            self._hash_to_snapshot[content_hash] = snapshot_id
         self._failures.check_after("version.create_snapshot")
         return copy.deepcopy(record)
+
+    def get_snapshot_by_hash(self, content_hash: str) -> Optional[SnapshotRecord]:
+        snapshot_id = self._hash_to_snapshot.get(content_hash)
+        if snapshot_id is None:
+            return None
+        return copy.deepcopy(self._snapshots[snapshot_id])
 
     def publish_version(self, snapshot_id: str) -> VersionRecord:
         self._failures.check_before("version.publish")
         if snapshot_id not in self._snapshots:
             raise ValueError(f"unknown snapshot: {snapshot_id}")
-        # Idempotent publish: one version per snapshot.
         existing_id = self._snapshot_to_version.get(snapshot_id)
         if existing_id is not None:
             return copy.deepcopy(self._versions[existing_id])
@@ -266,6 +321,10 @@ class InMemoryVersionStore(VersionStore):
             return None
         return copy.deepcopy(self._versions[version_id])
 
+    def get_snapshot(self, snapshot_id: str) -> Optional[SnapshotRecord]:
+        record = self._snapshots.get(snapshot_id)
+        return copy.deepcopy(record) if record else None
+
     def list_published_versions(self) -> list[VersionRecord]:
         return [
             copy.deepcopy(self._versions[vid])
@@ -287,7 +346,3 @@ class InMemoryVersionStore(VersionStore):
             raise ValueError(f"rollback target is not a published version: {version_id}")
         self._current_version_id = version_id
         return copy.deepcopy(record)
-
-    def get_snapshot(self, snapshot_id: str) -> Optional[SnapshotRecord]:
-        record = self._snapshots.get(snapshot_id)
-        return copy.deepcopy(record) if record else None

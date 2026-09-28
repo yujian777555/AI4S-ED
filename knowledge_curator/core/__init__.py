@@ -2,5 +2,12 @@
 
 from knowledge_curator.core.commit import DocumentCommitCoordinator, validate_commit_request
 from knowledge_curator.core.curator import KnowledgeCurator
+from knowledge_curator.core.version_view import ResolvedKnowledgeBundle, VersionedKnowledgeView
 
-__all__ = ["DocumentCommitCoordinator", "KnowledgeCurator", "validate_commit_request"]
+__all__ = [
+    "DocumentCommitCoordinator",
+    "KnowledgeCurator",
+    "ResolvedKnowledgeBundle",
+    "VersionedKnowledgeView",
+    "validate_commit_request",
+]

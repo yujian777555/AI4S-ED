@@ -1,12 +1,11 @@
 """USDO store port — staged/committed payload registration boundary.
 
-Staged records must not appear in committed/downstream-visible reads
-before structural commit finalization.
+Supports compensation of committed-but-unpublished documents (P2.2-01).
 """
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 from knowledge_curator.schemas.commit import USDORecord
 
@@ -27,10 +26,22 @@ class USDOStore(Protocol):
         """Discard staged (uncommitted) USDO records."""
         ...
 
+    def compensate_committed(self, stage_id: str) -> None:
+        """Undo committed visibility for an unpublished failed document."""
+        ...
+
     def list_for_ref(self, ref_id: str) -> list[USDORecord]:
         """Return only committed USDO records for a source document."""
         ...
 
+    def get_by_id(self, record_id: str) -> Optional[USDORecord]:
+        """Lookup one USDO record by id (staged or committed)."""
+        ...
+
     def has_records(self, record_ids: list[str]) -> bool:
         """True when all record ids are present (staged or committed)."""
+        ...
+
+    def count_staged(self) -> int:
+        """Diagnostic: number of staged-but-uncommitted record buckets."""
         ...

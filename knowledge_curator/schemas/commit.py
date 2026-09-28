@@ -40,6 +40,7 @@ class AssertionVisibility(str, Enum):
 class CommitStatus(str, Enum):
     PUBLISHED = "published"
     PENDING_VECTOR = "pending_vector"
+    PENDING_FINALIZE = "pending_finalize"
     IDEMPOTENT_HIT = "idempotent_hit"
     NOT_PUBLISHABLE = "not_publishable"
     FAILED = "failed"
@@ -95,6 +96,9 @@ class SnapshotManifest:
     metadata_hash: str
     decision_hashes: list[str]
     content_hash: str = ""
+    # Internal temporary storage identities for version-scoped resolution
+    structural_stage_id: str = ""
+    usdo_record_ids: list[str] = field(default_factory=list)
 
     def stable_payload(self) -> dict[str, Any]:
         """Canonical payload used for deterministic content hashing.

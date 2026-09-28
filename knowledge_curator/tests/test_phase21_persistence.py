@@ -335,7 +335,7 @@ def test_p21_publish_failure_is_resumable_and_retry_publishes_once():
     aset = make_assertion_set([make_assertion("AS-1")])
     report = _run(s["curator"].curate(aset))
     first = _run(s["coordinator"].commit(_req(aset, report)))
-    assert first.status == CommitStatus.PENDING_VECTOR
+    assert first.status == CommitStatus.PENDING_FINALIZE
     assert first.phase == CommitPhase.SNAPSHOT_CREATED
     assert first.version_id is None
 
@@ -353,7 +353,7 @@ def test_p21_publish_success_lifecycle_ack_failure_no_duplicate_version():
     first = _run(s["coordinator"].commit(_req(aset, report)))
     # publish side effect succeeded; ack failed -> resumable with known version
     assert first.version_id is not None
-    assert first.status == CommitStatus.PENDING_VECTOR
+    assert first.status == CommitStatus.PENDING_FINALIZE
 
     # retry must reuse the same version, not create a second
     s["failures"].clear()
@@ -369,7 +369,7 @@ def test_p21_snapshot_failure_stays_resumable_not_vector_labeled():
     aset = make_assertion_set([make_assertion("AS-1")])
     report = _run(s["curator"].curate(aset))
     first = _run(s["coordinator"].commit(_req(aset, report)))
-    assert first.status == CommitStatus.PENDING_VECTOR
+    assert first.status == CommitStatus.PENDING_FINALIZE
     assert first.phase == CommitPhase.VECTOR_COMMITTED
     # retry after clear publishes once
     second = _run(s["coordinator"].commit(_req(aset, report)))

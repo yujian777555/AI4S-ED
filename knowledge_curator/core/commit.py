@@ -1,21 +1,11 @@
 """Document commit coordinator (docs/03 §5.4 atomic ingest & version snapshot).
 
-Phase 2.1 persistence/recovery correctness:
-  * lifecycle store is NOT structural knowledge persistence
-  * structural assertions/metadata + USDO use stage -> commit/abort visibility
-  * vector ids are version-safe (fingerprint + assertion content hash)
-  * version publish is idempotent per snapshot
-  * CommitRequest binding is validated fail-closed
-  * SUPERSEDE is never ACTIVE
-
-Atomic visibility model (not fake cross-store ACID):
-
-    PREPARING
-      -> STRUCTURAL_STAGED
-      -> STRUCTURAL_COMMITTED
-      -> VECTOR_PENDING / VECTOR_COMMITTED
-      -> SNAPSHOT_CREATED
-      -> PUBLISHED
+Phase 2.2 final atomic visibility & versioned-read closure:
+  * structural + USDO finalize is compensatable as a document pair
+  * pre-publish failures never leak committed-visible knowledge
+  * snapshot create is idempotent by deterministic content hash
+  * transient FAILED pre-publish commits are safely restartable
+  * PENDING_VECTOR is only for vector recovery; PENDING_FINALIZE for snapshot/publish/ack
 """
 
 from __future__ import annotations
@@ -30,7 +20,7 @@ from knowledge_curator.ports.structural_store import StructuralDocumentRecord, S
 from knowledge_curator.ports.usdo_store import USDOStore
 from knowledge_curator.ports.vector_index import VectorIndex
 from knowledge_curator.ports.version_store import VersionStore
-from knowledge_curator.schemas.assertions import Assertion, Confidence
+from knowledge_curator.schemas.assertions import Assertion
 from knowledge_curator.schemas.commit import (
     AdmittedAssertion,
     AssertionVisibility,
@@ -46,15 +36,7 @@ from knowledge_curator.schemas.curation import CurationAction, CurationReport
 
 
 class DocumentCommitCoordinator:
-    """Coordinate structural + vector + USDO + snapshot publish for one document.
-
-    Args:
-        commit_store: Lifecycle/idempotency store (NOT structural knowledge).
-        structural_store: Staged/committed structural assertion + metadata store.
-        vector_index: Version-safe vector upsert port.
-        usdo_store: Staged/committed USDO registration port.
-        version_store: Snapshot/version publish and rollback port.
-    """
+    """Coordinate structural + vector + USDO + snapshot publish for one document."""
 
     def __init__(
         self,
@@ -71,7 +53,7 @@ class DocumentCommitCoordinator:
         self._versions = version_store
 
     async def commit(self, request: CommitRequest) -> CommitResult:
-        """Commit one curated document (or replay/idempotent-hit)."""
+        """Commit one curated document (or replay/idempotent-hit/safe FAILED retry)."""
         binding_errors = validate_commit_request(request)
         if binding_errors:
             return CommitResult(
@@ -87,7 +69,7 @@ class DocumentCommitCoordinator:
 
         existing = self._commits.find_by_key(ref_id, fingerprint)
         if existing is not None:
-            return self._resume_existing(existing)
+            return self._resume_or_restart(existing, request)
 
         eligibility = self._eligibility(request.report)
         if not eligibility["publishable"]:
@@ -106,65 +88,14 @@ class DocumentCommitCoordinator:
             phase=CommitPhase.PREPARING,
         )
         self._commits.create(record)
+        return self._prepare_and_publish(record, request)
 
-        try:
-            admitted = self._admit_assertions(request)
-            usdo_records = self._build_usdo(request)
-            vector_payloads = self._build_vectors(request, admitted)
-            metadata_hash = self._hash_metadata(request)
-
-            record.admitted = admitted
-            record.usdo_records = usdo_records
-            record.vector_payloads = vector_payloads
-            record.metadata_hash = metadata_hash
-            record.phase = CommitPhase.STRUCTURAL_STAGED
-            self._commits.update(record)
-
-            # Stage structural + USDO (not yet downstream-visible)
-            self._structural.stage_document(
-                StructuralDocumentRecord(
-                    ref_id=ref_id,
-                    source_fingerprint=fingerprint,
-                    stage_id=record.commit_id,
-                    assertions=list(admitted),
-                    metadata={
-                        "title": request.assertion_set.metadata.title,
-                        "year": request.assertion_set.metadata.year,
-                        "source": request.assertion_set.metadata.source,
-                    },
-                    metadata_hash=metadata_hash,
-                )
-            )
-            self._usdo.stage(record.commit_id, usdo_records)
-
-            # Finalize structural visibility as one document boundary
-            self._structural.commit_stage(record.commit_id)
-            self._usdo.commit_stage(record.commit_id)
-
-            record.phase = CommitPhase.STRUCTURAL_COMMITTED
-            self._commits.update(record)
-        except Exception as exc:
-            # Pre-structural-visibility failure: abort staged payloads.
-            try:
-                self._structural.abort_stage(record.commit_id)
-                self._usdo.abort_stage(record.commit_id)
-            except Exception:
-                pass
-            record.phase = CommitPhase.FAILED
-            record.error = str(exc)
-            self._commits.update(record)
-            return CommitResult(
-                status=CommitStatus.FAILED,
-                commit_id=record.commit_id,
-                phase=CommitPhase.FAILED,
-                warnings=["structural stage/commit failed; aborted staged payloads"],
-                detail={"error": str(exc)},
-            )
-
-        return self._write_vectors_and_publish(record)
-
-    def _resume_existing(self, record: DocumentCommitRecord) -> CommitResult:
-        """Replay or return existing result without duplicating structural records."""
+    def _resume_or_restart(
+        self,
+        record: DocumentCommitRecord,
+        request: CommitRequest,
+    ) -> CommitResult:
+        """Resume recoverable states, or restart a transient FAILED pre-publish commit."""
         if record.phase == CommitPhase.PUBLISHED and record.version_id:
             return CommitResult(
                 status=CommitStatus.IDEMPOTENT_HIT,
@@ -184,6 +115,26 @@ class DocumentCommitCoordinator:
         ):
             return self._write_vectors_and_publish(record)
 
+        # P2.2-03: transient pre-publish failures (incl. STRUCTURAL_STAGED leftovers
+        # after a failed lifecycle ack) are restartable once partial effects are gone.
+        if record.phase in (
+            CommitPhase.FAILED,
+            CommitPhase.PREPARING,
+            CommitPhase.STRUCTURAL_STAGED,
+        ) and not record.version_id:
+            self._compensate_partial(record)
+            record.phase = CommitPhase.PREPARING
+            record.error = None
+            record.snapshot_id = None
+            record.admitted = []
+            record.usdo_records = []
+            record.vector_payloads = []
+            try:
+                self._commits.update(record)
+            except Exception:
+                pass
+            return self._prepare_and_publish(record, request)
+
         return CommitResult(
             status=CommitStatus.FAILED,
             commit_id=record.commit_id,
@@ -191,6 +142,83 @@ class DocumentCommitCoordinator:
             warnings=["existing commit is not resumable"],
             detail={"error": record.error or "not resumable"},
         )
+
+    def _prepare_and_publish(
+        self,
+        record: DocumentCommitRecord,
+        request: CommitRequest,
+    ) -> CommitResult:
+        """Stage + finalize structural/USDO pair, then vector/snapshot/publish."""
+        try:
+            admitted = self._admit_assertions(request)
+            usdo_records = self._build_usdo(request)
+            vector_payloads = self._build_vectors(request, admitted)
+            metadata_hash = self._hash_metadata(request)
+
+            record.admitted = admitted
+            record.usdo_records = usdo_records
+            record.vector_payloads = vector_payloads
+            record.metadata_hash = metadata_hash
+            record.phase = CommitPhase.STRUCTURAL_STAGED
+            self._commits.update(record)
+
+            self._structural.stage_document(
+                StructuralDocumentRecord(
+                    ref_id=record.ref_id,
+                    source_fingerprint=record.source_fingerprint,
+                    stage_id=record.commit_id,
+                    assertions=list(admitted),
+                    metadata={
+                        "title": request.assertion_set.metadata.title,
+                        "year": request.assertion_set.metadata.year,
+                        "source": request.assertion_set.metadata.source,
+                    },
+                    metadata_hash=metadata_hash,
+                )
+            )
+            self._usdo.stage(record.commit_id, usdo_records)
+
+            # Finalize pair; compensation runs if either half fails.
+            self._structural.commit_stage(record.commit_id)
+            self._usdo.commit_stage(record.commit_id)
+
+            record.phase = CommitPhase.STRUCTURAL_COMMITTED
+            self._commits.update(record)
+        except Exception as exc:
+            # Compensate any finalized pair; never leave half-visible knowledge.
+            self._compensate_partial(record)
+            try:
+                self._structural.abort_stage(record.commit_id)
+                self._usdo.abort_stage(record.commit_id)
+            except Exception:
+                pass
+            record.phase = CommitPhase.FAILED
+            record.error = str(exc)
+            try:
+                self._commits.update(record)
+            except Exception:
+                # Lifecycle store may also be failing in this window; local state is enough.
+                pass
+            return CommitResult(
+                status=CommitStatus.FAILED,
+                commit_id=record.commit_id,
+                phase=CommitPhase.FAILED,
+                warnings=[
+                    "structural/USDO finalize failed; compensated committed side effects",
+                    "no committed-visible knowledge leaked",
+                ],
+                detail={"error": str(exc), "retryable": True},
+            )
+
+        return self._write_vectors_and_publish(record)
+
+    def _compensate_partial(self, record: DocumentCommitRecord) -> None:
+        """Undo any committed-visible structural/USDO for an unpublished document."""
+        for op in (self._structural.compensate_committed, self._usdo.compensate_committed):
+            try:
+                op(record.commit_id)
+            except Exception:
+                pass
 
     def _write_vectors_and_publish(self, record: DocumentCommitRecord) -> CommitResult:
         """Vector upsert + snapshot + idempotent version publish."""
@@ -223,14 +251,30 @@ class DocumentCommitCoordinator:
                 record.phase = CommitPhase.SNAPSHOT_CREATED
                 self._commits.update(record)
             except Exception as exc:
-                # Snapshot failure is NOT a vector failure; stay resumable pre-snapshot.
-                record.error = str(exc)
-                self._commits.update(record)
+                # Even if the snapshot side effect landed, report pending_finalize so
+                # the caller retries; retry reuses the same snapshot by content hash.
+                recovered = None
+                if manifest.content_hash:
+                    recovered = self._versions.get_snapshot_by_hash(manifest.content_hash)
+                if recovered is not None:
+                    record.snapshot_id = recovered.snapshot_id
+                    record.phase = CommitPhase.SNAPSHOT_CREATED
+                    try:
+                        self._commits.update(record)
+                    except Exception:
+                        pass
+                else:
+                    record.error = str(exc)
+                    try:
+                        self._commits.update(record)
+                    except Exception:
+                        pass
                 return CommitResult(
-                    status=CommitStatus.PENDING_VECTOR,
+                    status=CommitStatus.PENDING_FINALIZE,
                     commit_id=record.commit_id,
                     phase=record.phase,
-                    warnings=["snapshot creation failed; resumable before publish"],
+                    snapshot_id=record.snapshot_id,
+                    warnings=["snapshot creation failed; pending_finalize"],
                     detail={"error": str(exc), "recoverable": True},
                 )
 
@@ -238,7 +282,6 @@ class DocumentCommitCoordinator:
             try:
                 version = self._versions.publish_version(record.snapshot_id)
             except Exception as exc:
-                # Side effect may have succeeded before the exception (fail_after).
                 existing_version = self._versions.get_version_by_snapshot(record.snapshot_id)
                 if existing_version is not None:
                     version = existing_version
@@ -246,10 +289,10 @@ class DocumentCommitCoordinator:
                     record.error = str(exc)
                     self._commits.update(record)
                     return CommitResult(
-                        status=CommitStatus.PENDING_VECTOR,
+                        status=CommitStatus.PENDING_FINALIZE,
                         commit_id=record.commit_id,
                         phase=record.phase,
-                        warnings=["version publish failed; resumable at SNAPSHOT_CREATED"],
+                        warnings=["version publish failed; pending_finalize"],
                         detail={"error": str(exc), "recoverable": True},
                     )
 
@@ -259,19 +302,21 @@ class DocumentCommitCoordinator:
             try:
                 self._commits.update(record)
             except Exception as exc:
-                # Publish side effect already happened. Keep lifecycle resumable
-                # but the version exists and publish is idempotent on retry.
                 record.phase = CommitPhase.SNAPSHOT_CREATED
                 record.error = f"lifecycle ack failed after publish: {exc}"
                 record.version_id = version.version_id
+                try:
+                    self._commits.update(record)
+                except Exception:
+                    pass
                 return CommitResult(
-                    status=CommitStatus.PENDING_VECTOR,
+                    status=CommitStatus.PENDING_FINALIZE,
                     commit_id=record.commit_id,
                     phase=CommitPhase.SNAPSHOT_CREATED,
                     snapshot_id=record.snapshot_id,
                     version_id=version.version_id,
                     warnings=[
-                        "version published but lifecycle ack failed",
+                        "version published but lifecycle ack failed; pending_finalize",
                         "retry will reuse the same version idempotently",
                     ],
                     detail={"error": str(exc), "recoverable": True},
@@ -293,10 +338,6 @@ class DocumentCommitCoordinator:
             warnings=["unexpected phase in publish path"],
             detail={"phase": record.phase.value},
         )
-
-    # ------------------------------------------------------------------
-    # Eligibility
-    # ------------------------------------------------------------------
 
     def _eligibility(self, report: CurationReport) -> dict[str, Any]:
         if report.returned_upstream_count > 0 or report.status == "return_upstream":
@@ -350,7 +391,6 @@ class DocumentCommitCoordinator:
                 )
                 continue
             if decision.action == CurationAction.SUPERSEDE:
-                # H2.1-01: never ACTIVE. Retain historically as superseded.
                 admitted.append(
                     AdmittedAssertion(
                         assertion=assertion,
@@ -392,11 +432,6 @@ class DocumentCommitCoordinator:
         request: CommitRequest,
         admitted: list[AdmittedAssertion],
     ) -> list[VectorPayload]:
-        """Version-safe immutable vector identities.
-
-        Format: vec-{ref_id}-{fingerprint}-{assertion_id}-{assertion_hash}
-        Same exact retry reuses ids; different fingerprint never overwrites.
-        """
         payloads: list[VectorPayload] = []
         for item in admitted:
             assertion_hash = self._hash_assertion(item.assertion)
@@ -448,15 +483,13 @@ class DocumentCommitCoordinator:
                 )
                 for a in record.admitted
             ],
+            structural_stage_id=record.commit_id,
+            usdo_record_ids=[u.record_id for u in record.usdo_records],
         )
         manifest.content_hash = self._hash_json(manifest.stable_payload())
         return manifest
 
     def _hash_assertion(self, assertion: Assertion) -> str:
-        """Stable scientific assertion record hash (H2.1-02).
-
-        Includes uncertainty and stable provenance content; excludes ephemeral fields.
-        """
         return self._hash_json(
             {
                 "id": assertion.id,
@@ -487,10 +520,7 @@ class DocumentCommitCoordinator:
 
 
 def validate_commit_request(request: CommitRequest) -> list[str]:
-    """Deterministic CommitRequest binding integrity checks (P2.1-05).
-
-    Returns a list of error strings; empty means valid.
-    """
+    """Deterministic CommitRequest binding integrity checks."""
     errors: list[str] = []
     if not request.source.source_fingerprint:
         errors.append("source_fingerprint must be non-empty")

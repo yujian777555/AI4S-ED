@@ -1,7 +1,7 @@
 """Version store port — KB version / snapshot / rollback boundary.
 
-publish_version must be idempotent per snapshot so a retry after a
-lifecycle-ack failure cannot create a second KB version.
+create_snapshot must be idempotent by deterministic manifest content hash
+so post-side-effect retries cannot orphan duplicate snapshots (P2.2-02).
 """
 
 from __future__ import annotations
@@ -31,15 +31,18 @@ class VersionStore(Protocol):
     """Snapshot/version publish and visibility boundary."""
 
     def create_snapshot(self, manifest: SnapshotManifest) -> SnapshotRecord:
-        """Create a snapshot from a deterministic content-hash manifest."""
+        """Create or reuse a snapshot for a deterministic content-hash manifest.
+
+        Idempotent: same manifest content_hash returns the same snapshot.
+        """
+        ...
+
+    def get_snapshot_by_hash(self, content_hash: str) -> Optional[SnapshotRecord]:
+        """Lookup an existing snapshot by deterministic content hash."""
         ...
 
     def publish_version(self, snapshot_id: str) -> VersionRecord:
-        """Publish exactly one KB version for a snapshot.
-
-        Idempotent: repeated publish for the same snapshot returns the
-        already-created version.
-        """
+        """Publish exactly one KB version for a snapshot (idempotent)."""
         ...
 
     def get_version(self, version_id: str) -> Optional[VersionRecord]:
@@ -48,6 +51,10 @@ class VersionStore(Protocol):
 
     def get_version_by_snapshot(self, snapshot_id: str) -> Optional[VersionRecord]:
         """Lookup the published version for a snapshot, if any."""
+        ...
+
+    def get_snapshot(self, snapshot_id: str) -> Optional[SnapshotRecord]:
+        """Lookup a snapshot record."""
         ...
 
     def list_published_versions(self) -> list[VersionRecord]:
