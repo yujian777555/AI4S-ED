@@ -1,295 +1,317 @@
-# Phase 3.0 Plan — Official DSH Runtime & DeepSeek API Smoke
+# Phase 3.1 Plan — Python MCP Adapter + Live DSH MCP Bridge
 
 **Planner:** ChatGPT  
 **Executor:** MiMo  
-**State:** READY_FOR_EXECUTOR  
-**Accepted knowledge_curator baseline:** `381ae0da2a7e4b2fcfd79d28a594bdd6b0253490`
+**State:** READY_FOR_EXECUTOR
 
-## 0. Sources and version pin
+## 0. Baselines
 
-Use the official repository and no substitute implementation:
+Frozen business baseline:
+- knowledge_curator §5.1–§5.4
+- implementation `381ae0da2a7e4b2fcfd79d28a594bdd6b0253490`
 
-- https://github.com/deepseek-ai/deepseek-harness
-- reviewed release: `0.2.0-rc.1`
-- reviewed upstream commit: `4878cdabd87d4041bdaff61d04c966883b9fd07a`
+Current executable DSH baseline:
+- `deepseek-harness-sdk==0.1.5rc1`
+- `deepseek-harness-runtime-bin==0.1.5rc1`
+- profile/provider/model live smoke already passed
 
-The upstream repository explicitly marks DSH as developer preview with possible compatibility-breaking changes.
+Architecture reference:
+- DeepSeek Harness repository commit `4878cdabd87d4041bdaff61d04c966883b9fd07a`
 
-Do not silently track `master` as an unpinned production dependency.
-
-## 1. Read first
-
+Read:
 1. `docs/01-总体架构与数据流设计.md`
 2. `docs/03-文献自动调研与知识入库流水线.md`
 3. `planner/KNOWLEDGE_CURATOR_BOUNDARY.md`
 4. `planner/DSH_INTEGRATION_NOTES.md`
-5. `planner/phase-02-2-review.md`
+5. `planner/phase-03-0-review.md`
 6. `planner/CONTRACT_GAPS.md`
 7. `status.json`
 
-Also consult the pinned official DSH documentation/source for:
-- Python SDK;
-- sdk / sdk-minimal profiles;
-- provider/model selection;
-- DSH_HOME;
-- plugin/profile layering;
-- runtime result/session behavior.
+## 1. Goal
 
-## 2. Goal
-
-Prove that AI4S-ED can launch the **real official DeepSeek Harness runtime** and successfully execute a real DeepSeek-backed turn through the official Python SDK.
-
-This phase is runtime/API validation only.
-
-Do not implement:
-- knowledge_curator MCP server;
-- DSH bundle;
-- knowledge-curator Agent preset;
-- §6;
-- §7;
-- production L2/L3 adapters.
-
-## 3. Dependency strategy
-
-Add a small isolated integration area, recommended:
+Create the **thin Python MCP boundary** for the existing knowledge_curator and prove the full live bridge:
 
 ```text
+real DeepSeek model
+ -> DSH 0.1.5rc1
+ -> @deepseek-ai/dsh-mcp-client
+ -> stdio MCP
+ -> Python knowledge_curator MCP server
+ -> existing KnowledgeCurator core
+ -> CurationReport
+ -> MCP result
+ -> DSH model
+```
+
+This phase does not implement §6 or §7.
+
+## 2. Official MCP Python SDK
+
+Use the official Model Context Protocol Python SDK package `mcp`.
+
+Current official line supports the 2026-07-28 protocol and earlier revisions. Use a pinned version compatible with the executor environment and record the exact resolved version.
+
+Do not hand-write JSON-RPC framing.
+
+Do not use a third-party MCP framework when the official `mcp` SDK is sufficient.
+
+For v2, the high-level server class is `MCPServer`, not the old `FastMCP` name. If the resolved package is v1 for compatibility reasons, record that fact and its import path explicitly.
+
+## 3. Package structure
+
+Recommended:
+
+```text
+knowledge_curator/
+└── mcp_server/
+    ├── __init__.py
+    ├── app.py
+    ├── codec.py
+    ├── runtime.py
+    └── __main__.py
+
 integration/
 └── dsh/
-    ├── README.md
-    ├── smoke.py
-    ├── config.py
+    ├── patches/
+    │   └── knowledge-curator-mcp.patch.yml
+    ├── mcp_smoke.py
     └── tests/
-        ├── test_dsh_config.py
-        └── test_dsh_smoke_contract.py
+        ├── test_mcp_server_contract.py
+        ├── test_mcp_codec.py
+        └── test_dsh_mcp_patch.py
 ```
 
-Names may differ.
+Names may vary, but keep:
+- MCP transport/codec thin;
+- deterministic core unchanged;
+- DSH configuration outside core.
 
-Do not place DSH imports into:
-- `knowledge_curator/core/`
-- `knowledge_curator/schemas/`
-- deterministic Phase 1/2 code.
+## 4. MCP tool scope
 
-The existing 127 deterministic tests must remain able to run without an API key.
+Expose **one required business tool** in Phase 3.1:
 
-## 4. Official Python SDK
+`curate_assertion_set`
 
-Use the official package/API:
+Input:
+- the current temporary compatibility `AssertionSet` JSON shape;
+- no new public cross-team schema.
 
-```python
-from deepseek_harness import DeepSeekHarness
-```
+Output:
+- serialized `CurationReport`;
+- exact current confidence/action vocabulary;
+- warnings/completeness/conflicts/quality/decisions needed to inspect the result.
 
-The smoke path must launch an official profile, preferably `sdk-minimal` first.
+Optional one diagnostic tool:
+- `knowledge_curator_health`
 
-Required explicit values:
-- isolated absolute workspace path;
-- isolated absolute `DSH_HOME`;
-- `provider="deepseek-official"`;
-- explicit model id from environment/config;
-- bounded `max_tokens`;
-- explicit session id for test runs.
+If added, mark it integration/diagnostic and do not treat it as a permanent scientific API.
 
-Do not invent a Python `@dsh.agent` API.
+Do **not** expose §6 search/evidence/revise tools yet.
 
-## 5. Secrets
+Do not expose a fake production commit tool backed by ephemeral storage. §5.4 remains internal until a production L2 adapter is frozen.
 
-Real API credential must come only from environment/secret injection.
+## 5. Runtime composition inside Python
 
-Allowed:
-- `DEEPSEEK_API_KEY`
-- optional `DEEPSEEK_BASE_URL` for a compatible endpoint if explicitly configured
-
-Forbidden:
-- committing API key;
-- writing API key to report/log/test snapshots;
-- printing headers/secrets;
-- adding example secrets that resemble usable keys.
-
-A keyless test suite must run cleanly when `DEEPSEEK_API_KEY` is absent.
-
-The real live test should **skip with an explicit reason** when no key exists; do not report a skipped live test as evidence that the live API passed.
-
-## 6. Configuration
-
-Define a small typed/configured smoke settings layer.
-
-Recommended environment keys:
+Create a small MCP application/runtime factory that wires:
 
 ```text
-DSH_HOME
-DSH_MODEL
-DEEPSEEK_API_KEY
-DEEPSEEK_BASE_URL   # optional
+KnowledgeCurator
+ + current repository/ontology/mechanism Ports
 ```
 
-For test isolation, if `DSH_HOME` is not supplied, the smoke runner may create/use an explicit temporary isolated home. Do not rely on implicit `~/.dsh` discovery.
+For Phase 3.1 contract/live bridge tests, in-memory/fake implementations are acceptable and must be explicitly labeled integration-test adapters.
 
-Record the exact model used in the smoke result/report, but not credentials.
+The MCP layer must call the same existing `KnowledgeCurator.curate()`; it must not duplicate completeness/conflict/quality logic.
 
-Do not hard-code `deepseek-v4-flash` as an AI4S-ED architectural requirement merely because the official example currently uses it. Make the model configurable.
+## 6. JSON codec rules
 
-## 7. Keyless runtime-contract tests
+The MCP codec may translate JSON <-> existing dataclasses/enums, but must not redefine semantics.
 
-Before any live API call, test:
+Required:
+- reject malformed input cleanly;
+- reject unknown/invalid confidence/action/value_type enum values;
+- preserve ref_id;
+- preserve evidence/provenance locator fields present in compatibility schema;
+- deterministic serialization;
+- no Python repr leakage;
+- no traceback dumped as successful tool result.
 
-- official SDK import succeeds when installed;
-- configuration rejects empty/invalid required paths;
-- DSH_HOME is explicit/isolated;
-- model/provider selection is passed through correctly;
-- session ids are explicit;
-- no secret is serialized into logs/results;
-- deterministic knowledge_curator test suite remains independent of DSH/API;
-- missing API key yields a clear live-test skip/preflight outcome, not a fake pass.
+Do not silently fill fields that the Phase 1 completeness gate is supposed to judge as missing.
 
-If the official SDK package cannot be installed in the executor environment, capture the exact installation/runtime error and do not fabricate success.
+## 7. Direct MCP contract test without DSH/model
 
-## 8. Real DeepSeek API smoke
+First prove the Python MCP server itself.
 
-With a real `DEEPSEEK_API_KEY`, execute at least one official SDK turn through the real DSH runtime.
+Using official MCP client/testing APIs or subprocess stdio:
+- start `python -m knowledge_curator.mcp_server`;
+- list tools;
+- confirm `curate_assertion_set` is present;
+- call it with a known fixture;
+- verify result maps to the expected deterministic CurationReport;
+- malformed payload yields structured MCP error/failure;
+- server exits cleanly.
 
-Use a simple, deterministic prompt that does not depend on repository modification, for example asking for a short sentinel response.
+This test must not require DeepSeek API.
 
-Capture:
-- profile used;
-- provider;
-- model;
-- session id;
-- `finish_reason`;
-- non-empty `final_response`;
-- runtime initialization success;
-- whether a second turn in the **same session** succeeds.
+## 8. DSH 0.1.5rc1 MCP patch
 
-Recommended two-turn smoke:
+Create a patch for the **actual executable baseline**.
 
-Turn 1:
-- ask the model to return a unique harmless sentinel token/text.
+Expected row shape:
 
-Turn 2, same session:
-- ask it to state the sentinel from the previous turn.
+```yaml
+- insert:
+    - id: mcp-knowledge-curator
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: knowledge_curator
+        transport: stdio
+        command: <python executable>
+        args:
+          - -m
+          - knowledge_curator.mcp_server
+        cwd: <repo/workspace path>
+        failOnStartupError: true
+        toolCallTimeoutMs: 60000
+```
 
-Acceptance:
-- both turns complete;
-- session continuity is demonstrated;
-- no credential is printed.
+Do not hard-code a developer-specific absolute Python path into the committed patch.
 
-Do not test knowledge_curator business behavior yet.
+Use a generated runtime patch or environment-backed Loader expression/config where appropriate.
 
-## 9. Error-path smoke
+Before live testing, verify on the real 0.1.5rc1 runtime that `@deepseek-ai/dsh-mcp-client` resolves. If it does not, capture exact error and use the official plugin/profile mechanism to install the **matching 0.1.5rc1 MCP package**, not a mixed 0.2.0 package.
 
-Where practical without burning excessive API calls, cover:
-- missing API key;
-- invalid model;
-- invalid/nonexistent profile or configuration;
-- initialization failure surfaces clearly;
-- request timeout configuration plumbing;
-- runtime close/cleanup.
+Do not mix DSH package minors in one runtime.
 
-Do not intentionally spam 429/5xx endpoints.
+## 9. Live DSH MCP bridge test
 
-For network/provider errors that cannot be deterministically induced, test the wrapper's handling with fakes/mocks while keeping one real live-path test.
+With the real DeepSeek API key:
 
-## 10. Version evidence
+Launch `DeepSeekHarness` using:
+- executable 0.1.5rc1 runtime;
+- `profile="sdk-minimal"` or `sdk` as actually required;
+- patch that inserts the knowledge_curator MCP client;
+- provider `deepseek-official`;
+- configurable model.
 
-Record in the executor report:
-- installed `deepseek-harness-sdk` version;
-- DSH runtime version if exposed;
-- pinned/reviewed upstream commit/release;
-- Python version;
-- OS/platform;
-- provider/model used for live smoke.
+Ask the model explicitly to call:
 
-If the published SDK version differs from the reviewed `0.2.0-rc.1`, stop before claiming compatibility and record the mismatch for Planner review. Do not silently test a different major/minor behavior and call it the same baseline.
+`mcp__knowledge_curator__curate_assertion_set`
 
-## 11. Artifacts
+with a small deterministic fixture.
 
-Create a machine-readable smoke artifact without secrets, e.g.:
+The prompt should make tool use mandatory and request a concise report of returned status/confidence.
 
-`results/phase-03-0-dsh-smoke.json`
+Acceptance requires evidence that:
+- DSH discovered the MCP tool;
+- a real `tool/call` event occurred for the expected public tool name;
+- MCP server received the call;
+- result corresponds to deterministic core output;
+- model final response reflects the returned result;
+- finish_reason is completed;
+- no key/secret appears in artifacts.
 
-Suggested fields:
-- timestamp;
-- sdk_version;
-- reviewed_dsh_revision;
-- profile;
-- provider;
-- model;
-- live_test_attempted;
-- live_test_passed;
-- session_continuity_passed;
-- finish_reason(s);
-- secret_present = false;
+Do not accept a model answer that merely describes what it *would* call.
+
+## 10. Tool-call evidence
+
+Persist a secret-free machine-readable artifact:
+
+`results/phase-03-1-dsh-mcp-smoke.json`
+
+Include:
+- dsh sdk/runtime version;
+- mcp Python SDK version;
+- profile/provider/model;
+- public DSH tool name;
+- tool_discovered;
+- tool_called;
+- tool_call_count;
+- expected deterministic result summary;
+- observed tool result summary;
+- final_response_nonempty;
+- finish_reason;
+- secret_present=false;
 - errors/warnings.
 
-Do not store full sensitive environment.
+Do not store full API secrets or unnecessary raw conversation.
+
+## 11. Version skew rule
+
+Phase 3.1 explicitly targets executable DSH `0.1.5rc1`.
+
+Do not introduce Agent Preset.
+
+Do not copy 0.2.0-only package/config assumptions into the live patch.
+
+Keep CG-015 open.
 
 ## 12. Tests
 
-Keep all existing **127** knowledge_curator tests green.
+All existing:
+- 127 knowledge_curator tests;
+- 15 Phase 3.0 keyless DSH tests
 
-Add keyless tests for the Phase 3.0 wrapper/config.
+must remain green.
 
-Live API testing must be marked/separated so ordinary unit tests do not require a secret.
+Add:
+- codec tests;
+- MCP server list/call/error tests;
+- patch/config tests;
+- optional live bridge test separated from keyless suite.
 
-Recommended:
-- `pytest` -> all deterministic/keyless tests;
-- a separate command/marker for real DSH live smoke.
+Ordinary test suite must not require `DEEPSEEK_API_KEY`.
 
-Do not inflate the ordinary test count with a skipped live test and describe it as passed.
+## 13. Secrets and telemetry
 
-## 13. No MCP yet
+No secret values in repository or results.
 
-Phase 3.0 must not create:
-- `knowledge_curator.mcp_server`;
-- FastMCP/server implementation;
-- `@deepseek-ai/dsh-mcp-client` bundle rows;
-- DSH Agent preset.
+Because official DSH may have session-log/telemetry contributors depending on profile/config, the live test should use an isolated DSH_HOME and disable optional telemetry/session upload where the 0.1.5rc1 profile supports an explicit opt-out, unless required for the provider request itself.
 
-Those begin only after the runtime/API path is proven.
+Do not change model behavior to fake privacy; configure the runtime correctly.
 
-## 14. Completion report
+## 14. Forbidden in Phase 3.1
+
+Do not:
+- implement Agent Preset;
+- create final TypeScript DSH bundle;
+- implement §6 RAG/evidence/citation/Abstain;
+- implement §7 revision lifecycle;
+- add production SQLite/FAISS adapters;
+- rewrite Phase 1/2 core;
+- directly call DeepSeek with requests/httpx/OpenAI.
+
+## 15. Report
 
 Create:
 
-`results/phase-03-0-executor-report.md`
+`results/phase-03-1-executor-report.md`
 
 Include:
-- SDK/runtime installation result;
-- exact version evidence;
-- keyless test command/result;
-- live smoke command/method;
-- whether live API was actually attempted;
-- live result;
-- session continuity result;
-- provider/model/profile;
-- secret-handling proof;
-- failures/limitations;
-- CONTRACT_GAPS changes;
-- public project contracts changed? -> NO;
+- MCP SDK/version;
+- exposed tools;
+- codec approach;
+- direct MCP contract test result;
+- DSH MCP client resolution on 0.1.5rc1;
+- live tool discovery/call evidence;
+- exact public DSH tool name;
+- deterministic expected vs observed result;
+- all test counts;
+- live smoke result;
+- version-skew note;
+- CONTRACT_GAPS;
+- public contracts changed? NO;
 - implementation commit SHA.
 
-If no API key was available, report:
-`LIVE_SMOKE_NOT_RUN_NO_SECRET`
-and do not claim Phase 3.0 fully validated.
+## 16. status.json
 
-If API key was available and both turns succeed, report:
-`LIVE_SMOKE_PASS`.
-
-## 15. status.json
-
-On completion update:
-
-- phase = "3.0"
+Update on completion:
+- phase = "3.1"
 - actor = "executor"
 - state = "executor_complete"
 - latest_commit = actual implementation SHA
-- result_expected = "results/phase-03-0-executor-report.md"
+- result_expected = "results/phase-03-1-executor-report.md"
 
-If live smoke was not run because no API key was available, retain an explicit field or report status showing that runtime/API validation is incomplete.
+Stop after Phase 3.1.
 
-## 16. Stop
-
-Stop after Phase 3.0.
-
-Do not start Phase 3.1 MCP bridge or §6.
+Do not begin Phase 3.2.
