@@ -19,6 +19,6 @@
     "Phase 1 only implements 03 §5 core",
     "core must be independent of unresolved DSH runtime API"
   ],
-  "latest_commit": "884baa7d9004115d7263bd3a2602b6d53943818e",
+  "latest_commit": "5cfafc39637138c836a6c4590f9b05c6aa4b4275",
   "planner_review": null
 }
