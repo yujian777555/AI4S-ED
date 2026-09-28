@@ -201,6 +201,9 @@ TOTAL: 36 passed in 0.29s
 ## 13. Git commit hash
 
 ```
-commit (phase 1 implementation): 5cfafc39637138c836a6c4590f9b05c6aa4b4275
-origin/main (after push): see remote tip
+phase 1 implementation commit: 5cfafc39637138c836a6c4590f9b05c6aa4b4275
+status backfill commit:        507aee0911409f1fb376405f92bd5f1e9555db1c
+origin/main (pushed tip):      507aee0911409f1fb376405f92bd5f1e9555db1c
 ```
+
+工作树 clean；`status.json.latest_commit` 记录实现提交 `5cfafc39637138c836a6c4590f9b05c6aa4b4275`。
