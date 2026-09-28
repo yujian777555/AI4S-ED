@@ -173,26 +173,36 @@ def _scalar_equal(v1: object, v2: object) -> bool:
 
 
 def _intervals_compatible(
-    left: tuple[float, float],
-    right: tuple[float, float],
+    new_interval: tuple[float, float],
+    reference_interval: tuple[float, float],
     config: ConflictConfig,
 ) -> bool:
-    """True when intervals overlap or endpoints are within tolerance.
+    """True when the new interval is consistent with the reference interval.
 
-    P1-04: relative tolerance scales with actual value/interval magnitude.
-    absolute_tolerance is the only near-zero floor (no implicit 1.0 scale).
+    Phase 1.2 exact tolerance semantics (docs/03 §5.2 / P1.2-02):
+      1. Raw interval overlap -> consistent immediately.
+      2. Otherwise expand ONLY the existing/reference interval by tolerance.
+      3. Relative pad = relative_tolerance * reference magnitude.
+      4. Near-zero floor is absolute_tolerance only.
+      5. Consistent iff the new interval intersects the expanded reference.
+
+    This keeps a configured 5% tolerance from becoming ~10% via double expansion.
     """
-    l_lo, l_hi = left
-    r_lo, r_hi = right
+    n_lo, n_hi = new_interval
+    r_lo, r_hi = reference_interval
 
-    def expand(lo: float, hi: float) -> tuple[float, float]:
-        span = max(abs(lo), abs(hi))
-        pad = max(config.relative_tolerance * span, config.absolute_tolerance)
-        return (lo - pad, hi + pad)
+    # 1) Raw overlap
+    if n_lo <= r_hi and r_lo <= n_hi:
+        return True
 
-    el_lo, el_hi = expand(l_lo, l_hi)
-    er_lo, er_hi = expand(r_lo, r_hi)
-    return el_lo <= er_hi and er_lo <= el_hi
+    # 2) Expand reference only
+    ref_magnitude = max(abs(r_lo), abs(r_hi))
+    pad = max(config.relative_tolerance * ref_magnitude, config.absolute_tolerance)
+    expanded_lo = r_lo - pad
+    expanded_hi = r_hi + pad
+
+    # 3) New interval intersects expanded reference
+    return n_lo <= expanded_hi and expanded_lo <= n_hi
 
 
 def _conditions_repr(conditions: list) -> list[dict]:

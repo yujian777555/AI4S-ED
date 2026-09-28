@@ -1,10 +1,10 @@
 """Curation decision rules (docs/03 §5 routing + latest_plan actions).
 
-Phase 1.1 confidence gate (planner/phase-01-review.md P1-01/P1-02):
-  * clean single-source primary -> at most medium
-  * secondary source -> at most medium
-  * high requires compatible multi-source evidence (non-self ref_id) + primary + no conflict
-  * verified is never auto-granted
+Phase 1.2 confidence monotonicity (planner/phase-01-1-review.md P1.2-01):
+  * capping never increases confidence (hypothesis stays hypothesis)
+  * single-source ceiling is "at most medium" (HIGH/VERIFIED -> medium)
+  * multi-source primary may reach high, but hypothesis is not jumped to high
+  * secondary never exceeds medium; verified is never auto-granted
 """
 
 from __future__ import annotations
@@ -154,29 +154,52 @@ def decide_assertion(
 
     # Multi-source consistent support (non-self ref_id is the Phase 1 independence proxy).
     if consistent:
-        # P1-02: secondary evidence cannot reach high even when consistent.
+        # P1.2-01: secondary ceiling is "at most medium", and the cap is monotone.
         if not is_primary:
+            confidence = _at_most_medium(assertion.confidence)
+            if assertion.confidence == Confidence.VERIFIED:
+                warnings.append(
+                    "verified is not auto-granted; no frozen trusted human/experimental signal"
+                )
+            warnings.append("secondary origin — at most medium until primary back-trace")
+            warnings.append(
+                "source-family independence unavailable; non-self ref_id used as proxy"
+            )
             return AssertionDecision(
                 assertion_id=assertion.id,
                 action=CurationAction.ACCEPT,
-                confidence=Confidence.MEDIUM,
+                confidence=confidence,
                 reason="consistent with existing assertions but secondary origin (not high)",
                 conflict_type=ConflictType.CONSISTENT,
-                warnings=[
-                    "secondary origin — at most medium until primary back-trace",
-                    "source-family independence unavailable; non-self ref_id used as proxy",
-                ],
+                warnings=warnings,
+            )
+        # Incoming hypothesis must not jump to high without a resolution signal.
+        if assertion.confidence == Confidence.HYPOTHESIS:
+            warnings.append(
+                "incoming hypothesis is not promoted to high by consistency alone"
+            )
+            return AssertionDecision(
+                assertion_id=assertion.id,
+                action=CurationAction.ACCEPT,
+                confidence=Confidence.HYPOTHESIS,
+                reason="consistent multi-source but incoming hypothesis stays hypothesis",
+                conflict_type=ConflictType.CONSISTENT,
+                warnings=warnings,
             )
         # primary + independent existing evidence + no blocking conflict -> high
+        # (high is the multi-source achievement level; verified is never auto-granted)
+        if assertion.confidence == Confidence.VERIFIED:
+            warnings.append(
+                "verified is not auto-granted; multi-source path yields high, not verified"
+            )
+        warnings.append("high via multi-source consistency (non-self ref_id independence proxy)")
         return AssertionDecision(
             assertion_id=assertion.id,
             action=CurationAction.ACCEPT,
             confidence=Confidence.HIGH,
             reason="primary assertion consistent with independent existing evidence",
             conflict_type=ConflictType.CONSISTENT,
-            warnings=[
-                "high via multi-source consistency (non-self ref_id independence proxy)",
-            ],
+            warnings=warnings,
         )
 
     if condition_diff:
@@ -190,15 +213,28 @@ def decide_assertion(
             warnings=warnings,
         )
 
-    # Clean single-source acceptance — P1-01 confidence gate.
+    # Clean single-source acceptance — P1.2-01 monotone ceiling.
     confidence = _cap_single_source(assertion, is_primary, warnings)
     return AssertionDecision(
         assertion_id=assertion.id,
         action=CurationAction.ACCEPT,
         confidence=confidence,
-        reason="completeness OK and no blocking conflict (single-source cap applied)",
+        reason="completeness OK and no blocking conflict (single-source ceiling applied)",
         warnings=warnings,
     )
+
+
+def _at_most_medium(value: Confidence) -> Confidence:
+    """Monotone ceiling at medium: never increases the incoming confidence.
+
+    hypothesis -> hypothesis
+    medium     -> medium
+    high       -> medium
+    verified   -> medium (no frozen trusted verification signal yet)
+    """
+    if value in (Confidence.HIGH, Confidence.VERIFIED):
+        return Confidence.MEDIUM
+    return value
 
 
 def _cap_single_source(
@@ -206,23 +242,26 @@ def _cap_single_source(
     is_primary: bool,
     warnings: list[str],
 ) -> Confidence:
-    """Apply Phase 1.1 single-source confidence caps.
+    """Apply Phase 1.2 single-source confidence ceiling (monotone).
 
     Semantics (03 §5.3 / latest_plan §A):
-      * secondary -> at most medium
-      * single-source primary -> at most medium
-      * high requires multi-source consistency (handled in consistent branch)
+      * capping must never increase confidence
+      * secondary and single-source primary -> at most medium
+      * hypothesis remains hypothesis
       * verified is never auto-granted (no frozen trusted signal in Phase 1 model)
     """
     if assertion.confidence == Confidence.VERIFIED:
         warnings.append(
             "verified is not auto-granted; no frozen trusted human/experimental signal"
         )
+    capped = _at_most_medium(assertion.confidence)
     if not is_primary:
         warnings.append("secondary origin — at most medium until primary back-trace")
-        return Confidence.MEDIUM
-    warnings.append("single-source primary — at most medium (high needs multi-source)")
-    return Confidence.MEDIUM
+    elif capped != assertion.confidence:
+        warnings.append("single-source ceiling: capped down to at most medium")
+    else:
+        warnings.append("single-source primary — at most medium (high needs multi-source)")
+    return capped
 
 
 def _clamp_confidence(value: Confidence) -> Confidence:
