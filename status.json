@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.2.3",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -21,7 +21,7 @@
     "no Phase 4.3 until full real retrieval smoke is closed",
     "no L2 graph DB internals, EDDO production expansion, §6 MCP exposure, final QA generator, or §7"
   ],
-  "latest_commit": "7ba57bb34b37fc37f640dd3c473c947aa6d40def",
+  "latest_commit": "e98b8d9f6b3935f4f2ea3728548d06870b1540d8",
   "planner_review": "planner/phase-04-2-2-review.md",
-  "live_smoke": "PHASE422_MOSTLY_PASS_BGE_FAISS_BM25_REAL_FULL_COARSE_RERANK_PENDING"
+  "live_smoke": "PHASE423_FULL_STACK_PASS_COARSE_FILTER_RERANKER_REAL"
 }
