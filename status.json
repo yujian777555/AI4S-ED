@@ -22,7 +22,7 @@
     "no §6 MCP exposure",
     "no §7 implementation"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "c1ea8af8bde4ee44b7c83bb5e7869a5eb1f6bd99",
   "planner_review": "planner/phase-04-1-1-review.md",
   "live_smoke": "FINAL_RETRIEVAL_CONTRACT_CLOSURE_PASS"
 }
