@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.1.1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,14 @@
     "no secrets committed or logged",
     "knowledge_curator core remains runtime-independent"
   ],
-  "latest_commit": "f79eea915673048cce1c98a7d4abf56501d4db6c",
+  "latest_commit": "47bd16cc467905810246bf8049008d5748f97ecf",
   "planner_review": "planner/phase-03-1-review.md",
-  "live_smoke": "LIVE_MCP_BRIDGE_FUNCTIONAL_PASS_EVIDENCE_HARDENING_REQUIRED"
+  "live_smoke": "LIVE_STRICT_MCP_EVIDENCE_PASS_PENDING_EXECUTOR_PUSH",
+  "planner_resolution": {
+    "status_conflict_owner": "planner",
+    "resolution": "executor_complete version authorized",
+    "implementation_commit": "47bd16cc467905810246bf8049008d5748f97ecf",
+    "local_followup_commit": "dbb6ea7",
+    "note": "Executor may rebase/pull and keep actor=executor,state=executor_complete,latest_commit=47bd16cc467905810246bf8049008d5748f97ecf when resolving status.json."
+  }
 }
