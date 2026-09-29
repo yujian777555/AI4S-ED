@@ -1,4 +1,4 @@
-"""§6.2 hybrid retrieval with global coarse fusion (Phase 4.1.2)."""
+"""§6.2 hybrid retrieval with precise coarse backend diagnostics (Phase 4.1.3)."""
 
 from __future__ import annotations
 
@@ -35,13 +35,16 @@ class RetrievalConfig:
 
 @dataclass
 class RetrievalDiagnostics:
+    """Phase 4.1.3: distinguish backend configured vs backend returned hits."""
+
     coarse_filter_applied: bool = False
     coarse_backend_present: bool = False
+    coarse_channels_attempted: list[RetrievalChannel] = field(default_factory=list)
+    coarse_channels_with_hits: list[RetrievalChannel] = field(default_factory=list)
+    coarse_fused_hit_count: int = 0
     coarse_status: str = COARSE_ABSENT
     fallback_used: bool = False
     channels_used: list[RetrievalChannel] = field(default_factory=list)
-    coarse_channels_used: list[RetrievalChannel] = field(default_factory=list)
-    coarse_fused_hit_count: int = 0
 
 
 @dataclass
@@ -56,16 +59,10 @@ def rrf_fuse(
     k: int = 60,
     top_k: int = 10,
 ) -> list[RankedHit]:
-    """Deterministic RRF with best-rank duplicate handling.
-
-    score(chunk) = sum 1/(k + rank_channel)
-    Same chunk in one channel: use MIN(valid ranks) only, order-independent.
-    rank < 1 is ignored. Tie-break: (-score, chunk_id, ref_id).
-    """
-    scores: dict[str, float] = {}
+    """Deterministic RRF with best-rank duplicate handling."""
+    best_rank: dict[tuple[str, RetrievalChannel], int] = {}
     chunk_map: dict[str, KnowledgeChunk] = {}
     channel_map: dict[str, list[RetrievalChannel]] = {}
-    best_rank: dict[tuple[str, RetrievalChannel], int] = {}
 
     for channel, candidates in channel_candidates.items():
         for cand in candidates:
@@ -74,52 +71,30 @@ def rrf_fuse(
                 continue
             cid = cand.chunk.chunk_id
             key = (cid, channel)
-            if key in best_rank:
-                # Keep best (minimum) rank; do not double-count
-                if rank < best_rank[key]:
-                    best_rank[key] = rank
-                    # Rescore with best rank
-                    old_contrib = 1.0 / (k + best_rank[key])
-                    # We need to recompute; simpler: store all ranks and compute at end
-                continue
-            best_rank[key] = rank
+            if key not in best_rank or rank < best_rank[key]:
+                best_rank[key] = rank
+            if cid not in chunk_map:
+                chunk_map[cid] = cand.chunk
+            if channel not in channel_map.setdefault(cid, []):
+                channel_map[cid].append(channel)
 
-    # Recompute scores from best ranks (order-independent)
+    scores: dict[str, float] = {}
     for (cid, channel), rank in best_rank.items():
-        if cid not in scores:
-            scores[cid] = 0.0
-            chunk_map[cid] = _find_chunk(channel_candidates, cid)
-            channel_map[cid] = []
-        scores[cid] += 1.0 / (k + rank)
-        if channel not in channel_map[cid]:
-            channel_map[cid].append(channel)
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
 
     ranked = sorted(
         scores.items(),
         key=lambda x: (-x[1], chunk_map[x[0]].chunk_id, chunk_map[x[0]].ref_id),
     )
-    hits: list[RankedHit] = []
-    for i, (cid, score) in enumerate(ranked[:top_k]):
-        hits.append(
-            RankedHit(
-                chunk=chunk_map[cid],
-                rrf_score=score,
-                channels=list(channel_map[cid]),
-                rank=i + 1,
-            )
+    return [
+        RankedHit(
+            chunk=chunk_map[cid],
+            rrf_score=score,
+            channels=list(channel_map[cid]),
+            rank=i + 1,
         )
-    return hits
-
-
-def _find_chunk(
-    channel_candidates: dict[RetrievalChannel, list[RetrievalCandidate]],
-    chunk_id: str,
-) -> KnowledgeChunk:
-    for candidates in channel_candidates.values():
-        for c in candidates:
-            if c.chunk.chunk_id == chunk_id:
-                return c.chunk
-    raise KeyError(chunk_id)
+        for i, (cid, score) in enumerate(ranked[:top_k])
+    ]
 
 
 def hybrid_retrieve(
@@ -132,7 +107,7 @@ def hybrid_retrieve(
     reranker: Optional[RerankerPort] = None,
     config: Optional[RetrievalConfig] = None,
 ) -> RetrievalResult:
-    """True coarse→fine with global coarse fusion (Phase 4.1.2)."""
+    """True coarse→fine with precise backend diagnostics (Phase 4.1.3)."""
     cfg = config or RetrievalConfig()
     diag = RetrievalDiagnostics()
 
@@ -142,7 +117,7 @@ def hybrid_retrieve(
         if expansions:
             effective_text = query.text + " " + " ".join(expansions)
 
-    # ---- Coarse stage: VECTOR + KEYWORD fused via RRF ----
+    # ---- Coarse stage ----
     coarse_query = RetrievalQuery(
         text=effective_text,
         level=ChunkLevel.COARSE,
@@ -151,48 +126,51 @@ def hybrid_retrieve(
         subquestion_id=query.subquestion_id,
     )
     coarse_channel_candidates: dict[RetrievalChannel, list[RetrievalCandidate]] = {}
+
     if vector_port is not None:
+        diag.coarse_backend_present = True
+        diag.coarse_channels_attempted.append(RetrievalChannel.VECTOR)
         cands = [c for c in vector_port.search(coarse_query) if c.chunk.level == ChunkLevel.COARSE]
         if cands:
             coarse_channel_candidates[RetrievalChannel.VECTOR] = cands
-            diag.coarse_channels_used.append(RetrievalChannel.VECTOR)
+            diag.coarse_channels_with_hits.append(RetrievalChannel.VECTOR)
     if keyword_port is not None:
+        diag.coarse_backend_present = True
+        diag.coarse_channels_attempted.append(RetrievalChannel.KEYWORD)
         cands = [c for c in keyword_port.search(coarse_query) if c.chunk.level == ChunkLevel.COARSE]
         if cands:
             coarse_channel_candidates[RetrievalChannel.KEYWORD] = cands
-            diag.coarse_channels_used.append(RetrievalChannel.KEYWORD)
+            diag.coarse_channels_with_hits.append(RetrievalChannel.KEYWORD)
 
-    coarse_available = bool(coarse_channel_candidates)
-    diag.coarse_backend_present = coarse_available
-
-    # Global coarse fusion via RRF, then coarse_top_k
     coarse_hits = rrf_fuse(coarse_channel_candidates, k=cfg.rrf_k, top_k=cfg.coarse_top_k)
     diag.coarse_fused_hit_count = len(coarse_hits)
 
-    if coarse_available and coarse_hits:
+    # Determine coarse status and fine allowed refs
+    if not diag.coarse_backend_present:
+        diag.coarse_status = COARSE_ABSENT
+        if cfg.allow_fine_fallback_without_coarse:
+            diag.fallback_used = True
+            fine_allowed = query.allowed_ref_ids
+        else:
+            return RetrievalResult(hits=[], diagnostics=diag)
+    elif coarse_hits:
         diag.coarse_status = COARSE_HIT
         diag.coarse_filter_applied = True
         coarse_refs = {h.chunk.ref_id for h in coarse_hits}
-        if query.allowed_ref_ids is not None:
-            fine_allowed = query.allowed_ref_ids & coarse_refs
-        else:
-            fine_allowed = coarse_refs
-    elif coarse_available and not coarse_hits:
+        fine_allowed = (
+            query.allowed_ref_ids & coarse_refs
+            if query.allowed_ref_ids is not None
+            else coarse_refs
+        )
+    else:
+        # Backend present but zero hits
         diag.coarse_status = COARSE_ZERO
         if cfg.allow_fine_fallback_without_coarse:
             diag.fallback_used = True
             diag.coarse_status = FALLBACK_USED
             fine_allowed = query.allowed_ref_ids
         else:
-            diag.coarse_status = NO_FALLBACK
-            return RetrievalResult(hits=[], diagnostics=diag)
-    else:
-        diag.coarse_status = COARSE_ABSENT
-        if cfg.allow_fine_fallback_without_coarse:
-            diag.fallback_used = True
-            fine_allowed = query.allowed_ref_ids
-        else:
-            # Coarse absent, fallback disabled: no unrestricted fine
+            # Keep COARSE_ZERO status; no fallback allowed
             return RetrievalResult(hits=[], diagnostics=diag)
 
     # ---- Fine stage ----

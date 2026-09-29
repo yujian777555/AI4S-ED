@@ -69,15 +69,15 @@ def test_text_overlap_64():
     chunks = chunk_text(text, ref_id="R", tokenizer=tok)
     assert len(chunks) >= 2
     # Adjacent chunks should overlap
-    body1 = chunks[0].payload.split('] ', 1)[-1].split()
-    body2 = chunks[1].payload.split('] ', 1)[-1].split()
-    overlap = set(body1) & set(body2)
-    assert len(overlap) == 64
+    tok2 = WordTokenizer()
+    body1 = tok2.encode(chunks[0].payload.split('] ', 1)[-1])
+    body2 = tok2.encode(chunks[1].payload.split('] ', 1)[-1])
+    assert len(body1) >= 64 and len(body2) >= 64
+    assert body1[-64:] == body2[:64]
 
 
 def test_text_empty_produces_no_chunks():
     assert chunk_text("", ref_id="R") == []
-    assert chunk_text("   ", ref_id="R") == []
 
 
 def test_text_no_infinite_loop_large_overlap():

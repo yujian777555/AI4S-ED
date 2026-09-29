@@ -1,4 +1,4 @@
-"""§6.1 chunking with full-payload token budget validation (Phase 4.1.2)."""
+"""§6.1 chunking with tokenizer-driven windows (Phase 4.1.3)."""
 
 from __future__ import annotations
 
@@ -45,39 +45,6 @@ class ChartObject:
     section: Optional[str] = None
 
 
-def _build_chunk(
-    *,
-    chunk_id: str,
-    ref_id: str,
-    level: ChunkLevel,
-    chunk_type: ChunkType,
-    prefix: str,
-    body: str,
-    page: Optional[str],
-    section: Optional[str],
-    locator: Optional[str],
-    object_id: Optional[str] = None,
-    assertion_id: Optional[str] = None,
-    confidence: Optional[Confidence] = None,
-    quality: Optional[float] = None,
-) -> KnowledgeChunk:
-    payload = f"{prefix} {body}" if body else prefix
-    return KnowledgeChunk(
-        chunk_id=chunk_id,
-        ref_id=ref_id,
-        level=level,
-        chunk_type=chunk_type,
-        payload=payload,
-        page=page,
-        section=section,
-        object_id=object_id,
-        locator=locator,
-        assertion_id=assertion_id,
-        confidence=confidence,
-        quality=quality,
-    )
-
-
 def chunk_text(
     text: str,
     *,
@@ -87,61 +54,68 @@ def chunk_text(
     tokenizer: Optional[TokenizerPort] = None,
     config: Optional[ChunkingConfig] = None,
 ) -> list[KnowledgeChunk]:
-    """Split text into chunks with full-payload token budget validation.
+    """Split text using tokenizer-encoded token windows.
 
-    Phase 4.1.2: validate tokenizer.count(full_payload) <= max_tokens,
-    shrink body deterministically if boundary-sensitive tokenizer overflows.
+    Phase 4.1.3 requirements:
+      * NO str.split() for windowing — use tokenizer.encode() tokens
+      * overlap_tokens applies to encoded token sequence
+      * full_payload = prefix + " " + body must satisfy count(full_payload) <= max_tokens
+      * format (spaces, newlines, punctuation) preserved via decode(encode())
+      * prefix too large -> fail clearly
     """
     tok = tokenizer or WordTokenizer()
     cfg = config or ChunkingConfig()
-    if not text or not text.strip():
+    if not text:
         return []
 
     prefix = build_metadata_prefix(ref_id, page, section, "text")
-    if tok.count(prefix) >= cfg.max_tokens:
+    prefix_token_count = tok.count(prefix)
+    if prefix_token_count >= cfg.max_tokens:
         raise ValueError(
-            f"metadata prefix token count ({tok.count(prefix)}) >= max_tokens ({cfg.max_tokens})"
+            f"metadata prefix token count ({prefix_token_count}) >= max_tokens ({cfg.max_tokens})"
         )
 
-    body_budget = cfg.max_tokens - tok.count(prefix) - 1  # -1 for separator
+    encoded = tok.encode(text)
+    if not encoded:
+        return []
+
+    # Body budget accounts for prefix and separator
+    body_budget = cfg.max_tokens - prefix_token_count - 1  # -1 for separator space
+    if body_budget < 1:
+        raise ValueError("body budget exhausted by prefix")
     overlap = cfg.overlap_tokens
     if overlap >= body_budget:
         overlap = max(0, body_budget - 1)
 
-    # Encode full text losslessly, then window on non-whitespace tokens
-    all_tokens = tok.encode(text)
-    # Build body as string, then split into word tokens for windowing
-    body_words = text.split()
-    if not body_words:
-        return []
-
     chunks: list[KnowledgeChunk] = []
     start = 0
     idx = 0
-    n = len(body_words)
+    n = len(encoded)
     while start < n:
         end = min(start + body_budget, n)
-        body_text = " ".join(body_words[start:end])
-        # Validate full payload token budget; shrink if needed
+        window_tokens = encoded[start:end]
+        body_text = tok.decode(window_tokens)
         full_payload = f"{prefix} {body_text}"
+
+        # Validate full payload budget; shrink encoded window if needed
         while tok.count(full_payload) > cfg.max_tokens and end > start + 1:
             end -= 1
-            body_text = " ".join(body_words[start:end])
+            window_tokens = encoded[start:end]
+            body_text = tok.decode(window_tokens)
             full_payload = f"{prefix} {body_text}"
         if tok.count(full_payload) > cfg.max_tokens and end == start + 1:
             raise ValueError(
-                f"single body word with prefix exceeds max_tokens ({cfg.max_tokens})"
+                f"single token with prefix exceeds max_tokens ({cfg.max_tokens})"
             )
 
         chunk_id = stable_chunk_id(ref_id, page, section, f"text:{idx}", body_text)
         chunks.append(
-            _build_chunk(
+            KnowledgeChunk(
                 chunk_id=chunk_id,
                 ref_id=ref_id,
                 level=ChunkLevel.FINE,
                 chunk_type=ChunkType.TEXT,
-                prefix=prefix,
-                body=body_text,
+                payload=full_payload,
                 page=page,
                 section=section,
                 locator=section or page,
@@ -150,6 +124,7 @@ def chunk_text(
         idx += 1
         if end >= n:
             break
+        # Overlap on encoded tokens
         next_start = end - overlap
         if next_start <= start:
             next_start = end
@@ -170,18 +145,18 @@ def chunk_table(table: TableObject) -> list[KnowledgeChunk]:
     if table.row_summary:
         parts.append(f"Rows: {table.row_summary}")
     body = "\n".join(parts) if parts else f"Table {table.table_id}"
+    payload = f"{prefix} {body}"
     return [
-        _build_chunk(
+        KnowledgeChunk(
             chunk_id=stable_chunk_id(table.ref_id, table.page, table.section, f"table:{table.table_id}", body),
             ref_id=table.ref_id,
             level=ChunkLevel.FINE,
             chunk_type=ChunkType.TABLE,
-            prefix=prefix,
-            body=body,
+            payload=payload,
             page=table.page,
             section=table.section,
-            locator=table.table_id,
             object_id=table.table_id,
+            locator=table.table_id,
         )
     ]
 
@@ -198,18 +173,18 @@ def chunk_chart(chart: ChartObject) -> list[KnowledgeChunk]:
     if chart.digitized_summary:
         parts.append(f"Summary: {chart.digitized_summary}")
     body = "\n".join(parts) if parts else f"Chart {chart.chart_id}"
+    payload = f"{prefix} {body}"
     return [
-        _build_chunk(
+        KnowledgeChunk(
             chunk_id=stable_chunk_id(chart.ref_id, chart.page, chart.section, f"chart:{chart.chart_id}", body),
             ref_id=chart.ref_id,
             level=ChunkLevel.FINE,
             chunk_type=ChunkType.CHART,
-            prefix=prefix,
-            body=body,
+            payload=payload,
             page=chart.page,
             section=chart.section,
-            locator=chart.chart_id,
             object_id=chart.chart_id,
+            locator=chart.chart_id,
         )
     ]
 
@@ -229,15 +204,13 @@ def chunk_evidence_card(assertion: Assertion) -> KnowledgeChunk:
     lines.append(f"Locator: {loc or '-'}")
     lines.append(f"Confidence: {assertion.confidence.value}")
     body = "\n".join(lines)
-    return _build_chunk(
+    payload = f"{prefix} {body}"
+    return KnowledgeChunk(
         chunk_id=stable_chunk_id(assertion.ref_id, None, loc, f"evidence:{assertion.id}", body),
         ref_id=assertion.ref_id,
         level=ChunkLevel.FINE,
         chunk_type=ChunkType.EVIDENCE_CARD,
-        prefix=prefix,
-        body=body,
-        page=None,
-        section=loc,
+        payload=payload,
         locator=loc,
         assertion_id=assertion.id,
         confidence=assertion.confidence,

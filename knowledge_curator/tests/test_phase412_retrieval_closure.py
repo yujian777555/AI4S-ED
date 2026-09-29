@@ -150,7 +150,7 @@ def test_coarse_vector_keyword_global_fusion():
     fine1 = _chunk("F1", ref="REF-1")
     fine2 = _chunk("F2", ref="REF-2")
     port = InMemoryVectorSearch([coarse_c1, coarse_c2, fine1, fine2])
-    kport = InMemoryKeywordSearch([coarse_c1, coarse_c2, fine1, fine2])
+    kport = InMemoryKeywordSearch([coarse_c1, coarse_c2])
     q = RetrievalQuery(text="q", top_k=10)
     result = hybrid_retrieve(
         q,
@@ -159,8 +159,8 @@ def test_coarse_vector_keyword_global_fusion():
         config=RetrievalConfig(coarse_top_k=10),
     )
     assert result.diagnostics.coarse_filter_applied is True
-    assert RetrievalChannel.VECTOR in result.diagnostics.coarse_channels_used
-    assert RetrievalChannel.KEYWORD in result.diagnostics.coarse_channels_used
+    assert RetrievalChannel.VECTOR in result.diagnostics.coarse_channels_with_hits
+    assert RetrievalChannel.KEYWORD in result.diagnostics.coarse_channels_with_hits
     # Global coarse_top_k: fused hits limited to coarse_top_k
     assert result.diagnostics.coarse_fused_hit_count <= 10
 

@@ -1,4 +1,4 @@
-"""Reversible tokenizer contract (Phase 4.1.2: truly lossless roundtrip)."""
+"""Reversible tokenizer contract (Phase 4.1.3: format-preserving, token-window)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class TokenizerPort(Protocol):
-    """Reversible tokenizer: decode(encode(text)) == text must hold."""
+    """Reversible tokenizer: decode(encode(text)) == text.
+
+    Window unit and budget unit are the same: encode() tokens.
+    """
 
     def encode(self, text: str) -> list[str]:
         ...
@@ -22,10 +25,11 @@ class TokenizerPort(Protocol):
 
 
 class WordTokenizer:
-    """Deterministic lossless tokenizer.
+    """Lossless format-preserving tokenizer.
 
-    Splits into whitespace and non-whitespace runs so decode(encode(text))
-    exactly reconstructs the original, including spaces and newlines.
+    Encodes whitespace runs and lexical units as separate tokens so
+    decode(encode(text)) reconstructs spaces, newlines, punctuation exactly.
+    count(text) == len(encode(text)) for budget consistency.
     """
 
     def encode(self, text: str) -> list[str]:
@@ -37,8 +41,7 @@ class WordTokenizer:
         return "".join(tokens)
 
     def count(self, text: str) -> int:
-        # Non-whitespace token units for budget purposes
-        return len([t for t in self.encode(text) if t.strip()])
+        return len(self.encode(text))
 
 
 CHUNK_TYPE_LABELS = {

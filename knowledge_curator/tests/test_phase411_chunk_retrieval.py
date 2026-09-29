@@ -82,11 +82,11 @@ def test_body_overlap_64_prefix_not_counted():
     assert len(chunks) >= 2
     # Extract body (after prefix)
     # Body tokens after prefix: find common tokens excluding prefix words
-    all1 = set(chunks[0].payload.split())
-    all2 = set(chunks[1].payload.split())
-    overlap = all1 & all2
-    # At least 64 body tokens should overlap (prefix is identical so also in overlap)
-    assert len(overlap) >= 64
+    tok2 = WordTokenizer()
+    body1 = tok2.encode(chunks[0].payload.split('] ', 1)[-1])
+    body2 = tok2.encode(chunks[1].payload.split('] ', 1)[-1])
+    assert len(body1) >= 64 and len(body2) >= 64
+    assert body1[-64:] == body2[:64]
 
 
 def test_prefix_too_large_fails_clearly():
