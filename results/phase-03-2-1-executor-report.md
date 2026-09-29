@@ -89,5 +89,5 @@ knowledge_curator: 127 passed / 0 failed
 ## 16. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: f29f20e8d5e8452e851782d459056f17b677cdf5
 ```
