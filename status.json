@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.2.3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,16 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-2-3-executor-report.md",
+  "result_expected": "results/phase-04-3-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "§5, DSH/MCP, Phase 4.0 evidence guard, and Phase 4.1 retrieval contracts are frozen",
-    "Phase 4.2.3 validates the full real coarse-to-fine pipeline plus real BGE reranker",
-    "full-stack PASS requires coarse_filter_applied=true, fallback_used=false, reranker_used=true",
-    "no Phase 4.3 until full real retrieval smoke is closed",
-    "no L2 graph DB internals, EDDO production expansion, §6 MCP exposure, final QA generator, or §7"
+    "§5, Phase 4.0 evidence guard, Phase 4.1 retrieval contracts, and Phase 4.2 real retrieval adapters are frozen",
+    "Phase 4.3 composes retrieval with evidence/Abstain/H1-H2-H3 guards and exposes structured MCP tools",
+    "no final user-facing answer generator",
+    "no new top-level Agent; reuse existing knowledge-curator DSH preset",
+    "no L2 graph DB internals or EDDO production expansion",
+    "do not feed raw heterogeneous retrieval scores into the uncalibrated 0.3 support threshold",
+    "no §7 implementation"
   ],
   "latest_commit": "e98b8d9f6b3935f4f2ea3728548d06870b1540d8",
-  "planner_review": "planner/phase-04-2-2-review.md",
-  "live_smoke": "PHASE423_FULL_STACK_PASS_COARSE_FILTER_RERANKER_REAL"
+  "planner_review": "planner/phase-04-2-3-review.md",
+  "live_smoke": "PHASE42_FULL_REAL_RETRIEVAL_PASS_FROZEN_PHASE43_EVIDENCE_GUARD_MCP"
 }
