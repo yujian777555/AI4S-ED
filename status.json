@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "3.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "3.2.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,19 +12,20 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-03-2-executor-report.md",
+  "result_expected": "results/phase-03-2-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "§5.1-§5.4 and Phase 3.1 MCP bridge are frozen",
-    "Phase 3.2 qualifies a source-pinned DSH 0.2.0-rc.1 knowledge-curator preset bundle",
-    "upstream pin is 4878cdabd87d4041bdaff61d04c966883b9fd07a",
-    "product bundle must not own the global agent-preset registry or root Agent factory",
-    "keep CG-015 open",
-    "no §6/§7 implementation in Phase 3.2",
+    "Phase 3.2.1 proves real DSH 0.2 runtime preset activation/mount and live Agent tool call",
+    "upstream pin remains 4878cdabd87d4041bdaff61d04c966883b9fd07a",
+    "remove wildcard DSH plugin dependencies from config-only product bundle",
+    "product bundle must not own global registry or root Agent factory",
+    "keep CG-015 open until live preset-aware smoke passes",
+    "no §6/§7 implementation",
     "no DeepSeek Harness source modifications/vendor copy",
     "no secrets committed or logged"
   ],
   "latest_commit": "eddd2e2e73f980bd883e38388fa5067f2340e034",
-  "planner_review": "planner/phase-03-1-1-review.md",
-  "live_smoke": "SOURCE_BUILD_AND_LOADER_QUALIFIED_PRESET_MOUNT_PENDING"
+  "planner_review": "planner/phase-03-2-review.md",
+  "live_smoke": "DSH_0_2_SOURCE_AND_LOADER_PASS_RUNTIME_PRESET_ACTIVATION_PENDING"
 }
