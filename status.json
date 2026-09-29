@@ -1,28 +1,27 @@
-﻿{
+{
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.2.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.2.3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
-    "docs/01-鎬讳綋鏋舵瀯涓庢暟鎹祦璁捐.md",
-    "docs/03-鏂囩尞鑷姩璋冪爺涓庣煡璇嗗叆搴撴祦姘寸嚎.md"
+    "docs/01-总体架构与数据流设计.md",
+    "docs/03-文献自动调研与知识入库流水线.md"
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-2-2-executor-report.md",
+  "result_expected": "results/phase-04-2-3-executor-report.md",
   "constraints": [
-    "GitHub origin/main is the source of truth; report-only commits do not satisfy implementation",
-    "搂5, DSH/MCP, Phase 4.0 evidence guard, and Phase 4.1 retrieval contracts are frozen",
-    "Phase 4.2.2 must commit the missing real-backend fixes and smoke harness",
-    "real smoke terminal status is PASS / NOT_RUN_ENV / FAILED only",
-    "no Phase 4.3 until real backend code is present on origin/main",
-    "no L2 graph DB internals, EDDO production expansion, 搂6 MCP exposure, final QA generator, or 搂7"
+    "GitHub origin/main is the source of truth",
+    "§5, DSH/MCP, Phase 4.0 evidence guard, and Phase 4.1 retrieval contracts are frozen",
+    "Phase 4.2.3 validates the full real coarse-to-fine pipeline plus real BGE reranker",
+    "full-stack PASS requires coarse_filter_applied=true, fallback_used=false, reranker_used=true",
+    "no Phase 4.3 until full real retrieval smoke is closed",
+    "no L2 graph DB internals, EDDO production expansion, §6 MCP exposure, final QA generator, or §7"
   ],
   "latest_commit": "7ba57bb34b37fc37f640dd3c473c947aa6d40def",
-  "planner_review": "planner/phase-04-2-1-review.md",
-  "live_smoke": "CODE_PARITY_FIX_FAISS_BM25_FIXTURE_SMOKE_HARNESS"
+  "planner_review": "planner/phase-04-2-2-review.md",
+  "live_smoke": "PHASE422_MOSTLY_PASS_BGE_FAISS_BM25_REAL_FULL_COARSE_RERANK_PENDING"
 }
-
