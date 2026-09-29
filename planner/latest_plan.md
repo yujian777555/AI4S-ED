@@ -1,194 +1,295 @@
-# Phase 3.2.4 Plan — Capture and Replay the Exact DSH 0.2 AgentLoop Request
+# Phase 4.0 Plan — §6 Evidence Guard Foundation
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
-## 0. Goal
-Correct the invalid Phase 3.2.3 probes and isolate the real DSH 0.2 failure using the exact request object produced by AgentLoop.
+## 0. Scope
+Begin docs/03 §6, but only the deterministic evidence/anchor/Abstain/guard foundation.
 
-Keep frozen:
-- knowledge_curator §5 core
-- MCP bridge/tool semantics
-- DSH product bundle/preset/persona
-- source pin 4878cdabd87d4041bdaff61d04c966883b9fd07a
-- no §6/§7
+This phase DOES implement:
+- §6 evidence/claim-anchor compatibility models;
+- confidence-driven factual-assertion gate;
+- Abstain decision logic and structured missing-evidence output;
+- H1/H2/H3 detector result models and local deterministic checks;
+- Ports for retrieval metadata lookup and L3 validation;
+- regression hardening of the already accepted DSH live round-trip.
 
-## 1. Fix imports and typed Session construction
-Import from the pinned runtime package:
-- SessionId
-- markAgentLoopRequest
-- isAgentLoopRequest
-- createUserMessage
-using the actual exported package paths.
+This phase does NOT implement:
+- full FAISS/BGE-M3 vector retrieval;
+- BM25 index;
+- EDDO query expansion;
+- RRF/reranker;
+- final user-facing answer generation;
+- lit_researcher;
+- L3 validator internals;
+- Crossref/network lookup;
+- §7 lifecycle.
 
-Create real sessions only as:
-const session = ctx.sessions.create(SessionId('phase324-probe-...'))
+## 1. Read first
+- docs/01-总体架构与数据流设计.md
+- docs/03-文献自动调研与知识入库流水线.md §6
+- planner/KNOWLEDGE_CURATOR_BOUNDARY.md
+- planner/phase-03-2-4-review.md
+- planner/CONTRACT_GAPS.md
+- status.json
+- current schemas/ports/core.
 
-Assert:
-- ctx.sessions.get(session.id) === session
-- sessionId is non-null and non-empty.
+Authoritative §6 rules to preserve exactly:
+- evidence types = 文献 / 图谱 / 仿真 / 实验;
+- anchor tuple semantics = evidence type + ref_id + locator + confidence;
+- confidence enum remains verified/high/medium/hypothesis;
+- verified/high may support factual assertion;
+- medium must be explicitly caveated as single-source/unverified;
+- hypothesis may only appear as pending hypothesis, not factual statement;
+- unresolved numeric conflict must expose ranges/sources rather than silently select one;
+- insufficient evidence triggers Abstain;
+- H1 = unsupported/misaligned claim anchor;
+- H2 = fabricated/nonexistent literature citation;
+- H3 = mechanism violation;
+- M1 metrics belong to 07; this module emits per-sample findings/metrics, it does not own watchdog thresholds.
 
-Never continue a session-aware probe if real Session creation failed.
+## 2. First harden Phase 3.2.4 live regression
+Update integration/dsh/lane324_kc_roundtrip.e2e.ts.
 
-## 2. Correct P2/P3
-P2: ordinary ctx.llm.stream with sessionId=session.id.
-P3: fresh ctx.llm.prepareCall(...), then prepared.stream(...) with sessionId=session.id.
+Required hardening:
+- require tool_call_count == 1 for the deterministic fixture;
+- require tool_result_count == 1 and linked to that call;
+- require abc_match === true;
+- structured tool-result parse failure must FAIL the live acceptance;
+- delete acceptance fallbacks that infer B by copying A after keyword presence;
+- optional diagnostics may keep bounded raw snippets, but they must never turn an unparsable B into PASS.
 
-Record whether the registered Session is visible through ctx.sessions.get(session.id) during dispatch.
+Add keyless tests protecting these rules.
 
-## 3. Correct toolHistory probe
-Use the actual object returned by:
-session.toolHistory()
+Do not otherwise change DSH/MCP architecture.
 
-Do not substitute [].
-Record only sanitized structural facts: presence, number of tools/history entries if exposed, never full tool payloads.
+## 3. New package area
+Create narrowly scoped modules, recommended:
 
-## 4. Correct loop marker probe
-Use the actual exported function:
-markAgentLoopRequest(request)
+knowledge_curator/
+  retrieval/
+    __init__.py
+    evidence_guard.py
+    abstain.py
+    hallucination.py
+  schemas/
+    evidence.py
+  ports/
+    evidence_store.py
 
-Assert before dispatch:
-isAgentLoopRequest(request) === true
+Names may vary, but do not bury §6 logic inside DSH/MCP wrappers.
 
-Also run an otherwise identical unmarked control.
+Core must remain runtime-independent.
 
-## 5. Capture the exact real AgentLoop request
-Before sending the minimal Agent PONG turn, register a test-only prepend listener:
-ctx.on('llm/stream', (options, next) => { ...; return next() }, { prepend: true })
+## 4. Temporary compatibility evidence schemas
+Create internal/temporary compatibility models. Do NOT claim public Schema Registry ownership.
 
-When isAgentLoopRequest(options) is true for the target Agent session:
-- retain the exact options object in memory;
-- record a sanitized fingerprint only.
+Required concepts:
 
-Fingerprint fields:
-- provider/model/reasoning/maxTokens
-- sessionId present and equality to target Agent id
-- Object.isFrozen(options)
-- Object.isFrozen(options.messages)
-- message role sequence
-- content block type sequence per message
-- message count
-- tools count and tool-name hash only
-- toolHistory present
-- purpose present/absent
-- own top-level keys sorted
-- SHA-256 of a redacted structural projection, not full prompt text.
+EvidenceType enum:
+- literature
+- graph
+- simulation
+- experiment
 
-Do not log full messages, system prompt, tool schemas, request body or secrets.
+Choose English wire values only if docs/01 existing A.6 vocabulary already maps that way; document the mapping to 文献/图谱/仿真/实验.
 
-## 6. Let the real minimal Agent fail normally
-Run the known minimal Agent PONG once.
-Require the listener actually captured exactly one first-attempt loop request before using its evidence.
-Record retries and normalized failure.
+EvidenceAnchor:
+- evidence_type
+- ref_id
+- locator
+- confidence
+- optional quality
+- optional access/reference pointer
 
-## 7. Exact-object replay after failure
-Before disposing the Agent or Session:
-- create a fresh PreparedLlmCall using the captured request's provider/model/reasoning/maxTokens;
-- call prepared.stream(capturedOptions) using the SAME captured object identity.
+EvidenceRecord / EvidenceHit:
+- anchor
+- claim/assertion id when available
+- bounded evidence text/summary
+- optional score
+- provenance fields needed by §6.2:
+  ref_id, page/object id, sentence/cell pointer, confidence, quality, access link.
 
-Because PreparedLlmCall is one-shot, use a fresh prepareCall.
+Do not invent a final cross-team retrieval result schema.
 
-Interpretation:
-- exact replay FAIL => the captured request/session-aware downstream behavior itself is sufficient to reproduce failure.
-- exact replay PASS => the envelope itself is valid; failure depends on AgentLoop temporal/lifecycle context or another first-dispatch side effect.
+## 5. Claim compatibility model
+Introduce an internal Claim model for guard evaluation, not final answer generation.
 
-Record this as exact_captured_replay.
+Recommended fields:
+- claim_id
+- text
+- numeric flag/value/unit where available
+- anchors: list[EvidenceAnchor]
+- requested subquestion id / coverage key optional.
 
-## 8. If exact captured replay FAILS: clone-and-bisect
-Build detached variants from the captured object. Use fresh PreparedCall each time.
-Do not mutate the frozen captured object.
+Do not create an LLM answer generator.
 
-Variants, one dimension at a time:
-A. same content but remove loop marker by cloning only.
-B. clone then reapply real markAgentLoopRequest.
-C. remove sessionId.
-D. keep sessionId, remove toolHistory.
-E. keep sessionId/toolHistory, remove tools.
-F. preserve tools but replace messages with one PONG user message.
-G. preserve exact messages but remove system messages only.
+## 6. Confidence gate
+Implement a deterministic function/service that classifies how a claim may be surfaced.
 
-After every clone:
-- ensure call-config fields match fresh prepared.config;
-- record marker true/false;
-- record Session registration state.
+Expected policy:
+- verified/high => FACTUAL_ALLOWED
+- medium => CAVEATED_ONLY
+- hypothesis => PENDING_HYPOTHESIS_ONLY
 
-Stop once a single field transition flips FAIL -> PASS, then reproduce once.
+If anchors disagree:
+- do not elevate confidence;
+- unresolved numeric conflict => CONFLICT_DISCLOSURE_REQUIRED.
 
-## 9. If exact captured replay PASSES: isolate AgentLoop temporal side effects
-Do not keep altering request content.
-Compare:
-- first AgentLoop dispatch through the captured request
-- immediate post-failure fresh prepared replay of the same object.
+The service should return policy metadata; it should not generate prose.
 
-Check only DSH-owned runtime state:
-- whether DeepSeek request extensions produced acceptance side effects before failure;
-- Session events added before retry;
-- request/header/context events;
-- retry listener activity;
-- signal aborted state;
-- prepared adapter generation identity where observable.
+Do not modify the frozen Confidence enum.
 
-Test one additional short-circuit listener that captures the real loop request and, instead of next(), dispatches an equivalent fresh prepared call outside the loop only if this can be done without recursion. If unsafe, do not force it.
+## 7. Abstain decision
+Implement docs/03 §6.3 conditions as deterministic inputs/decisions.
 
-## 10. Inventory toggle
-Keep the prior inventory-off observation only as supporting evidence.
-Do not spend more live calls on it unless exact capture shows plugin inventory-specific data is the flip dimension.
+Required reasons:
+- LOW_RETRIEVAL_SUPPORT
+- SUBQUESTION_NOT_COVERED
+- CRITICAL_NUMERIC_ONLY_HYPOTHESIS_OR_PENDING
+- UNSUPPORTED_INFERENCE_NO_MECHANISM
+- PRIVATE_DATA_UNAUTHORIZED
 
-## 11. Tests
-Run exact:
-pytest integration/dsh/tests --collect-only -q
-pytest integration/dsh/tests -q
-pytest knowledge_curator/tests -q
+Return a structured AbstainDecision:
+- abstain: bool
+- reasons
+- missing_evidence items
+- optional recommended gap kinds.
 
-Add keyless tests that fail if:
-- a session-aware probe uses null/undefined sessionId;
-- toolHistory is hard-coded as [];
-- loop marker probe does not assert isAgentLoopRequest(request) true;
-- exact-capture artifact lacks marker/session/freeze evidence.
+Do not hard-code external database subscriptions or take over exp_designer routing.
+The model may carry a recommendation category, but orchestration belongs elsewhere.
 
-## 12. Artifact
-Create results/phase-03-2-4-exact-loop-request.json.
+Retrieval similarity threshold must be configuration-driven and marked temporary unless 07/05 freezes it.
 
-Required fields:
-- upstream_commit
-- c0/p1/p2/p3 corrected results
-- real_session_registered
-- real_tool_history_used
-- real_loop_marker_used
-- captured_loop_request_count
-- captured_structural_fingerprint
-- minimal_agent_result
-- exact_captured_replay
-- bisection_results
-- first_fail_to_pass_dimension
-- normalized_failure
-- dsh_source_clean
-- secret_leaked=false
-- blocking_subsystem
-- cg015
+## 8. H1 detector
+Implement the local part of H1 deterministically.
 
-## 13. Final product round-trip
-Only if this round finds a deployment-supported fix that does not change AI4S product ownership/contracts:
-re-run minimal Agent PONG -> knowledge-curator plain PONG -> strict MCP tool round-trip.
+For each factual/numeric claim:
+- require at least one valid anchor;
+- anchor ref_id must resolve through an EvidenceMetadataPort/KB metadata lookup;
+- locator must be non-empty;
+- confidence policy must permit the intended claim mode;
+- if an expected assertion/evidence id is supplied, check anchor alignment where current temporary data allows.
 
-For final MCP:
-A = direct core
-B = linked source-pinned 0.2 tool/result
-C = final source-pinned 0.2 response
-Require A==B==C.
+Return HallucinationFinding(type=H1, claim_id, reason, anchor ids).
 
-## 14. CG-015
-Close only after the real source-pinned 0.2 mounted knowledge-curator Agent completes the strict MCP round-trip.
-Otherwise keep OPEN with the exact DSH blocking subsystem.
+Do not attempt semantic sentence entailment with an LLM in this phase.
 
-## 15. Report/status
-Create results/phase-03-2-4-executor-report.md.
-On completion set status.json:
-phase=3.2.4
-actor=executor
-state=executor_complete
-latest_commit=actual implementation SHA
-result_expected=results/phase-03-2-4-executor-report.md
+## 9. H2 detector
+Implement only the KB-existence portion in Phase 4.0.
 
-Push main and stop.
+Required:
+- cited ref_id must exist in KB metadata port;
+- if DOI/title metadata is locally available, compare against stored metadata;
+- nonexistent ref_id => H2.
+
+Do NOT call Crossref/web in core.
+External DOI existence verification belongs to a future adapter/phase.
+
+## 10. H3 detector
+Reuse the existing MechanismValidator Port.
+
+Do not implement electrochemical rules.
+
+Map mechanism violations to H3 findings.
+If validator unavailable, return a structured NOT_CHECKED / mechanism_unavailable state; do not claim H3 pass.
+
+## 11. Evidence Ports
+Add the minimum runtime-independent Ports required by §6 foundation.
+
+Recommended EvidenceMetadataPort methods:
+- ref_exists(ref_id) -> bool
+- get_ref_metadata(ref_id) -> optional metadata
+- anchor_exists(ref_id, locator) -> bool where supported
+
+Optional retrieval contract for future phases may be a separate protocol, but do not implement full retrieval engine yet.
+
+Do not hard-code SQLite/FAISS/HTTP.
+
+Provide simple InMemory adapters for tests only.
+
+## 12. Cross-source numeric conflict input
+For a numeric claim, provide an internal structure that can receive the same subject+property source ranges from L2/graph later.
+
+Phase 4.0 may implement the deterministic decision:
+- intervals consistent/overlap => no forced conflict disclosure;
+- disjoint unresolved intervals => conflict disclosure required;
+
+Do not duplicate or mutate frozen §5 conflict truth adjudication.
+This is answer-consumption guard behavior only.
+
+## 13. Coverage model
+Represent multi-subquestion coverage explicitly.
+
+Given requested coverage keys and supported coverage keys:
+- any uncovered required subquestion => Abstain or partial-answer-with-abstain flag for that subquestion;
+- never silently omit uncovered subquestions.
+
+Do not own orchestrator decomposition; accept subquestion/coverage ids as input.
+
+## 14. Tests
+Keep all existing tests green:
+- integration/dsh current baseline: 70 tests;
+- knowledge_curator current baseline: 127 tests.
+
+Add deterministic Phase 4.0 tests for at least:
+- verified anchor allows factual;
+- high anchor allows factual;
+- medium => caveated only;
+- hypothesis => pending only;
+- no anchor => H1;
+- nonexistent ref_id => H2;
+- empty locator => H1;
+- H3 from fake MechanismValidator violation;
+- validator unavailable => NOT_CHECKED, not pass;
+- low support => Abstain;
+- uncovered subquestion => Abstain/partial coverage;
+- critical numeric hypothesis-only => Abstain;
+- unsupported inference without mechanism => Abstain;
+- unauthorized private data => Abstain;
+- disjoint numeric source ranges => conflict disclosure required;
+- overlapping ranges => no forced conflict disclosure;
+- existing DSH strict live-test parser cannot infer B from A;
+- live regression requires exactly one linked result and abc_match.
+
+No real API key is needed for ordinary pytest.
+
+## 15. No final answer generator
+Important boundary:
+knowledge_curator may return EvidenceGuardResult / ClaimPolicy / AbstainDecision / hallucination findings.
+It must not become the final user-facing QA/orchestrator Agent.
+
+Do not add qa_agent, trusted_rag_agent or another top-level Agent.
+
+## 16. MCP exposure
+Do NOT expose new §6 MCP tools in Phase 4.0 yet.
+First stabilize deterministic core/contracts.
+DSH/MCP exposure begins only after Planner review.
+
+## 17. Deliverables
+Create:
+- results/phase-04-0-executor-report.md
+
+Report:
+- new schemas
+- new Ports
+- confidence-policy behavior
+- Abstain reasons
+- H1/H2/H3 behavior
+- test counts
+- DSH live-regression hardening
+- public contracts changed? NO
+- CONTRACT_GAPS changes
+- implementation SHA.
+
+## 18. status.json
+On completion:
+- phase = 4.0
+- actor = executor
+- state = executor_complete
+- latest_commit = actual implementation SHA
+- result_expected = results/phase-04-0-executor-report.md
+
+Stop after Phase 4.0.
+Do not implement full retrieval/chunking/reranking or §7.
