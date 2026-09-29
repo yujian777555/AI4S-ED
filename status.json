@@ -25,7 +25,7 @@
     "no §6/§7 implementation",
     "no DeepSeek Harness source modifications/vendor copy"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "8cc7bd2cd4f9c8ed052cc892b6b79d3076cf064e",
   "planner_review": "planner/phase-03-2-3-review.md",
   "live_smoke": "KC_0_2_MCP_ROUNDTRIP_PASS_ABC_MATCH_CG015_CLOSED"
 }

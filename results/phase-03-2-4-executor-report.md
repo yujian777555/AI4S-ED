@@ -67,5 +67,5 @@ pytest knowledge_curator/tests -q              →  127 passed / 0 failed
 ## 11. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: 8cc7bd2cd4f9c8ed052cc892b6b79d3076cf064e
 ```
