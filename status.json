@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -24,7 +24,7 @@
     "no §7 implementation",
     "heavy retrieval dependencies must remain optional for normal unit tests"
   ],
-  "latest_commit": "a4637c723ade46953ebf02dce1f10a5a97167771",
+  "latest_commit": "PENDING",
   "planner_review": "planner/phase-04-1-3-review.md",
-  "live_smoke": "PHASE41_RETRIEVAL_CONTRACTS_FROZEN_PHASE42_REAL_BACKENDS"
+  "live_smoke": "REAL_BACKEND_ADAPTERS_READY_SMOKE_NOT_RUN_ENV"
 }

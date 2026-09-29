@@ -1,0 +1,8 @@
+# Phase 4.2 retrieval backend dependencies (scoped)
+# Install: pip install -r knowledge_curator/requirements-retrieval.txt
+# These are OPTIONAL — core knowledge_curator tests must run without them.
+
+FlagEmbedding>=1.2.0
+faiss-cpu>=1.7.4
+jieba>=0.42.1
+numpy>=1.24.0
