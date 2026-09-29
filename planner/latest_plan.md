@@ -1,244 +1,203 @@
-# Phase 4.2 Plan — Real Dense/Keyword/Reranker Retrieval Backends
+# Phase 4.2.1 Plan — Real Retrieval Backend Validation & Correctness Closure
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
 ## 0. Goal
-Implement production-capable adapters for the already-frozen §6.2 retrieval contracts:
-- BGE-M3 dense embeddings;
-- FAISS dense vector search;
-- Chinese-aware BM25 keyword search;
-- BGE reranker;
-- real coarse->fine smoke/evaluation through hybrid_retrieve.
+Turn the Phase 4.2 backend code from 'adapter implementation ready' into an actually validated real retrieval stack.
 
-Do not change the Phase 4.1.3 retrieval semantics.
+Do not redesign the frozen retrieval contracts.
+Do not start §6 MCP, final answer generation, graph DB internals, EDDO expansion, or §7.
 
-## 1. Scope / non-scope
-IN:
-- real local model adapters with lazy optional imports;
-- CPU-compatible baseline; optional CUDA acceleration;
-- VECTOR and KEYWORD real channel implementations;
-- real reranker adapter;
-- small deterministic retrieval fixture + optional real-model smoke;
-- tested dependency manifest for retrieval extras.
+## 1. Fix FlagEmbedding construction against the installed official API
+Install/use a real FlagEmbedding version from `requirements-retrieval.txt` in the executor environment.
 
-OUT:
-- implementing L2 graph/SQL/JSON internals;
-- implementing EDDO ontology/synonym expansion itself (CG-016);
-- changing §5 VectorIndex/atomic commit semantics;
-- Qdrant migration;
-- final answer generator;
-- §6 MCP exposure;
-- §7.
+For BGE-M3 and BGE reranker:
+- inspect the installed constructor signature/version;
+- use the supported `devices`/device argument form for that version;
+- verify CPU works;
+- optional CUDA may be reported if available;
+- preserve lazy loading.
 
-GraphSearchPort and QueryExpansionPort remain injectable boundaries.
+Do not claim compatibility based only on source reading.
 
-## 2. Official model baseline
-Use these defaults unless the installed official FlagEmbedding API requires a compatible equivalent:
-- dense: `BAAI/bge-m3` via official FlagEmbedding/BGEM3FlagModel;
-- reranker: `BAAI/bge-reranker-v2-m3` via official FlagEmbedding reranker.
+Record:
+- FlagEmbedding version;
+- torch version;
+- actual constructor args used;
+- device selected;
+- model path/id.
 
-Do not silently substitute another model.
-Allow model name/path override by config for offline/local cache.
+## 2. Distinguish query and corpus embedding if supported
+Prefer official BGE-M3 retrieval methods when available:
+- `encode_queries` for query;
+- `encode_corpus` for chunk corpus;
+fall back to documented equivalent only if the installed version does not expose them.
 
-Record exact tested package/model revisions in the executor report.
+Update DenseEmbedderPort minimally if needed without changing public contracts, e.g.:
+- embed_documents(texts)
+- embed_query(text)
+or keep a compatibility `embed()` wrapper.
 
-## 3. Dense embedding Port
-Add an internal retrieval-only protocol, e.g. DenseEmbedderPort:
-- embed_documents(texts) -> float32 matrix;
-- embed_query(text) -> float32 vector;
-- dimension property if known.
+Do not add ad-hoc query instructions to BGE-M3.
 
-`BgeM3DenseEmbedder` requirements:
-- lazy import/load; importing knowledge_curator must not require FlagEmbedding;
-- dense output only for this phase;
-- return finite float32 vectors;
-- normalized vectors suitable for inner-product/cosine FAISS search;
-- configurable model path/device/batch_size/fp16;
-- no hard-coded CUDA requirement;
-- no network call after model is loaded/cached.
-
-Use official BGE-M3 dense output (`dense_vecs`) rather than inventing pooling.
-
-## 4. FAISS VectorSearchPort adapter
-Add `FaissVectorSearch` (name may vary) implementing existing VectorSearchPort.
-
-Correctness requirements:
-- index KnowledgeChunk.payload;
-- preserve exact KnowledgeChunk metadata/provenance;
-- support both COARSE and FINE levels;
-- honor RetrievalQuery.allowed_ref_ids exactly;
-- honor RetrievalQuery.top_k;
-- return 1-based ranks and similarity raw_score;
-- deterministic tie-breaking for equal scores;
-- IndexFlatIP/cosine-style correctness baseline is acceptable;
-- empty corpus/query results handled cleanly;
-- dimension mismatch fails clearly.
-
-For allowed_ref_ids correctness, do not under-retrieve and then filter away valid hits.
-Because the baseline may use flat search, retrieving all rows then filtering is acceptable for correctness-first Phase 4.2; document performance limitations.
-
-Do not wire this adapter into the frozen §5 VectorIndex commit Port in this phase.
-
-## 5. Index lifecycle in Phase 4.2
-Support at least in-process build/rebuild from a list of KnowledgeChunk.
-
-Optional save/load is welcome if implemented cleanly, but do not redesign snapshot/version semantics.
-Production atomic index lifecycle belongs to a later integration phase.
-
-## 6. Real Chinese BM25 KeywordSearchPort
-Implement a real BM25 keyword adapter, not a preset/fake ranking.
+## 3. Fix FAISS filter correctness
+For the flat exact baseline, filtered queries must be complete.
 
 Requirements:
-- Chinese-aware tokenization;
-- recommended adapter: Jieba-based tokenizer, injectable behind a small KeywordTokenizerPort;
-- deterministic Okapi BM25 scoring;
-- English/alphanumeric terms remain searchable;
-- build separate level-aware corpus state or filter correctly by ChunkLevel;
-- honor allowed_ref_ids and top_k exactly;
-- return 1-based ranks + raw BM25 score;
-- zero-overlap query returns no misleading positive hits;
-- preserve KnowledgeChunk provenance.
+- if no level/ref filter: normal top-k exact search is fine;
+- if level or allowed_ref_ids filters reduce the candidate universe, search/score the complete eligible candidate set or search all indexed rows before filtering;
+- never rely on a fixed `top_k*10`/100 pool for correctness;
+- exact deterministic tie-break by score then chunk_id;
+- duplicate chunk_id policy must be explicit (reject, replace, or deterministic rebuild) and tested.
 
-You may use a maintained BM25 library or implement the standard deterministic formula locally; whichever is used must be isolated behind the adapter and tested.
+Add a regression with >150 chunks where the only allowed ref is intentionally outside the first 100 global neighbors; it still must be returned.
 
-Do not use BGE-M3 sparse output as a substitute for the docs/03 BM25 channel.
+## 4. Make offline tests genuinely execute
+Do not skip the entire Phase 4.2 module just because one optional dependency is absent.
 
-## 7. BGE reranker adapter
-Implement existing RerankerPort with the official BGE reranker baseline.
+Split tests by dependency:
+- pure BM25 tests should run without numpy/faiss;
+- embedder model-load tests can monkeypatch/mock FlagEmbedding;
+- FAISS tests use importorskip locally only for tests that need real faiss;
+- real-model tests are separately environment-gated.
+
+Unexpected exceptions must fail tests.
+Remove broad `except Exception: pass` patterns.
+
+## 5. Test real Jieba tokenizer
+When jieba is installed, add a real Chinese tokenization/retrieval test.
+Example synthetic concepts may include:
+- 双极膜电渗析;
+- 能耗;
+- 膜电阻;
+- current efficiency.
+
+Do not depend on external documents.
+
+## 6. Add the required synthetic retrieval fixture
+Create a checked-in fixture under a test/results fixture directory.
 
 Requirements:
-- default model `BAAI/bge-reranker-v2-m3`;
-- lazy load / optional dependency;
-- score pairs [query.text, hit.chunk.payload];
-- descending relevance order;
-- stable deterministic tie-break by existing rank/chunk_id;
-- preserve `rrf_score`, channels and KnowledgeChunk provenance;
-- add optional internal `rerank_score` to RankedHit only if useful; mark it internal/temporary;
-- final rank re-numbered 1..N after rerank;
-- no hard-coded GPU.
+- >=6 refs;
+- one coarse summary per ref;
+- multiple fine chunks per ref;
+- Chinese + English + mixed-language content;
+- >=6 labelled queries;
+- expected relevant ref_ids and/or chunk_ids.
 
-## 8. Dependency isolation
-This repository currently has no root dependency manager for retrieval models.
-Create a scoped optional dependency file such as:
-`knowledge_curator/requirements-retrieval.txt`
+Use synthetic content only.
 
-Include only dependencies actually used by Phase 4.2.
-Do not guess version pins. After successful real execution, pin or constrain the versions that were actually tested and report them.
+Fixture data must preserve canonical prefix/provenance using existing chunk builders where practical.
 
-Normal unit tests must still import/run without installing heavyweight retrieval extras.
+## 7. Add real smoke harness
+Create an executable opt-in smoke, for example:
+`python -m knowledge_curator.retrieval.real_smoke`
+gated by `KC_RUN_REAL_RETRIEVAL=1`.
 
-## 9. Real retrieval fixture
-Add a small checked-in fixture corpus containing both Chinese and English AI4S/electrodialysis-style text.
-Use only synthetic/test text; do not add copyrighted papers.
+Preflight must check:
+- numpy;
+- faiss;
+- jieba;
+- FlagEmbedding;
+- model path/id resolvable.
 
-Fixture should contain:
-- >= 6 refs;
-- a coarse summary per ref;
-- multiple fine text/evidence-card chunks;
-- known relevant ref/chunk labels for >= 6 queries;
-- Chinese, English and mixed-language queries.
+Status semantics:
+- PASS: full real stack executed successfully;
+- NOT_RUN_ENV: preflight dependency/model unavailable, with exact reason;
+- FAILED: dependencies/models loaded but execution or expected retrieval correctness failed.
 
-Do not claim this fixture is a scientific benchmark.
+Never downgrade FAILED to NOT_RUN_ENV after execution begins.
 
-## 10. Keyless unit tests
-Keep the full baseline 243 KC + 70 integration tests.
+## 8. Real smoke flow
+Run the actual existing hybrid pipeline:
+fixture chunks
+-> BGE-M3 embeddings
+-> FAISS vector search
++ real Jieba BM25
+-> coarse fusion/filter
+-> fine vector/BM25 (+ optional fake graph only if desired)
+-> RRF
+-> real bge-reranker-v2-m3
+-> final hits.
 
-Real backend classes must be testable with injected lightweight fake embedding/scoring models so default CI stays keyless/offline.
+Do not create a parallel demo pipeline that bypasses hybrid_retrieve.
 
-Add unit tests for at least:
-- FAISS exact nearest ranking on deterministic numeric embeddings;
-- coarse/fine level filtering;
-- allowed_ref_ids exact filter;
-- top_k/rank semantics;
-- empty index;
-- duplicate/rebuild policy deterministic;
-- BM25 Chinese exact-term retrieval;
-- BM25 English term retrieval;
-- BM25 zero-overlap query;
-- reranker reorders hits using injected scorer;
-- reranker preserves provenance/RRF score;
-- optional dependency missing -> clear actionable error, not import crash.
+## 9. Metrics
+For fixture queries compute at least:
+- Recall@1;
+- Recall@3 (or Recall@k matching output k);
+- MRR.
 
-## 11. Real-model smoke
-Add an explicitly opt-in real smoke, e.g. environment gate `KC_RUN_REAL_RETRIEVAL=1`.
+Also record per-query final top-k ref_ids/chunk_ids.
 
-When enabled, it must:
-1. load real BGE-M3;
-2. embed the fixture corpus/query;
-3. build/search FAISS;
-4. run real BM25;
-5. run hybrid coarse->fine;
-6. run real BGE reranker;
-7. verify returned chunks retain provenance and expected labels are retrievable.
+Do not set a new global project-quality threshold.
+Smoke FAIL condition remains minimal correctness:
+- non-finite embedding/score;
+- stage exception after successful preflight;
+- every labelled relevant item missed for a fixture query.
 
-Real smoke must record:
-- device;
-- model ids/paths;
-- embedding dimension;
-- package versions;
-- per-query top-k refs/chunks;
-- simple Recall@k / MRR summary.
+## 10. Reranker validation
+Real smoke must prove the reranker model actually loads and scores non-empty candidate pairs.
 
-Do not invent a global acceptance threshold not specified by 01/03.
-At minimum, fail the smoke if the expected relevant evidence is never retrieved for a fixture query or if any stage produces invalid/non-finite scores.
+Check:
+- score count == candidate count;
+- all scores finite;
+- result order deterministic for a repeated identical run on CPU within practical equality;
+- provenance/RRF channel metadata preserved.
 
-If the executor environment cannot download/load the real models, report `NOT_RUN_ENV` with the exact reason and do NOT claim real backend validation PASS.
+## 11. Dependency/version report
+After installation/run, record exact versions actually imported:
+- FlagEmbedding;
+- faiss;
+- numpy;
+- jieba;
+- torch;
+- transformers if relevant.
 
-## 12. Hybrid integration
-Use the existing frozen hybrid_retrieve service unchanged as much as possible.
+`requirements-retrieval.txt` may be updated with compatible lower bounds or exact tested constraints only after observing the real environment.
 
-Expected executable composition:
-BgeM3DenseEmbedder + FaissVectorSearch
-+ BM25KeywordSearch
-+ optional injected GraphSearchPort
-+ optional QueryExpansionPort
--> existing coarse RRF/filter
--> fine vector/graph/keyword RRF
--> BgeReranker.
+## 12. Model path portability
+Do not encode the Windows path reported by one environment into source/default config.
+Support:
+- default model id;
+- explicit constructor path;
+- optional env override, e.g. KC_BGE_M3_MODEL / KC_BGE_RERANKER_MODEL.
 
-Do not bypass hybrid_retrieve with a separate competing pipeline.
+Local paths/weights remain uncommitted.
 
-## 13. Graph and EDDO boundaries
-Do not create SQLite/JSON graph internals in knowledge_curator.
-Do not create a homemade EDDO synonym dictionary as the production expansion engine.
+## 13. Baselines
+Keep:
+- integration/dsh >=70 passed;
+- existing knowledge_curator baseline >=243 passed;
+- Phase 4.2 tests should now actually run rather than whole-module skip where dependencies are present.
 
-CG-004 continues to cover the real L2 graph/query API.
-CG-016 records the missing EDDO query-expansion contract.
-
-Use fake/in-memory GraphSearchPort / QueryExpansionPort only in composition tests.
-
-## 14. Security/reproducibility
-- no API keys required;
-- no secrets in model config/logs;
-- local model paths allowed;
-- model download/cache paths must not be committed;
-- generated FAISS indexes/model weights must not be committed;
-- add gitignore entries if needed.
-
-## 15. Deliverables
-Create `results/phase-04-2-executor-report.md`.
+## 14. Deliverables
+Create `results/phase-04-2-1-executor-report.md`.
 
 Report:
-- adapter classes/files;
-- real models/package versions;
-- FAISS index type/dimension;
-- BM25 tokenizer/formula/library;
+- FlagEmbedding real constructor compatibility;
+- FAISS filter-correctness fix;
+- fixture location/query count;
 - real smoke status PASS / NOT_RUN_ENV / FAILED;
-- fixture retrieval metrics;
-- exact unit/integration counts;
+- exact package versions;
+- real embedding dimension;
+- device;
+- Recall@1;
+- Recall@3/k;
+- MRR;
+- exact test counts and skips;
 - public contracts changed? NO;
-- CONTRACT_GAPS changes;
 - implementation SHA.
 
-## 16. status.json
+## 15. status.json
 On completion:
-- phase = 4.2
+- phase = 4.2.1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual implementation SHA
-- result_expected = results/phase-04-2-executor-report.md
+- result_expected = results/phase-04-2-1-executor-report.md
 
 Push main and stop.
-Do not start Phase 4.3, §6 MCP exposure, or §7.
+Do not start Phase 4.3.
