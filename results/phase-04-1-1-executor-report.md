@@ -68,5 +68,5 @@ integration/dsh:   70 passed / 0 failed
 ## 14. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: afd5d4903f1a7c95844d98295bd3042ed76a4341
 ```
