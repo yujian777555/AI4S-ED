@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.0",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,7 @@
     "no §7 implementation",
     "no secrets committed or logged"
   ],
-  "latest_commit": "8cc7bd2cd4f9c8ed052cc892b6b79d3076cf064e",
+  "latest_commit": "PENDING_UPDATE",
   "planner_review": "planner/phase-03-2-4-review.md",
   "live_smoke": "DSH_0_2_KNOWLEDGE_CURATOR_MCP_ROUNDTRIP_PASS_CG015_CLOSED"
 }

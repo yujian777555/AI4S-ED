@@ -164,7 +164,8 @@ print(json.dumps({"status": d["status"], "action": d["decisions"][0]["action"], 
       const hasAction = toolSum.raw.includes('accept') || toolSum.raw.includes('action')
       const hasConf = toolSum.raw.includes('medium') || toolSum.raw.includes('confidence')
       if (hasStatus && hasAction && hasConf) {
-        toolSum = { status: a.status, action: a.action, confidence: a.confidence, source: 'inferred_from_tool_result_raw' }
+        // HARDENING: structured parse failure must FAIL, not infer B from A
+      throw new Error('tool result structured parse failed; B cannot be inferred from A')
       }
     }
     report.tool_result_summary = toolSum
@@ -174,7 +175,7 @@ print(json.dumps({"status": d["status"], "action": d["decisions"][0]["action"], 
     const toolHasRef = toolBlob.includes('ED-2025-0042')
     const toolHasReport = toolBlob.includes('report')
     if (!toolSum.status && toolHasOk && toolHasRef && toolHasReport) {
-      toolSum = { status: a.status, action: a.action, confidence: a.confidence, source: 'tool_result_blob_matched' }
+      throw new Error('tool result structured parse failed; keyword presence is not valid B evidence')
     }
     report.tool_result_summary = toolSum
     report.abc_match = keys.every((k) => a?.[k] && a[k] === toolSum?.[k] && a[k] === finalSum?.[k])
@@ -187,5 +188,7 @@ print(json.dumps({"status": d["status"], "action": d["decisions"][0]["action"], 
   } finally {
     await web.close().catch(() => undefined)
   }
-  expect(report.tool_call_count).toBeGreaterThanOrEqual(1)
+  expect(report.tool_call_count).toBe(1)
+  expect(report.tool_result_count).toBe(1)
+  expect(report.abc_match).toBe(true)
 }, 300_000)
