@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.0.1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.0.2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,19 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-0-1-executor-report.md",
+  "result_expected": "results/phase-04-0-2-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "§5 and DSH/MCP integration are frozen",
-    "Phase 4.0.1 only closes H1 locator reality and H2 local citation metadata checks",
-    "no FAISS/BM25/RRF/reranker in Phase 4.0.1",
+    "Phase 4.0.2 only separates actual H1 violations from locator NOT_CHECKED status",
+    "no FAISS/BM25/RRF/reranker",
     "no final QA generator or new top-level Agent",
-    "no Crossref/web calls in core",
-    "public evidence/citation models remain temporary compatibility models",
     "no §6 MCP exposure yet",
+    "no Crossref/web calls in core",
     "no §7 implementation"
   ],
   "latest_commit": "fdba150afc1fb915aac20920e2d8c8290b05c90a",
-  "planner_review": "planner/phase-04-0-review.md",
-  "live_smoke": "H1_H2_LOCAL_VALIDATION_CLOSURE_PASS"
+  "planner_review": "planner/phase-04-0-1-review.md",
+  "live_smoke": "PHASE401_PASS_H1_NOT_CHECKED_SEMANTIC_SPLIT_PENDING"
 }
