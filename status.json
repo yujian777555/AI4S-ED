@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.1.3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,17 +12,19 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-1-3-executor-report.md",
+  "result_expected": "results/phase-04-2-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5, DSH/MCP, and Phase 4.0 evidence guard semantics are frozen",
-    "Phase 4.1.2 only closes tokenizer/full-payload budget, coarse fusion/fallback, and RRF duplicate semantics",
-    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend",
+    "§5, DSH/MCP, Phase 4.0 evidence guard, and Phase 4.1 retrieval contracts are frozen",
+    "Phase 4.2 implements real BGE-M3 dense + FAISS, Chinese BM25, and BGE reranker adapters",
+    "do not implement L2 graph database internals or EDDO ontology expansion",
+    "do not change frozen §5 VectorIndex atomic-commit semantics",
     "no final QA generator or new top-level Agent",
-    "no §6 MCP exposure",
-    "no §7 implementation"
+    "no §6 MCP exposure yet",
+    "no §7 implementation",
+    "heavy retrieval dependencies must remain optional for normal unit tests"
   ],
   "latest_commit": "a4637c723ade46953ebf02dce1f10a5a97167771",
-  "planner_review": "planner/phase-04-1-2-review.md",
-  "live_smoke": "TOKENIZER_WINDOW_COARSE_DIAG_PASS"
+  "planner_review": "planner/phase-04-1-3-review.md",
+  "live_smoke": "PHASE41_RETRIEVAL_CONTRACTS_FROZEN_PHASE42_REAL_BACKENDS"
 }
