@@ -16,10 +16,10 @@
   "constraints": [
     "01 is the anchor document",
     "§5, DSH/MCP integration, and Phase 4.0 evidence guard semantics are frozen",
-    "Phase 4.1 implements only deterministic chunking and runtime-independent retrieval contracts/skeleton",
-    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend in Phase 4.1",
+    "Phase 4.1.1 only closes chunk prefix/identity/tokenizer and true coarse-to-fine retrieval contracts",
+    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend",
     "no final QA generator or new top-level Agent",
-    "no §6 MCP exposure in Phase 4.1",
+    "no §6 MCP exposure",
     "no §7 implementation",
     "public retrieval/chunk models remain temporary compatibility models"
   ],
