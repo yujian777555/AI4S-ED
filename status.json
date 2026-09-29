@@ -23,7 +23,7 @@
     "no §7 implementation",
     "public retrieval/chunk models remain temporary compatibility models"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "bb7a3cf2f809c4d69988722a8f8d5ee390fab12a",
   "planner_review": "planner/phase-04-0-2-review.md",
   "live_smoke": "CHUNKING_RETRIEVAL_CONTRACTS_PASS"
 }

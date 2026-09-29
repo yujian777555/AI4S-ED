@@ -79,5 +79,5 @@ FAISS / Qdrant / BGE-M3 / BM25 / EDDO expansion / bge-reranker / §6 MCP / QA ge
 ## 13. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: bb7a3cf2f809c4d69988722a8f8d5ee390fab12a
 ```
