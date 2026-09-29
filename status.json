@@ -23,7 +23,7 @@
     "no Crossref/web calls in core",
     "no §7 implementation"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "2c0fe196631a278082f2dce08b8032d511f4a2d5",
   "planner_review": "planner/phase-04-0-1-review.md",
   "live_smoke": "H1_STATUS_SEPARATION_PASS"
 }

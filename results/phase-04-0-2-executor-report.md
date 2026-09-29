@@ -48,5 +48,5 @@ H2 DOI/title / confidence gate / Abstain / H3 / §5 core / MCP / DSH
 ## 7. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: 2c0fe196631a278082f2dce08b8032d511f4a2d5
 ```
