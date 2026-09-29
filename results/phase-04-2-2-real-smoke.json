@@ -1,0 +1,125 @@
+{
+  "status": "PASS",
+  "embedding_dimension": 1024,
+  "device": "cuda",
+  "flagembedding_version": "1.4.2",
+  "faiss_version": "1.13.0",
+  "numpy_version": "1.26.4",
+  "jieba_version": "0.42.1",
+  "torch_version": "2.5.1+cu121",
+  "m3_model_path": "D:\\models\\bge-m3",
+  "reranker_model_path": null,
+  "reranker_used": false,
+  "load_seconds": 10.02,
+  "recall_at_1": 1.0,
+  "recall_at_3": 1.0,
+  "mrr": 1.0,
+  "per_query": [
+    {
+      "query_id": "Q1",
+      "query": "双极膜电渗析 能耗",
+      "expected_ref_ids": [
+        "REF-1"
+      ],
+      "returned_top_k": [
+        "REF-1",
+        "REF-2",
+        "REF-2",
+        "REF-6",
+        "REF-1"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    },
+    {
+      "query_id": "Q2",
+      "query": "current efficiency electrodialysis",
+      "expected_ref_ids": [
+        "REF-2"
+      ],
+      "returned_top_k": [
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-1",
+        "REF-5"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    },
+    {
+      "query_id": "Q3",
+      "query": "膜污染 cleaning",
+      "expected_ref_ids": [
+        "REF-3"
+      ],
+      "returned_top_k": [
+        "REF-3",
+        "REF-6",
+        "REF-1",
+        "REF-2",
+        "REF-4"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    },
+    {
+      "query_id": "Q4",
+      "query": "锂离子电池 热管理",
+      "expected_ref_ids": [
+        "REF-4"
+      ],
+      "returned_top_k": [
+        "REF-4",
+        "REF-1",
+        "REF-2",
+        "REF-1",
+        "REF-3"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    },
+    {
+      "query_id": "Q5",
+      "query": "catalyst CO2 reduction ethanol",
+      "expected_ref_ids": [
+        "REF-5"
+      ],
+      "returned_top_k": [
+        "REF-5",
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-3"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    },
+    {
+      "query_id": "Q6",
+      "query": "反渗透 脱盐 reverse osmosis",
+      "expected_ref_ids": [
+        "REF-6"
+      ],
+      "returned_top_k": [
+        "REF-6",
+        "REF-3",
+        "REF-1",
+        "REF-2",
+        "REF-2"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "reranker model not present locally; smoke runs hybrid_retrieve without reranker"
+  ]
+}

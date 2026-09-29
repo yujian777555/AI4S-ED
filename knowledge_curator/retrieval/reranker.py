@@ -32,6 +32,9 @@ class BgeReranker:
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        from knowledge_curator.retrieval.flag_compat import ensure_flagembedding_compat
+
+        ensure_flagembedding_compat()
         try:
             from FlagEmbedding import FlagReranker
         except ImportError as exc:
