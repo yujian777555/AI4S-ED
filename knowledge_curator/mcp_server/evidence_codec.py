@@ -251,6 +251,7 @@ def serialize_claim_result(r: ClaimGuardResult) -> dict[str, Any]:
         },
         "h2": {
             "checked": r.h2_checked,
+            "status": r.h2_status,
             "unavailable_reason": r.h2_unavailable_reason,
             "findings": [
                 {

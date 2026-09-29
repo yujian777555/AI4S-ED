@@ -31,6 +31,7 @@ from knowledge_curator.retrieval.evidence_models import (
     RetrievalEvidenceRecord,
     SubqueryCoverage,
     UnguardableHit,
+    build_evidence_anchor,
     compute_bundle_id,
     normalize_hit_to_record,
 )
@@ -151,7 +152,8 @@ class EvidenceRetrievalService:
                 all_hits.append(hit)
                 rec = normalize_hit_to_record(hit, default_evidence_type=self._default_evidence_type)
                 records.append(rec)
-                if rec.guardable_as_anchor:
+                # Coverage counts only records that can actually produce an anchor.
+                if rec.guardable_as_anchor and build_evidence_anchor(rec) is not None:
                     guardable_n += 1
                 else:
                     unguardable.append(

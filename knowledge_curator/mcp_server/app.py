@@ -1,7 +1,7 @@
 """MCP application: official MCPServer exposing curation + evidence tools.
 
 Thin adapter over existing KnowledgeCurator core and Phase 4.3 evidence
-services. No 搂5 logic duplication. No scientific prose answers.
+services. No §5 logic duplication. No scientific prose answers.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from knowledge_curator.mcp_server.evidence_codec import (
 )
 from knowledge_curator.mcp_server.evidence_runtime import (
     EvidenceRuntime,
+    create_evidence_runtime_from_env,
     create_unavailable_evidence_runtime,
 )
 from knowledge_curator.mcp_server.runtime import CuratorRuntime, create_default_runtime, run_curate
@@ -54,7 +55,7 @@ def create_mcp_server(
     @server.tool(
         name=PUBLIC_TOOL_NAME,
         description=(
-            "Curate one AssertionSet through KnowledgeCurator 搂5.1鈥撀?.3 "
+            "Curate one AssertionSet through KnowledgeCurator §5.1–§5.3 "
             "(completeness, conflict, quality, decision) and return a CurationReport."
         ),
     )
@@ -71,7 +72,7 @@ def create_mcp_server(
 
     @server.tool(
         name=HEALTH_TOOL_NAME,
-        description="Integration diagnostic only 鈥?not a scientific business API.",
+        description="Integration diagnostic only — not a scientific business API.",
     )
     async def knowledge_curator_health() -> dict[str, Any]:
         return {
@@ -175,8 +176,14 @@ def create_mcp_server(
 
 
 def run_stdio() -> None:
-    """Entry for `python -m knowledge_curator.mcp_server` (official stdio transport)."""
-    server = create_mcp_server()
+    """Entry for `python -m knowledge_curator.mcp_server` (official stdio transport).
+
+    Evidence runtime is resolved from the environment:
+      KC_EVIDENCE_INTEGRATION_FIXTURE=1 -> labelled synthetic fixture (tests only)
+      unset -> production default retrieval_unavailable
+    """
+    ert = create_evidence_runtime_from_env()
+    server = create_mcp_server(evidence_runtime=ert)
     import anyio
 
     anyio.run(server.run_stdio_async)

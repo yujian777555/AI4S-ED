@@ -8,6 +8,7 @@ ref_id/locator/confidence. No prose answers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional
 
 from knowledge_curator.ports.evidence_store import CitationMetadata, EvidenceMetadataPort
@@ -52,6 +53,64 @@ class ProposedClaimInput:
     cited: Optional[CitationMetadata] = None
     private_data_unauthorized: bool = False
     mechanism_supported: Optional[bool] = None
+
+
+class H2CheckedStatus(str, Enum):
+    """INTERNAL H2 check status (Phase 4.3.1)."""
+
+    CHECKED = "checked"
+    PARTIAL = "partial"
+    METADATA_UNAVAILABLE = "metadata_unavailable"
+    NOT_APPLICABLE = "not_applicable"
+
+
+def evaluate_h2_checked(
+    *,
+    cited: Optional[CitationMetadata],
+    metadata: EvidenceMetadataPort,
+    ref_ids: list[str],
+) -> tuple[bool, H2CheckedStatus, Optional[str]]:
+    """Honest H2 checked semantics (Phase 4.3.1).
+
+    - No cited DOI/title requested -> ref-existence scope is checked.
+    - cited DOI supplied -> checked only if KB metadata has DOI and comparison ran.
+    - cited title supplied -> same for title.
+    - Both supplied -> both must be available for full checked.
+    - Unavailable metadata is NOT an H2 finding; it is not-checked/partial.
+    """
+    if cited is None:
+        # Only ref-existence was requested; RetrievalSetMetadata can check that.
+        if not ref_ids:
+            return False, H2CheckedStatus.NOT_APPLICABLE, None
+        return True, H2CheckedStatus.CHECKED, None
+
+    want_doi = bool(cited.cited_doi and str(cited.cited_doi).strip())
+    want_title = bool(cited.cited_title and str(cited.cited_title).strip())
+    if not want_doi and not want_title:
+        return True, H2CheckedStatus.CHECKED, None
+
+    ref_meta = metadata.get_ref_metadata(cited.ref_id) if cited.ref_id else None
+    if ref_meta is None:
+        return (
+            False,
+            H2CheckedStatus.METADATA_UNAVAILABLE,
+            "ref metadata unavailable",
+        )
+
+    missing: list[str] = []
+    if want_doi and not (ref_meta.doi and str(ref_meta.doi).strip()):
+        missing.append("DOI")
+    if want_title and not (ref_meta.title and str(ref_meta.title).strip()):
+        missing.append("title")
+
+    if not missing:
+        return True, H2CheckedStatus.CHECKED, None
+
+    reason = f"{'/'.join(missing)} metadata unavailable"
+    if want_doi and want_title:
+        # Both requested, at least one missing -> not fully checked.
+        return False, H2CheckedStatus.PARTIAL, reason
+    return False, H2CheckedStatus.METADATA_UNAVAILABLE, reason
 
 
 class ClaimGuardService:
@@ -165,14 +224,19 @@ class ClaimGuardService:
 
         h1 = detect_h1_with_status(claim, metadata)
 
-        # H2: local KB existence + DOI/title. Mark unavailable when metadata
-        # service cannot resolve refs at all.
+        # H2: keep detect_h2 frozen. Unavailable metadata is NOT a hallucination
+        # finding — only real DOI/title mismatch is. checked/status is honest.
         h2_findings = detect_h2(claim, metadata, pc.cited)
-        h2_checked = True
-        h2_unavailable = None
-        if self._metadata is None and not bundle.evidence_records:
+        h2_ref_ids = [a.ref_id for a in resolved] or [cid for cid in pc.anchor_chunk_ids]
+        h2_checked, h2_status, h2_unavailable = evaluate_h2_checked(
+            cited=pc.cited,
+            metadata=metadata,
+            ref_ids=h2_ref_ids,
+        )
+        if not bundle.evidence_records and not resolved:
             h2_checked = False
-            h2_unavailable = "metadata service unavailable: empty retrieval set"
+            h2_status = H2CheckedStatus.METADATA_UNAVAILABLE
+            h2_unavailable = h2_unavailable or "metadata service unavailable: empty retrieval set"
 
         # H3
         if pc.assertion is not None and self._mechanism_validator is not None:
@@ -196,6 +260,7 @@ class ClaimGuardService:
             h1=h1,
             h2_findings=h2_findings,
             h2_checked=h2_checked,
+            h2_status=h2_status.value,
             h2_unavailable_reason=h2_unavailable,
             h3=h3,
             numeric_conflict_policy=numeric_conflict_policy,

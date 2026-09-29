@@ -1,0 +1,40 @@
+{
+  "raw_mcp_tools": "PASS",
+  "mounted_dsh_tool_discovery": "PASS",
+  "mounted_dsh_retrieve_evidence_live": "FAILED",
+  "mounted_dsh_validate_retrieved_claims_live": "FAILED",
+  "direct_vs_dsh_evidence_identity_match": "NOT_RUN_ENV",
+  "direct_vs_dsh_policy_match": "NOT_RUN_ENV",
+  "dsh_src": "C:\\dsh-src",
+  "credential_available": true,
+  "secret_leaked": false,
+  "errors": [],
+  "warnings": [
+    "live model turn produced zero tool/call events"
+  ],
+  "live": {
+    "returncode": 0,
+    "stdout_tail": "\n\u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.8 \u001b[39m\u001b[90mC:/dsh-src\u001b[39m\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mmounted Agent schema exposes curate + evidence tools\n\u001b[22m\u001b[39mLANE325_SCHEMA_NAMES=[\"mcp__knowledge_curator__curate_assertion_set\",\"mcp__knowledge_curator__knowledge_curator_health\",\"mcp__knowledge_curator__retrieve_evidence\",\"mcp__knowledge_curator__validate_retrieved_claims\"]\nLANE325_SCHEMA_OK=1\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mmounted Agent schema exposes curate + evidence tools\n\u001b[22m\u001b[39mLANE325_LIVE_NO_TOOLCALL types= [\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"]\nLANE325_LIVE_TEXTS= []\nLANE325_SCHEMA_OK=1\n\n \u001b[32m✓\u001b[39m lane325_kc_evidence_roundtrip.e2e.ts \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 12331\u001b[2mms\u001b[22m\u001b[39m\n   \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m mounted Agent schema exposes curate + evidence tools \u001b[33m 12329\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m   Start at \u001b[22m 03:54:13\n\u001b[2m   Duration \u001b[22m 12.77s\u001b[2m (transform 681ms, setup 0ms, import 83ms, tests 12.33s, environment 0ms)\u001b[22m\n\n",
+    "stderr_tail": ""
+  },
+  "raw_mcp_stdio_discovery": "PASS",
+  "raw_mcp_roundtrip": "PASS",
+  "mounted_dsh_tool_schema_names": [
+    "mcp__knowledge_curator__curate_assertion_set",
+    "mcp__knowledge_curator__knowledge_curator_health",
+    "mcp__knowledge_curator__retrieve_evidence",
+    "mcp__knowledge_curator__validate_retrieved_claims"
+  ],
+  "live_failure_reason": "zero tool/call events from DeepSeek turn (EMPTY_RESPONSE-style flake); baseline lane324 curate tool also 0 tool/call in the same window",
+  "integration_fixture_env": "KC_EVIDENCE_INTEGRATION_FIXTURE=1",
+  "preset_id": "knowledge-curator",
+  "new_agent_created": false,
+  "guardability_invariant": "PASS",
+  "coverage_anchor_consistency": "PASS",
+  "h2_checked_semantics": "PASS",
+  "mcp_utf8_cleanup": "PASS",
+  "test_counts": {
+    "knowledge_curator": 311,
+    "integration_dsh": 83
+  }
+}
