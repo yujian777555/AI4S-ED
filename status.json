@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.1.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -22,7 +22,7 @@
     "no §6 MCP exposure",
     "no §7 implementation"
   ],
-  "latest_commit": "afd5d4903f1a7c95844d98295bd3042ed76a4341",
+  "latest_commit": "PENDING",
   "planner_review": "planner/phase-04-1-1-review.md",
-  "live_smoke": "PHASE411_MOSTLY_PASS_FINAL_RETRIEVAL_CONTRACT_CLOSURE"
+  "live_smoke": "FINAL_RETRIEVAL_CONTRACT_CLOSURE_PASS"
 }

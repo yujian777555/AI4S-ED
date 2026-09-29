@@ -1,48 +1,46 @@
-"""Reversible tokenizer contract + chunk identity + canonical payload prefix."""
+"""Reversible tokenizer contract (Phase 4.1.2: truly lossless roundtrip)."""
 
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
 class TokenizerPort(Protocol):
-    """Reversible tokenizer: encode/decode roundtrip must preserve content."""
+    """Reversible tokenizer: decode(encode(text)) == text must hold."""
 
     def encode(self, text: str) -> list[str]:
-        """Encode text into token units."""
         ...
 
     def decode(self, tokens: list[str]) -> str:
-        """Decode tokens back to text (roundtrip-safe)."""
         ...
 
     def count(self, text: str) -> int:
-        """Token count convenience."""
         ...
 
 
 class WordTokenizer:
-    """Deterministic tokenizer with punctuation/non-ASCII roundtrip.
+    """Deterministic lossless tokenizer.
 
-    Encodes to non-whitespace tokens; decode joins with single space.
-    Roundtrip preserves word content (not exact whitespace).
+    Splits into whitespace and non-whitespace runs so decode(encode(text))
+    exactly reconstructs the original, including spaces and newlines.
     """
 
     def encode(self, text: str) -> list[str]:
         if not text:
             return []
-        return text.split()
+        return re.findall(r"\s+|\S+", text)
 
     def decode(self, tokens: list[str]) -> str:
-        return " ".join(tokens)
+        return "".join(tokens)
 
     def count(self, text: str) -> int:
-        return len(self.encode(text))
+        # Non-whitespace token units for budget purposes
+        return len([t for t in self.encode(text) if t.strip()])
 
 
-# Type labels for docs/03 §6.1 metadata prefix
 CHUNK_TYPE_LABELS = {
     "text": "文本",
     "table": "表",
@@ -52,16 +50,11 @@ CHUNK_TYPE_LABELS = {
 
 
 def build_metadata_prefix(ref_id: str, page: str | None, section: str | None, type_key: str) -> str:
-    """Build canonical metadata prefix: [ref_id|page|section|type(类型)]"""
     label = CHUNK_TYPE_LABELS.get(type_key, type_key)
     return f"[{ref_id}|{page or '-'}|{section or '-'}|type({label})]"
 
 
 def stable_chunk_id(ref_id: str, page: str | None, section: str | None, kind: str, window: str) -> str:
-    """Collision-free stable chunk id using SHA-256 (not Python hash).
-
-    Identity includes ref_id, page, section, kind, and window digest.
-    """
     raw = "|".join([
         ref_id or "",
         page or "-",

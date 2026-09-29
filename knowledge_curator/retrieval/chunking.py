@@ -1,8 +1,4 @@
-"""§6.1 deterministic chunking with canonical payload prefix (Phase 4.1.1).
-
-Fine chunk payload ALWAYS starts with [ref_id|page|section|type(类型)].
-Text token budget includes prefix. Overlap only applies to body tokens.
-"""
+"""§6.1 chunking with full-payload token budget validation (Phase 4.1.2)."""
 
 from __future__ import annotations
 
@@ -49,14 +45,37 @@ class ChartObject:
     section: Optional[str] = None
 
 
-def _type_label(chunk_type: ChunkType) -> str:
-    return {
-        ChunkType.TEXT: "text",
-        ChunkType.TABLE: "table",
-        ChunkType.CHART: "chart",
-        ChunkType.EVIDENCE_CARD: "evidence_card",
-        ChunkType.DOCUMENT_SUMMARY: "summary",
-    }[chunk_type]
+def _build_chunk(
+    *,
+    chunk_id: str,
+    ref_id: str,
+    level: ChunkLevel,
+    chunk_type: ChunkType,
+    prefix: str,
+    body: str,
+    page: Optional[str],
+    section: Optional[str],
+    locator: Optional[str],
+    object_id: Optional[str] = None,
+    assertion_id: Optional[str] = None,
+    confidence: Optional[Confidence] = None,
+    quality: Optional[float] = None,
+) -> KnowledgeChunk:
+    payload = f"{prefix} {body}" if body else prefix
+    return KnowledgeChunk(
+        chunk_id=chunk_id,
+        ref_id=ref_id,
+        level=level,
+        chunk_type=chunk_type,
+        payload=payload,
+        page=page,
+        section=section,
+        object_id=object_id,
+        locator=locator,
+        assertion_id=assertion_id,
+        confidence=confidence,
+        quality=quality,
+    )
 
 
 def chunk_text(
@@ -68,15 +87,10 @@ def chunk_text(
     tokenizer: Optional[TokenizerPort] = None,
     config: Optional[ChunkingConfig] = None,
 ) -> list[KnowledgeChunk]:
-    """Split text into section-aware chunks with canonical prefix embedded in payload.
+    """Split text into chunks with full-payload token budget validation.
 
-    Requirements:
-      * payload starts with [ref_id|page|section|type(文本)]
-      * total payload token count <= max_tokens
-      * body overlap = overlap_tokens (prefix not counted in overlap)
-      * empty text -> no chunks
-      * prefix >= max_tokens -> fail clearly
-      * stable collision-free chunk_ids
+    Phase 4.1.2: validate tokenizer.count(full_payload) <= max_tokens,
+    shrink body deterministically if boundary-sensitive tokenizer overflows.
     """
     tok = tokenizer or WordTokenizer()
     cfg = config or ChunkingConfig()
@@ -84,38 +98,50 @@ def chunk_text(
         return []
 
     prefix = build_metadata_prefix(ref_id, page, section, "text")
-    prefix_tokens = tok.encode(prefix)
-    if len(prefix_tokens) >= cfg.max_tokens:
+    if tok.count(prefix) >= cfg.max_tokens:
         raise ValueError(
-            f"metadata prefix token count ({len(prefix_tokens)}) >= max_tokens ({cfg.max_tokens})"
+            f"metadata prefix token count ({tok.count(prefix)}) >= max_tokens ({cfg.max_tokens})"
         )
 
-    body_budget = cfg.max_tokens - len(prefix_tokens)
+    body_budget = cfg.max_tokens - tok.count(prefix) - 1  # -1 for separator
     overlap = cfg.overlap_tokens
     if overlap >= body_budget:
         overlap = max(0, body_budget - 1)
 
-    body_tokens = tok.encode(text)
-    if not body_tokens:
+    # Encode full text losslessly, then window on non-whitespace tokens
+    all_tokens = tok.encode(text)
+    # Build body as string, then split into word tokens for windowing
+    body_words = text.split()
+    if not body_words:
         return []
 
     chunks: list[KnowledgeChunk] = []
     start = 0
     idx = 0
-    n = len(body_tokens)
+    n = len(body_words)
     while start < n:
         end = min(start + body_budget, n)
-        window = body_tokens[start:end]
-        body_text = tok.decode(window)
+        body_text = " ".join(body_words[start:end])
+        # Validate full payload token budget; shrink if needed
         full_payload = f"{prefix} {body_text}"
-        chunk_id = stable_chunk_id(ref_id, page, section, f"text:{idx}", tok.decode(window))
+        while tok.count(full_payload) > cfg.max_tokens and end > start + 1:
+            end -= 1
+            body_text = " ".join(body_words[start:end])
+            full_payload = f"{prefix} {body_text}"
+        if tok.count(full_payload) > cfg.max_tokens and end == start + 1:
+            raise ValueError(
+                f"single body word with prefix exceeds max_tokens ({cfg.max_tokens})"
+            )
+
+        chunk_id = stable_chunk_id(ref_id, page, section, f"text:{idx}", body_text)
         chunks.append(
-            KnowledgeChunk(
+            _build_chunk(
                 chunk_id=chunk_id,
                 ref_id=ref_id,
                 level=ChunkLevel.FINE,
                 chunk_type=ChunkType.TEXT,
-                payload=full_payload,
+                prefix=prefix,
+                body=body_text,
                 page=page,
                 section=section,
                 locator=section or page,
@@ -133,7 +159,6 @@ def chunk_text(
 
 
 def chunk_table(table: TableObject) -> list[KnowledgeChunk]:
-    """One table = one chunk with canonical prefix."""
     prefix = build_metadata_prefix(table.ref_id, table.page, table.section, "table")
     parts = []
     if table.caption:
@@ -145,24 +170,23 @@ def chunk_table(table: TableObject) -> list[KnowledgeChunk]:
     if table.row_summary:
         parts.append(f"Rows: {table.row_summary}")
     body = "\n".join(parts) if parts else f"Table {table.table_id}"
-    payload = f"{prefix} {body}"
     return [
-        KnowledgeChunk(
+        _build_chunk(
             chunk_id=stable_chunk_id(table.ref_id, table.page, table.section, f"table:{table.table_id}", body),
             ref_id=table.ref_id,
             level=ChunkLevel.FINE,
             chunk_type=ChunkType.TABLE,
-            payload=payload,
+            prefix=prefix,
+            body=body,
             page=table.page,
             section=table.section,
-            object_id=table.table_id,
             locator=table.table_id,
+            object_id=table.table_id,
         )
     ]
 
 
 def chunk_chart(chart: ChartObject) -> list[KnowledgeChunk]:
-    """One ChartObject = one chunk with canonical prefix."""
     prefix = build_metadata_prefix(chart.ref_id, chart.page, chart.section, "chart")
     parts = []
     if chart.caption:
@@ -174,24 +198,23 @@ def chunk_chart(chart: ChartObject) -> list[KnowledgeChunk]:
     if chart.digitized_summary:
         parts.append(f"Summary: {chart.digitized_summary}")
     body = "\n".join(parts) if parts else f"Chart {chart.chart_id}"
-    payload = f"{prefix} {body}"
     return [
-        KnowledgeChunk(
+        _build_chunk(
             chunk_id=stable_chunk_id(chart.ref_id, chart.page, chart.section, f"chart:{chart.chart_id}", body),
             ref_id=chart.ref_id,
             level=ChunkLevel.FINE,
             chunk_type=ChunkType.CHART,
-            payload=payload,
+            prefix=prefix,
+            body=body,
             page=chart.page,
             section=chart.section,
-            object_id=chart.chart_id,
             locator=chart.chart_id,
+            object_id=chart.chart_id,
         )
     ]
 
 
 def chunk_evidence_card(assertion: Assertion) -> KnowledgeChunk:
-    """One Assertion = one evidence-card chunk with canonical prefix."""
     loc = assertion.provenance.locator if assertion.provenance else None
     prefix = build_metadata_prefix(assertion.ref_id, None, loc, "evidence_card")
     lines = [
@@ -206,13 +229,15 @@ def chunk_evidence_card(assertion: Assertion) -> KnowledgeChunk:
     lines.append(f"Locator: {loc or '-'}")
     lines.append(f"Confidence: {assertion.confidence.value}")
     body = "\n".join(lines)
-    payload = f"{prefix} {body}"
-    return KnowledgeChunk(
+    return _build_chunk(
         chunk_id=stable_chunk_id(assertion.ref_id, None, loc, f"evidence:{assertion.id}", body),
         ref_id=assertion.ref_id,
         level=ChunkLevel.FINE,
         chunk_type=ChunkType.EVIDENCE_CARD,
-        payload=payload,
+        prefix=prefix,
+        body=body,
+        page=None,
+        section=loc,
         locator=loc,
         assertion_id=assertion.id,
         confidence=assertion.confidence,
@@ -226,7 +251,6 @@ def chunk_document_summary(
     *,
     page: Optional[str] = None,
 ) -> list[KnowledgeChunk]:
-    """Coarse DOCUMENT_SUMMARY wrapping upstream summary only (no LLM)."""
     return [
         KnowledgeChunk(
             chunk_id=stable_chunk_id(ref_id, page, None, "summary", summary),
