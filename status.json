@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.3.1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.3.2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,17 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-3-1-executor-report.md",
+  "result_expected": "results/phase-04-3-2-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "§5, Phase 4.0 evidence guard, Phase 4.1 retrieval contracts, and Phase 4.2 real retrieval adapters are frozen",
-    "Phase 4.3.1 only closes evidence_type guardability, H2 checked semantics, true mounted-DSH evidence roundtrip, and UTF-8 descriptions",
-    "no final user-facing answer generator",
-    "no new top-level Agent; reuse knowledge-curator preset",
-    "integration fixture mode must be explicit and never leak into production default",
-    "no L2 graph DB internals or EDDO production expansion",
-    "no §7 implementation yet"
+    "Phase 4.3.1 core evidence/guard/MCP semantics are accepted; Phase 4.3.2 is validation-harness only unless a real live bug is exposed",
+    "mounted DSH live PASS must come from exact tool calls/results plus direct-vs-DSH comparisons",
+    "do not infer validate/identity/policy PASS from retrieve success",
+    "reuse existing knowledge-curator preset; no new Agent",
+    "production default must remain retrieval_unavailable unless explicitly configured",
+    "no final QA generator, L2 graph DB internals, EDDO production expansion, or §7"
   ],
   "latest_commit": "8f8fa2f2e5256319ed77e09996112aba6c9ba5ea",
-  "planner_review": "planner/phase-04-3-review.md",
-  "live_smoke": "PHASE431_GUARDABLE_H2_MOUNTED_DSH_DISCOVERY_PASS_LIVE_FLAT"
+  "planner_review": "planner/phase-04-3-1-review.md",
+  "live_smoke": "PHASE431_CORE_PASS_STRICT_MOUNTED_DSH_LIVE_ACCEPTANCE_PENDING"
 }
