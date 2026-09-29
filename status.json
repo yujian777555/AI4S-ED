@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.1.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-1-executor-report.md",
+  "result_expected": "results/phase-04-1-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5, DSH/MCP integration, and Phase 4.0 evidence guard semantics are frozen",
-    "Phase 4.1 implements only deterministic chunking and runtime-independent retrieval contracts/skeleton",
-    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend in Phase 4.1",
+    "§5, DSH/MCP, and Phase 4.0 evidence guard semantics are frozen",
+    "Phase 4.1.1 only closes chunk prefix/identity/tokenizer and true coarse-to-fine retrieval contracts",
+    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend",
     "no final QA generator or new top-level Agent",
-    "no §6 MCP exposure in Phase 4.1",
+    "no §6 MCP exposure",
     "no §7 implementation",
     "public retrieval/chunk models remain temporary compatibility models"
   ],
   "latest_commit": "bb7a3cf2f809c4d69988722a8f8d5ee390fab12a",
-  "planner_review": "planner/phase-04-0-2-review.md",
-  "live_smoke": "CHUNKING_RETRIEVAL_CONTRACTS_PASS"
+  "planner_review": "planner/phase-04-1-review.md",
+  "live_smoke": "PHASE41_MOSTLY_PASS_CHUNK_PREFIX_ID_AND_COARSE_FINE_CONTRACT_CLOSURE"
 }
