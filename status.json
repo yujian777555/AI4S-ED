@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.1.1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,7 @@
     "no secrets committed or logged",
     "knowledge_curator core remains runtime-independent"
   ],
-  "latest_commit": "47bd16cc467905810246bf8049008d5748f97ecf",
+  "latest_commit": "f79eea915673048cce1c98a7d4abf56501d4db6c",
   "planner_review": "planner/phase-03-1-review.md",
-  "live_smoke": "LIVE_STRICT_MCP_SMOKE_PASS_ABC_MATCH"
+  "live_smoke": "LIVE_MCP_BRIDGE_FUNCTIONAL_PASS_EVIDENCE_HARDENING_REQUIRED"
 }
