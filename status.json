@@ -22,7 +22,7 @@
     "no §6 MCP exposure",
     "no §7 implementation"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "a4637c723ade46953ebf02dce1f10a5a97167771",
   "planner_review": "planner/phase-04-1-2-review.md",
   "live_smoke": "TOKENIZER_WINDOW_COARSE_DIAG_PASS"
 }
