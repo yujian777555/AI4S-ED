@@ -1,342 +1,250 @@
-# Phase 4.3 Plan — Real Retrieval → Evidence Bundle → Guard → MCP/DSH
+# Phase 4.3.1 Plan — Guardable/H2 Semantics + True Mounted-DSH Evidence Roundtrip
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
-## 0. Goal
+## 0. Scope
 
-Compose the already-frozen Phase 4.2 real retrieval stack with the already-frozen Phase 4.0 evidence guard so existing knowledge consumers can obtain:
-- retrieved evidence;
-- complete provenance;
-- confidence/surface policy;
-- Abstain/coverage decisions;
-- H1/H2/H3 validation results.
-
-Expose that capability through the EXISTING knowledge-curator MCP/DSH integration.
-
-This phase does NOT generate the final user-facing answer.
-
-## 1. Non-negotiable boundaries
+Close only the remaining Phase 4.3 semantic/integration gaps:
+1. guardable_as_anchor / evidence_type consistency;
+2. H2 checked/unavailable correctness;
+3. real existing DSH Agent preset discovery + roundtrip for the new evidence tools;
+4. MCP UTF-8 description cleanup.
 
 Do NOT:
-- create a new top-level Agent;
-- implement orchestrator/proposer/critic/RADE logic;
-- implement a final answer/QA prose generator;
-- implement L2 graph database internals;
-- implement EDDO ontology expansion;
-- change §5 commit/version semantics;
-- change Phase 4.1/4.2 retrieval ranking semantics;
-- change H1/H2/H3 definitions;
+- change Phase 4.0 guard definitions;
+- change Phase 4.1/4.2 retrieval ranking;
+- add a final QA generator;
+- add a new top-level Agent;
+- implement L2 graph DB / EDDO;
 - start §7.
 
-Reuse the existing `knowledge-curator` DSH preset and MCP server.
+## 1. Make guardability a single invariant
 
-## 2. Internal evidence retrieval service
+A RetrievalEvidenceRecord is guardable_as_anchor only if build_evidence_anchor(record) can succeed.
 
-Add a runtime-independent service (name may vary), e.g.:
-`EvidenceRetrievalService`.
+Required components:
+- non-empty ref_id;
+- non-empty locator;
+- confidence present;
+- valid evidence_type present.
 
-Input must support:
-- one query or a list of explicit subqueries;
-- top_k;
-- optional allowed_ref_ids;
-- optional subquestion/coverage keys;
-- optional privacy authorization context.
+If evidence_type is absent/invalid and no valid configured default applies:
+- add unguardable reason such as missing_evidence_type / invalid_evidence_type;
+- guardable_as_anchor=false;
+- do not count it toward coverage.
 
-For each subquery:
-1. call existing `hybrid_retrieve`;
-2. preserve the exact RankedHit and RetrievalDiagnostics;
-3. normalize guardable hits into evidence records;
-4. never re-rank outside the frozen retrieval pipeline.
+Do not silently turn an explicitly invalid evidence_type into GRAPH or another type.
 
-## 3. Evidence bundle model
+A configured literature default may still be used for the literature corpus exactly as Phase 4.3 intended.
 
-Add INTERNAL / temporary compatibility models only.
+## 2. Coverage must use actual anchorability
 
-Recommended bundle information:
-- bundle_id/digest for audit only;
-- original query/subqueries;
-- raw ranked hits;
-- normalized evidence records;
-- unguardable hit diagnostics;
-- coverage status per subquery;
-- retrieval diagnostics;
-- trace/provenance information;
-- query-level Abstain result.
+EvidenceRetrievalService coverage guardable_count must count only records for which a valid EvidenceAnchor can be built.
 
-Do not claim this is the frozen cross-team schema.
+Recommended implementation:
+- centralize an is_guardable/build helper;
+- avoid duplicating subtly different conditions.
 
-## 4. Evidence normalization must fail closed
+Add tests:
+- confidence+locator but evidence_type=None/default=None => NOT_COVERED;
+- invalid explicit evidence_type => unguardable;
+- valid configured literature default => covered;
+- build_evidence_anchor success iff guardable_as_anchor=true.
 
-For a retrieved fine hit, build an EvidenceRecord/anchor only when required guard metadata is available.
+## 3. Correct H2 checked semantics
 
-At minimum preserve:
-- chunk_id;
-- ref_id;
-- locator/page/object id;
-- confidence;
-- quality;
-- access pointer/link when present;
-- sentence/cell pointer when present;
-- chunk type;
-- original provenance;
-- retrieval channels/rank/scores.
+Keep detect_h2 frozen.
+Fix only orchestration/status reporting.
+
+Define an INTERNAL H2 status if helpful, e.g.:
+- CHECKED;
+- PARTIAL;
+- METADATA_UNAVAILABLE.
+
+At minimum keep h2_checked + h2_unavailable_reason truthful.
 
 Rules:
-- NEVER invent confidence.
-- Missing confidence => hit may remain visible as retrieval context, but it is NOT allowed to authorize a factual claim.
-- Missing/empty locator => not guardable as a claim anchor.
-- Never infer EvidenceType.GRAPH merely because RetrievalChannel.GRAPH was used.
-- Use explicit chunk provenance evidence_type where supplied.
-- A configured literature-corpus default may map vector/keyword literature chunks to EvidenceType.LITERATURE.
-- Graph/simulation/experiment evidence requires explicit provenance type from its adapter.
 
-## 5. Claim anchors must be selected by chunk identity
+### 3a. No citation DOI/title supplied
+- retrieval-set ref existence can be checked through RetrievalSetMetadata;
+- h2_checked may be true for the scope that was actually requested.
 
-Do not let a client fabricate:
-`ref_id + locator + confidence`
-and call it an anchor.
+### 3b. cited DOI supplied
+h2_checked=true only when authoritative/local KB metadata for that ref contains DOI and comparison actually occurred.
 
-Internal claim-validation input should select retrieved evidence by:
-- `anchor_chunk_ids` (recommended), or an equivalent stable retrieval-hit id.
+If KB DOI unavailable:
+- h2_checked=false or PARTIAL;
+- reason states DOI metadata unavailable.
 
-The service then constructs EvidenceAnchor values FROM the retrieved chunks.
+### 3c. cited title supplied
+Same rule for title.
 
-Unknown/not-retrieved chunk id:
-- no valid anchor;
-- H1/Abstain path must fail closed.
+### 3d. DOI/title both supplied
+Both required fields must be available for full checked=true.
 
-This is how the system enforces “LLM only answers from the retrieved evidence set”.
+Mismatch remains an H2 finding through existing detect_h2.
+Unavailable metadata is NOT an H2 hallucination finding by itself; it is a not-checked/partial status.
 
-## 6. Deterministic claim guard
+## 4. Tests for H2 truthfulness
 
-Add a thin orchestration service over EXISTING:
-- `classify_claim_policy`;
-- `evaluate_abstain`;
-- `detect_h1_with_status`;
-- `detect_h2`;
-- `detect_h3`.
+Add:
+- retrieved ref + no citation metadata -> ref-existence H2 checked;
+- cited DOI + KB DOI same -> checked, no finding;
+- cited DOI + KB DOI mismatch -> checked, H2 finding;
+- cited DOI + KB DOI unavailable -> not fully checked / unavailable reason;
+- cited title + KB title unavailable -> not fully checked;
+- DOI available but title unavailable when both cited -> partial/not fully checked;
+- empty retrieval set remains unavailable.
 
-For each proposed Claim return structured:
-- resolved anchors;
-- unresolved anchor selections;
-- ClaimPolicy;
-- AbstainDecision;
-- H1 findings + locator status;
-- H2 findings / checked status;
-- H3Result;
-- numeric-conflict disclosure requirement where source ranges are provided.
+Do not call Crossref/web.
 
-No prose answer generation.
+## 5. Explicit integration fixture mode for mounted DSH Agent
 
-## 7. Coverage / Abstain semantics
+The existing preset launches:
+python -m knowledge_curator.mcp_server
 
-For multi-subquery requests:
-- each required subquery is covered only when it has >=1 guardable evidence record;
-- uncovered required subquery => SUBQUESTION_NOT_COVERED;
-- zero guardable evidence => Abstain;
-- critical numeric with only hypothesis/no usable anchor => existing numeric Abstain path;
-- private_data_unauthorized => existing privacy Abstain path;
-- unsupported inference/no mechanism => existing mechanism Abstain path.
+Add an explicit TEST/INTEGRATION-ONLY environment switch, name may be:
+KC_EVIDENCE_INTEGRATION_FIXTURE=1
 
-Do not silently treat “a retrieved text chunk with no confidence” as covered factual evidence.
+When unset:
+- production default remains retrieval_unavailable;
+- fixture MUST NOT leak.
 
-## 8. Retrieval support score — obey CG-017
+When explicitly set in integration environment:
+- stdio MCP server may build the labelled synthetic evidence fixture and deterministic/in-memory evidence runtime needed for DSH tests;
+- mark integration_fixture=true in returned bundles;
+- never enable this implicitly.
 
-Do NOT feed:
-- FAISS cosine directly;
-- BM25 score directly;
-- RRF score directly;
-- reranker score directly
-into `AbstainConfig.min_retrieval_support=0.3` as if they shared one calibrated [0,1] scale.
+Prefer a small runtime factory resolver rather than putting fixture-building business logic into app.py.
 
-Phase 4.3 behavior:
-- if an explicit calibrated support value is provided by configuration/consumer, evaluate LOW_RETRIEVAL_SUPPORT;
-- otherwise set `retrieval_support_checked=false` and do not fabricate a support value.
+## 6. Update existing DSH preset persona, not Agent identity
 
-Other Abstain gates remain active.
+Keep preset id:
+knowledge-curator
 
-## 9. H1 exact retrieval-set binding
+Do not create a second preset/Agent.
 
-Implement an EvidenceMetadataPort adapter over the current evidence bundle (optionally delegating document metadata to an existing metadata store).
+The persona may be minimally expanded to say:
+- use retrieve_evidence for structured retrieval;
+- use validate_retrieved_claims to validate claim evidence;
+- do not answer scientific questions from memory;
+- do not generate final orchestrator-facing QA prose.
 
-For H1:
-- ref_id must resolve;
-- locator must exist in the current retrieved evidence set for selected anchors;
-- NOT_CHECKED remains distinct from VERIFIED_ABSENT exactly as frozen in Phase 4.0.2.
+Preserve its §5 curation responsibilities.
 
-A claim cannot cite a valid KB reference that was not in its current retrieved evidence set and still pass the retrieval-set binding check.
+## 7. Mounted DSH tool discovery test
 
-## 10. H2 behavior
+Reuse the proven Phase 3.2.4 pattern:
+- official pinned DSH runtime;
+- launchWebScaffold;
+- existing dsh/knowledge-curator package;
+- ctx.agents.create(... agentPreset=knowledge-curator ...);
+- ctx.agentPresets.mount(agentCtx, 'knowledge-curator');
+- ctx.tools.schemas(handle.agent).
 
-Reuse existing local H2 semantics:
-- KB ref existence;
-- local DOI/title match when citation metadata is available.
+Prove mounted Agent schemas contain:
+- mcp__knowledge_curator__curate_assertion_set;
+- mcp__knowledge_curator__retrieve_evidence;
+- mcp__knowledge_curator__validate_retrieved_claims.
 
-Do NOT add Crossref/web calls in this phase.
+This is different from raw MCP session.list_tools().
 
-If H2 metadata service is unavailable, return an explicit checked/unavailable diagnostic; do not pretend H2 was checked.
+## 8. Mounted DSH live roundtrip
 
-## 11. H3 behavior
+Add a live-model E2E lane analogous to lane324.
 
-Reuse MechanismValidator Port.
+Use the already accepted DSH baseline/pinned runtime.
+If valid DeepSeek credentials/model route are available, actually run it.
 
-When structured assertions corresponding to claims are supplied:
-- run real/injected MechanismValidator;
-- map violations through existing detect_h3.
+Set integration-only env:
+KC_EVIDENCE_INTEGRATION_FIXTURE=1
 
-When no validator/assertion representation is available:
-- return the existing explicit MECHANISM_UNAVAILABLE / not-checked state;
-- do not invent a mechanism pass.
+Prompt the mounted Agent explicitly to call the exact evidence tool.
+Do NOT ask it to independently answer from memory.
 
-## 12. Synthetic/real integration fixture
+Recommended first live turn:
+- call mcp__knowledge_curator__retrieve_evidence for a synthetic fixture query;
+- final response may be a tiny structured summary only.
 
-Reuse the Phase 4.2 fixture for real retrieval, but enrich synthetic FINE evidence used for guard tests with explicit:
-- confidence;
-- quality;
-- evidence_type=literature provenance;
-- locator;
-- optional synthetic access pointer.
+Required evidence:
+- exact tool visible in mounted Agent schema;
+- >=1 matching tool/call;
+- linked tool/result;
+- result parses structurally;
+- evidence chunk identities equal direct EvidenceRetrievalService execution for the same fixture query.
 
-Do not assign synthetic confidence to production data at runtime.
+Then validate claims either:
+A. in a second live turn using mcp__knowledge_curator__validate_retrieved_claims, or
+B. a second E2E test.
 
-Add dedicated guard cases:
-1. HIGH evidence -> FACTUAL_ALLOWED;
-2. MEDIUM single-source -> CAVEATED_ONLY;
-3. HYPOTHESIS critical numeric -> PENDING/Abstain;
-4. unknown anchor_chunk_id -> H1/Abstain;
-5. uncovered subquestion -> Abstain;
-6. disjoint numeric ranges -> CONFLICT_DISCLOSURE_REQUIRED;
-7. fake H3 violation -> H3 finding;
-8. private unauthorized -> Abstain.
+For validate:
+- compare policy / Abstain / unresolved-anchor identities to direct service execution.
+- Do not require prose text equality.
 
-## 13. MCP tools
+## 9. DSH status semantics
 
-Extend the EXISTING `knowledge_curator.mcp_server`.
-Keep current:
-- `curate_assertion_set`;
-- health diagnostic.
+Report separately:
+- raw MCP stdio discovery/roundtrip;
+- mounted DSH Agent tool discovery;
+- mounted DSH live model roundtrip.
 
-Add business tools with clear names, recommended:
-- `retrieve_evidence`;
-- `validate_retrieved_claims`.
+Allowed live status:
+- PASS;
+- NOT_RUN_ENV only if credential/model/runtime prerequisite is absent before the run;
+- FAILED for execution/semantic failure after prerequisites are available.
 
-### retrieve_evidence
-Returns only structured evidence bundle + diagnostics/Abstain state.
-No scientific prose answer.
+Do not label keyless raw MCP testing as "DSH live roundtrip PASS".
 
-### validate_retrieved_claims
-To avoid trusting client-fabricated evidence bundles, it should accept:
-- original query/subqueries;
-- proposed claims with anchor_chunk_ids;
-- optional guard context;
-then RE-RUN deterministic retrieval and validate selections against those fresh results.
+## 10. MCP UTF-8 cleanup
 
-This is intentionally stateless for Phase 4.3.
-Do not add a hidden mutable production session cache merely to connect two tool calls.
+Repair mojibake in knowledge_curator/mcp_server/app.py descriptions/comments:
+- §5.1–§5.3;
+- em dash / punctuation;
+- any other clearly corrupted source strings.
 
-## 14. Production runtime vs integration fixture
+Keep file UTF-8, no BOM if repository convention is no BOM.
 
-The default MCP runtime must NOT secretly use the synthetic fixture.
-
-Production retrieval corpus/index enumeration is still under the L2 boundary (CG-004).
-
-Required behavior:
-- injected/configured retrieval runtime -> tool works;
-- production runtime without retrieval corpus/index configuration -> explicit `retrieval_unavailable/not_configured`, not fake data;
-- integration smoke may explicitly enable a synthetic fixture runtime by test-only configuration/environment and label it integration-only.
-
-## 15. Real Python end-to-end smoke
-
-Add an opt-in smoke using the already-working local real models:
-- BGE-M3;
-- FAISS;
-- Jieba BM25;
-- real coarse->fine;
-- real bge-reranker-v2-m3;
-then pass final retrieved evidence through the evidence bundle + guard service.
-
-Must prove at least:
-- one HIGH claim passes factual policy without Abstain/H1/H2;
-- one invalid/uncovered claim Abstains;
-- one medium claim is caveated;
-- provenance survives retrieval -> rerank -> EvidenceRecord.
-
-Record a result JSON.
-
-## 16. MCP contract tests
-
-Add offline/keyless tests using injected deterministic retrieval ports.
-
-Verify:
-- `retrieve_evidence` JSON shape;
-- canonical evidence provenance;
-- unguardable missing-confidence behavior;
-- exact anchor_chunk_id binding;
-- claim policy results;
-- Abstain coverage results;
-- H1/H2/H3 statuses;
-- default runtime does not expose fixture as production data;
-- invalid input returns MCP ToolError / structured error consistent with existing style.
-
-## 17. DSH integration
-
-Reuse the existing knowledge-curator DSH preset and official MCP client path.
-
-Do not create another agent.
-
-Add DSH/MCP integration coverage proving:
-- new MCP tools are discovered by the existing knowledge-curator Agent runtime;
-- tool call/result envelopes are structurally valid;
-- retrieve_evidence result contains the same key evidence identities as direct service execution;
-- validate_retrieved_claims returns the same deterministic policy/Abstain result as direct service execution.
-
-For live-model smoke, keep the prompt constrained to:
-“retrieve/validate evidence; do not independently answer from memory.”
-
-Do not require prose wording equality; compare structured tool results/identities.
-
-## 18. Tests / regressions
+## 11. Regression
 
 Maintain at least:
-- knowledge_curator >= 269 passed / 0 failed;
-- integration/dsh >= 70 passed / 0 failed.
+- knowledge_curator >= 290 passed / 0 failed;
+- integration/dsh >= 78 passed / 0 failed.
 
-Add Phase 4.3 tests without weakening existing assertions.
+Add tests rather than weakening existing ones.
 
-## 19. Deliverables
+## 12. Deliverables
 
 Create:
-- `results/phase-04-3-executor-report.md`;
-- real evidence-guard smoke JSON;
-- DSH/MCP smoke evidence/log summary as appropriate.
+- results/phase-04-3-1-executor-report.md
+- results/phase-04-3-1-dsh-evidence-smoke.json (or equivalent)
 
 Report:
-- EvidenceRetrievalService: PASS/FAILED;
-- evidence normalization: PASS/FAILED;
-- retrieval-set anchor binding: PASS/FAILED;
-- confidence policy: PASS/FAILED;
-- Abstain coverage: PASS/FAILED;
-- H1/H2/H3 integration: PASS/FAILED/PARTIAL with exact unavailable reason;
-- real retrieval->guard smoke: PASS/FAILED/NOT_RUN_ENV;
-- MCP retrieve_evidence: PASS/FAILED;
-- MCP validate_retrieved_claims: PASS/FAILED;
-- DSH tool discovery/roundtrip: PASS/FAILED/NOT_RUN_ENV;
+- guardability/evidence_type invariant: PASS/FAILED;
+- coverage-anchor consistency: PASS/FAILED;
+- H2 checked semantics: PASS/FAILED;
+- MCP UTF-8 cleanup: PASS/FAILED;
+- raw MCP tools: PASS/FAILED;
+- mounted DSH tool discovery: PASS/FAILED;
+- mounted DSH retrieve_evidence live roundtrip: PASS/NOT_RUN_ENV/FAILED;
+- mounted DSH validate_retrieved_claims live roundtrip: PASS/NOT_RUN_ENV/FAILED;
+- direct-vs-DSH evidence identity match: PASS/NOT_RUN_ENV/FAILED;
+- direct-vs-DSH policy match: PASS/NOT_RUN_ENV/FAILED;
 - exact test counts;
 - public contracts changed: NO;
 - implementation CODE SHA;
 - origin/main SHA;
 - new CONTRACT_GAPS.
 
-## 20. Completion
+## 13. Completion
 
 Update status.json:
-- phase = 4.3
+- phase = 4.3.1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE implementation SHA
-- result_expected = results/phase-04-3-executor-report.md
+- result_expected = results/phase-04-3-1-executor-report.md
 
 Push main and STOP.
-Do not start §7 or a final QA generator.
+Do not start §7 until Planner review.
