@@ -1,7 +1,7 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.1",
+  "phase": "4.1.1",
   "actor": "executor",
   "state": "executor_complete",
   "planner": "ChatGPT",
@@ -12,7 +12,7 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-1-executor-report.md",
+  "result_expected": "results/phase-04-1-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "§5, DSH/MCP integration, and Phase 4.0 evidence guard semantics are frozen",
@@ -23,7 +23,7 @@
     "no §7 implementation",
     "public retrieval/chunk models remain temporary compatibility models"
   ],
-  "latest_commit": "bb7a3cf2f809c4d69988722a8f8d5ee390fab12a",
-  "planner_review": "planner/phase-04-0-2-review.md",
-  "live_smoke": "CHUNKING_RETRIEVAL_CONTRACTS_PASS"
+  "latest_commit": "PENDING",
+  "planner_review": "planner/phase-04-1-review.md",
+  "live_smoke": "CHUNK_RETRIEVAL_CONTRACT_CLOSURE_PASS"
 }
