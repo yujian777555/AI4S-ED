@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.2.1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no final QA generator or new top-level Agent",
     "no §7 implementation"
   ],
-  "latest_commit": "35880748885b62d42f8ee1068728b2f741b6d236",
+  "latest_commit": "PENDING",
   "planner_review": "planner/phase-04-2-review.md",
-  "live_smoke": "PHASE42_ADAPTERS_MOSTLY_PASS_REAL_BACKEND_VALIDATION_PENDING"
+  "live_smoke": "REAL_BACKEND_FAISS_BM25_PASS_BGE_PARTIAL"
 }
