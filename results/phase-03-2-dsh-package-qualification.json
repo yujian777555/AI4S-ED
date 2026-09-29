@@ -1,0 +1,20 @@
+{
+  "upstream_repo": "https://github.com/deepseek-ai/deepseek-harness",
+  "upstream_commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "dsh_version": "0.2.0-rc.1",
+  "node_version": "v24.9.0",
+  "pnpm_version": "11.7.0",
+  "source_build_passed": true,
+  "loader_config_passed": true,
+  "preset_declared": true,
+  "preset_broken": false,
+  "preset_mount_tested": false,
+  "preset_mount_passed": false,
+  "product_bundle_contains_registry": false,
+  "expected_public_mcp_tool": "mcp__knowledge_curator__curate_assertion_set",
+  "errors": [],
+  "warnings": [
+    "persona row present in qualification config",
+    "mcp-client row present in qualification config"
+  ]
+}

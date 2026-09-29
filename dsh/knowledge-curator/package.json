@@ -1,0 +1,26 @@
+{
+  "name": "@ai4s-ed/knowledge-curator-dsh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI4S-ED knowledge_curator DSH Agent Preset bundle (configuration-only)",
+  "license": "UNLICENSED",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent-preset": "*",
+    "@deepseek-ai/dsh-persona": "*",
+    "@deepseek-ai/dsh-mcp-client": "*"
+  }
+}

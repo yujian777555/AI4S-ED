@@ -1,0 +1,51 @@
+# AI4S-ED knowledge-curator Agent Preset
+#
+# Configuration-only product bundle. Declares exactly one Agent Preset.
+# Does NOT own the global agent-preset-registry (system-level; see integration fixture).
+# Python executable comes from env AI4S_KC_PYTHON with safe fallback — never hard-coded.
+
+- insert:
+    - id: preset-knowledge-curator
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: knowledge-curator
+        name: AI4S-ED Knowledge Curator
+        description: >-
+          Evidence completeness, conflict detection, quality scoring and
+          trusted knowledge curation gate for already-extracted scientific
+          assertions (AI4S-ED §5).
+        plugins:
+          - name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: >-
+                You are the AI4S-ED knowledge_curator.
+
+                Your role is to normalize and review already-extracted
+                scientific knowledge, including evidence completeness,
+                conflict detection and quality/confidence assessment.
+
+                Use the provided knowledge curator tools for deterministic
+                curation decisions.
+
+                Do not act as lit_researcher, orchestrator, proposer,
+                critic, mechanism validator or evaluation scheduler.
+
+                Do not invent scientific facts.
+
+                When asked to curate an AssertionSet, call the curator MCP
+                tool rather than reproducing deterministic curation rules
+                in prose.
+              includeRuntimeContext: false
+
+          - id: mcp-knowledge-curator
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: knowledge_curator
+              transport: stdio
+              command: !!js process.env.AI4S_KC_PYTHON || 'python'
+              args:
+                - -m
+                - knowledge_curator.mcp_server
+              cwd: !!js process.env.AI4S_KC_WORKSPACE || process.cwd()
+              failOnStartupError: true
+              toolCallTimeoutMs: 60000

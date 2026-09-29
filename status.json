@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -24,7 +24,7 @@
     "no DeepSeek Harness source modifications/vendor copy",
     "no secrets committed or logged"
   ],
-  "latest_commit": "47bd16cc467905810246bf8049008d5748f97ecf",
+  "latest_commit": "PENDING_UPDATE",
   "planner_review": "planner/phase-03-1-1-review.md",
-  "live_smoke": "LIVE_STRICT_MCP_SMOKE_PASS_ABC_MATCH"
+  "live_smoke": "SOURCE_BUILD_AND_LOADER_QUALIFIED_PRESET_MOUNT_PENDING"
 }
