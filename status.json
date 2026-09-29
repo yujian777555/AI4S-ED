@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.3",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "do not feed raw heterogeneous retrieval scores into the uncalibrated 0.3 support threshold",
     "no §7 implementation"
   ],
-  "latest_commit": "e98b8d9f6b3935f4f2ea3728548d06870b1540d8",
+  "latest_commit": "3150f33382507d375b149ac6032f18babb1d9f8b",
   "planner_review": "planner/phase-04-2-3-review.md",
-  "live_smoke": "PHASE42_FULL_REAL_RETRIEVAL_PASS_FROZEN_PHASE43_EVIDENCE_GUARD_MCP"
+  "live_smoke": "PHASE43_EVIDENCE_GUARD_MCP_PASS"
 }
