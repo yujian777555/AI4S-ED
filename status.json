@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.0",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.0.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,20 +12,19 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-0-executor-report.md",
+  "result_expected": "results/phase-04-0-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5.1-§5.4 and DSH/MCP Agent integration are frozen",
-    "Phase 4.0 implements only §6 deterministic evidence/anchor/Abstain/H1-H3 foundation",
-    "no full FAISS/BM25/RRF/reranker in Phase 4.0",
-    "no final user-facing answer generator or new top-level Agent",
-    "reuse existing Confidence enum and MechanismValidator Port",
-    "public cross-team schemas remain temporary compatibility models",
-    "harden DSH live regression so B cannot be inferred from A",
-    "no §7 implementation",
-    "no secrets committed or logged"
+    "§5 and DSH/MCP integration are frozen",
+    "Phase 4.0.1 only closes H1 locator reality and H2 local citation metadata checks",
+    "no FAISS/BM25/RRF/reranker in Phase 4.0.1",
+    "no final QA generator or new top-level Agent",
+    "no Crossref/web calls in core",
+    "public evidence/citation models remain temporary compatibility models",
+    "no §6 MCP exposure yet",
+    "no §7 implementation"
   ],
   "latest_commit": "2af6b019d4267c24f4b5813b43cb28587fba63b6",
-  "planner_review": "planner/phase-03-2-4-review.md",
-  "live_smoke": "DSH_0_2_KNOWLEDGE_CURATOR_MCP_ROUNDTRIP_PASS_CG015_CLOSED"
+  "planner_review": "planner/phase-04-0-review.md",
+  "live_smoke": "PHASE40_FOUNDATION_MOSTLY_PASS_H1_H2_LOCAL_VALIDATION_CLOSURE"
 }
