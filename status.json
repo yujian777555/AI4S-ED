@@ -25,7 +25,7 @@
     "no §7 implementation",
     "no secrets committed or logged"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "2af6b019d4267c24f4b5813b43cb28587fba63b6",
   "planner_review": "planner/phase-03-2-4-review.md",
   "live_smoke": "DSH_0_2_KNOWLEDGE_CURATOR_MCP_ROUNDTRIP_PASS_CG015_CLOSED"
 }
