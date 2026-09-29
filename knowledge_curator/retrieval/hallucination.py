@@ -74,15 +74,40 @@ def normalize_title(title: Optional[str]) -> Optional[str]:
     return s or None
 
 
-def detect_h1(claim: Claim, metadata: EvidenceMetadataPort) -> list[HallucinationFinding]:
-    """H1: require valid anchors with real locator validation.
+@dataclass
+class LocatorCheck:
+    """Per-anchor locator validation status (separate from H1 findings)."""
 
-    anchor_exists returns:
-      True  -> verified present
-      False -> verified absent (H1 fabricated locator)
-      None  -> adapter cannot validate (NOT_CHECKED, not H1 pass)
+    ref_id: str
+    locator: str
+    status: LocatorCheckStatus
+
+
+@dataclass
+class H1CheckResult:
+    """H1 check output: findings and locator-check status are separate."""
+
+    findings: list[HallucinationFinding] = field(default_factory=list)
+    locator_checks: list[LocatorCheck] = field(default_factory=list)
+    fully_checked: bool = True
+
+
+def detect_h1_with_status(claim: Claim, metadata: EvidenceMetadataPort) -> H1CheckResult:
+    """H1 check with separate locator validation status.
+
+    Rules:
+      no anchor        -> H1 finding
+      ref_id empty     -> H1 finding
+      ref_id not found -> H1 finding
+      locator empty    -> H1 finding
+      anchor_exists=False -> H1 finding + VERIFIED_ABSENT
+      anchor_exists=True  -> no H1 + VERIFIED_PRESENT
+      anchor_exists=None  -> no H1 + NOT_CHECKED (fully_checked=False)
     """
     findings: list[HallucinationFinding] = []
+    checks: list[LocatorCheck] = []
+    fully_checked = True
+
     if not claim.anchors:
         findings.append(
             HallucinationFinding(
@@ -91,7 +116,7 @@ def detect_h1(claim: Claim, metadata: EvidenceMetadataPort) -> list[Hallucinatio
                 reason="no evidence anchor",
             )
         )
-        return findings
+        return H1CheckResult(findings=findings, locator_checks=checks, fully_checked=False)
 
     for anchor in claim.anchors:
         if not anchor.ref_id:
@@ -122,32 +147,33 @@ def detect_h1(claim: Claim, metadata: EvidenceMetadataPort) -> list[Hallucinatio
                     anchor_ids=[anchor.ref_id],
                 )
             )
+            continue
+
+        check = metadata.anchor_exists(anchor.ref_id, anchor.locator)
+        if check is False:
+            findings.append(
+                HallucinationFinding(
+                    type=HallucinationType.H1,
+                    claim_id=claim.claim_id,
+                    reason=f"locator verified absent: {anchor.locator}",
+                    anchor_ids=[anchor.ref_id],
+                    detail={"locator_status": LocatorCheckStatus.VERIFIED_ABSENT.value},
+                )
+            )
+            checks.append(LocatorCheck(anchor.ref_id, anchor.locator, LocatorCheckStatus.VERIFIED_ABSENT))
+        elif check is True:
+            checks.append(LocatorCheck(anchor.ref_id, anchor.locator, LocatorCheckStatus.VERIFIED_PRESENT))
         else:
-            # Real locator validation
-            check = metadata.anchor_exists(anchor.ref_id, anchor.locator)
-            if check is False:
-                findings.append(
-                    HallucinationFinding(
-                        type=HallucinationType.H1,
-                        claim_id=claim.claim_id,
-                        reason=f"locator verified absent: {anchor.locator}",
-                        anchor_ids=[anchor.ref_id],
-                        detail={"locator_status": LocatorCheckStatus.VERIFIED_ABSENT.value},
-                    )
-                )
-            elif check is None:
-                # Adapter cannot validate — record as NOT_CHECKED, not a pass
-                findings.append(
-                    HallucinationFinding(
-                        type=HallucinationType.H1,
-                        claim_id=claim.claim_id,
-                        reason="locator validation unavailable (NOT_CHECKED)",
-                        anchor_ids=[anchor.ref_id],
-                        detail={"locator_status": LocatorCheckStatus.NOT_CHECKED.value},
-                    )
-                )
-            # check is True -> verified present, no finding
-    return findings
+            # None -> NOT_CHECKED: no H1 finding, but not fully verified
+            checks.append(LocatorCheck(anchor.ref_id, anchor.locator, LocatorCheckStatus.NOT_CHECKED))
+            fully_checked = False
+
+    return H1CheckResult(findings=findings, locator_checks=checks, fully_checked=fully_checked)
+
+
+def detect_h1(claim: Claim, metadata: EvidenceMetadataPort) -> list[HallucinationFinding]:
+    """Compatibility wrapper: return only real H1 findings."""
+    return detect_h1_with_status(claim, metadata).findings
 
 
 def detect_h2(

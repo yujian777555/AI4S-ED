@@ -43,11 +43,12 @@ def test_h1_fabricated_locator_detected():
 
 
 def test_h1_locator_validator_unavailable_not_checked():
+    """Phase 4.0.2: NOT_CHECKED must NOT produce H1 findings."""
     store = InMemoryEvidenceStore()
     store.add_ref("REF-1")  # no locator index
     findings = detect_h1(_claim([_anchor(loc="T12")]), store)
-    assert any("NOT_CHECKED" in f.reason for f in findings)
-    assert any(f.detail.get("locator_status") == LocatorCheckStatus.NOT_CHECKED.value for f in findings)
+    # NOT_CHECKED is tracked separately, not as an H1 finding
+    assert findings == []
 
 
 def test_h1_empty_locator_still_detected():

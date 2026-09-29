@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.0.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no Crossref/web calls in core",
     "no §7 implementation"
   ],
-  "latest_commit": "fdba150afc1fb915aac20920e2d8c8290b05c90a",
+  "latest_commit": "PENDING",
   "planner_review": "planner/phase-04-0-1-review.md",
-  "live_smoke": "PHASE401_PASS_H1_NOT_CHECKED_SEMANTIC_SPLIT_PENDING"
+  "live_smoke": "H1_STATUS_SEPARATION_PASS"
 }
