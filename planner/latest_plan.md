@@ -1,4 +1,4 @@
-# Phase 4.2.3 Plan — Full Real Coarse→Fine + Reranker Smoke Closure
+# Phase 4.3 Plan — Real Retrieval → Evidence Bundle → Guard → MCP/DSH
 
 Planner: ChatGPT
 Executor: MiMo
@@ -6,188 +6,337 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close only the two remaining full-stack validation gaps:
-- real coarse->fine retrieval;
-- real bge-reranker-v2-m3 execution.
+Compose the already-frozen Phase 4.2 real retrieval stack with the already-frozen Phase 4.0 evidence guard so existing knowledge consumers can obtain:
+- retrieved evidence;
+- complete provenance;
+- confidence/surface policy;
+- Abstain/coverage decisions;
+- H1/H2/H3 validation results.
 
-Do not redesign contracts or add new retrieval features.
+Expose that capability through the EXISTING knowledge-curator MCP/DSH integration.
 
-## 1. Use the full fixture corpus in the real backends
+This phase does NOT generate the final user-facing answer.
 
-real_smoke.py must index BOTH:
-- ChunkLevel.COARSE summary chunks;
-- ChunkLevel.FINE chunks.
+## 1. Non-negotiable boundaries
 
-The same VectorSearchPort / KeywordSearchPort objects may hold both levels because RetrievalQuery.level already filters them correctly.
+Do NOT:
+- create a new top-level Agent;
+- implement orchestrator/proposer/critic/RADE logic;
+- implement a final answer/QA prose generator;
+- implement L2 graph database internals;
+- implement EDDO ontology expansion;
+- change §5 commit/version semantics;
+- change Phase 4.1/4.2 retrieval ranking semantics;
+- change H1/H2/H3 definitions;
+- start §7.
 
-Do not pre-delete coarse chunks before building the real indexes.
+Reuse the existing `knowledge-curator` DSH preset and MCP server.
 
-## 2. Prove real coarse->fine happened
+## 2. Internal evidence retrieval service
 
-For every smoke query record diagnostics:
-- coarse_backend_present;
-- coarse_status;
-- coarse_filter_applied;
-- coarse_channels_attempted;
-- coarse_channels_with_hits;
-- coarse_fused_hit_count;
-- fallback_used.
+Add a runtime-independent service (name may vary), e.g.:
+`EvidenceRetrievalService`.
 
-Full-stack PASS requires, for every labelled fixture query:
-- coarse_backend_present == true;
-- coarse_filter_applied == true;
-- fallback_used == false;
-- coarse_fused_hit_count > 0.
+Input must support:
+- one query or a list of explicit subqueries;
+- top_k;
+- optional allowed_ref_ids;
+- optional subquestion/coverage keys;
+- optional privacy authorization context.
 
-At least one expected relevant ref must survive the coarse allowed_ref_ids filter and reach fine retrieval.
+For each subquery:
+1. call existing `hybrid_retrieve`;
+2. preserve the exact RankedHit and RetrievalDiagnostics;
+3. normalize guardable hits into evidence records;
+4. never re-rank outside the frozen retrieval pipeline.
 
-## 3. Run real reranker
+## 3. Evidence bundle model
 
-Provide real local weights through:
-KC_BGE_RERANKER_MODEL=<path>
+Add INTERNAL / temporary compatibility models only.
 
-Recommended portable local location:
-D:\models\bge-reranker-v2-m3
+Recommended bundle information:
+- bundle_id/digest for audit only;
+- original query/subqueries;
+- raw ranked hits;
+- normalized evidence records;
+- unguardable hit diagnostics;
+- coverage status per subquery;
+- retrieval diagnostics;
+- trace/provenance information;
+- query-level Abstain result.
 
-Source code must NOT require that exact path; env override/default model id remains the contract.
+Do not claim this is the frozen cross-team schema.
 
-If weights are not local but network/model registry access is available, official model id BAAI/bge-reranker-v2-m3 is acceptable.
+## 4. Evidence normalization must fail closed
 
-The smoke must actually call BgeReranker.rerank on a NON-EMPTY hit list.
+For a retrieved fine hit, build an EvidenceRecord/anchor only when required guard metadata is available.
 
-## 4. Reranker evidence
+At minimum preserve:
+- chunk_id;
+- ref_id;
+- locator/page/object id;
+- confidence;
+- quality;
+- access pointer/link when present;
+- sentence/cell pointer when present;
+- chunk type;
+- original provenance;
+- retrieval channels/rank/scores.
 
-Record:
-- reranker_used = true;
-- reranker_model_path/id;
-- number of candidate pairs scored;
-- score count;
-- finite-score check;
-- pre-rerank top-k;
-- post-rerank top-k.
+Rules:
+- NEVER invent confidence.
+- Missing confidence => hit may remain visible as retrieval context, but it is NOT allowed to authorize a factual claim.
+- Missing/empty locator => not guardable as a claim anchor.
+- Never infer EvidenceType.GRAPH merely because RetrievalChannel.GRAPH was used.
+- Use explicit chunk provenance evidence_type where supplied.
+- A configured literature-corpus default may map vector/keyword literature chunks to EvidenceType.LITERATURE.
+- Graph/simulation/experiment evidence requires explicit provenance type from its adapter.
 
-If useful, add an internal diagnostic field for rerank scores; do not change public contracts.
+## 5. Claim anchors must be selected by chunk identity
 
-Full-stack PASS requires all reranker scores finite and count matching candidate count.
+Do not let a client fabricate:
+`ref_id + locator + confidence`
+and call it an anchor.
 
-## 5. Tighten reranker adapter if needed
+Internal claim-validation input should select retrieved evidence by:
+- `anchor_chunk_ids` (recommended), or an equivalent stable retrieval-hit id.
 
-Make BgeReranker robust to actual FlagEmbedding 1.4.2 compute_score return shapes:
-- scalar for one pair;
-- list/tuple/ndarray-like for multiple pairs.
+The service then constructs EvidenceAnchor values FROM the retrieved chunks.
 
-Normalize to a flat list[float].
-Reject non-finite values.
-Preserve:
-- chunk/provenance;
-- rrf_score;
-- channels;
-- final rank.
+Unknown/not-retrieved chunk id:
+- no valid anchor;
+- H1/Abstain path must fail closed.
 
-Add unit tests with mocked scalar/list/ndarray-like outputs if practical.
+This is how the system enforces “LLM only answers from the retrieved evidence set”.
 
-## 6. Smoke status semantics
+## 6. Deterministic claim guard
 
-Full-stack smoke terminal status remains:
-- PASS
-- NOT_RUN_ENV
-- FAILED
+Add a thin orchestration service over EXISTING:
+- `classify_claim_policy`;
+- `evaluate_abstain`;
+- `detect_h1_with_status`;
+- `detect_h2`;
+- `detect_h3`.
 
-PASS only when:
-- real BGE-M3 used;
-- real FAISS used;
-- real Jieba BM25 used;
-- real coarse filter applied;
-- no coarse fallback;
-- real bge-reranker-v2-m3 used;
-- all labelled queries retrieve at least one expected evidence in final top-k;
-- no invalid/non-finite score.
+For each proposed Claim return structured:
+- resolved anchors;
+- unresolved anchor selections;
+- ClaimPolicy;
+- AbstainDecision;
+- H1 findings + locator status;
+- H2 findings / checked status;
+- H3Result;
+- numeric-conflict disclosure requirement where source ranges are provided.
 
-If reranker weights are unavailable BEFORE reranker load begins:
-- full-stack status = NOT_RUN_ENV;
-- you may separately record degraded_without_reranker = PASS for diagnostics.
+No prose answer generation.
 
-Do not label degraded execution as full-stack PASS.
+## 7. Coverage / Abstain semantics
 
-## 7. Metrics
+For multi-subquery requests:
+- each required subquery is covered only when it has >=1 guardable evidence record;
+- uncovered required subquery => SUBQUESTION_NOT_COVERED;
+- zero guardable evidence => Abstain;
+- critical numeric with only hypothesis/no usable anchor => existing numeric Abstain path;
+- private_data_unauthorized => existing privacy Abstain path;
+- unsupported inference/no mechanism => existing mechanism Abstain path.
 
-Recompute on the COMPLETE pipeline:
-- Recall@1;
-- Recall@3;
-- MRR;
-- per-query expected refs/chunks;
-- coarse candidate refs;
-- pre-rerank final-fusion refs;
-- post-rerank refs.
+Do not silently treat “a retrieved text chunk with no confidence” as covered factual evidence.
 
-Do not require metrics to remain 1.0; report honestly.
-The minimum acceptance rule remains: every labelled query has at least one expected evidence in final configured top-k.
+## 8. Retrieval support score — obey CG-017
 
-## 8. Coarse fixture quality
+Do NOT feed:
+- FAISS cosine directly;
+- BM25 score directly;
+- RRF score directly;
+- reranker score directly
+into `AbstainConfig.min_retrieval_support=0.3` as if they shared one calibrated [0,1] scale.
 
-If real BGE/BM25 coarse retrieval cannot find the intended ref because summaries are too weak, improve ONLY the synthetic fixture summaries so they faithfully summarize their fine chunks.
+Phase 4.3 behavior:
+- if an explicit calibrated support value is provided by configuration/consumer, evaluate LOW_RETRIEVAL_SUPPORT;
+- otherwise set `retrieval_support_checked=false` and do not fabricate a support value.
 
-Do not special-case queries or inject expected ref IDs into search logic.
+Other Abstain gates remain active.
 
-## 9. Compatibility shim
+## 9. H1 exact retrieval-set binding
 
-Keep flag_compat isolated and documented.
-Do not broaden monkey patches beyond what is needed for the tested FlagEmbedding/transformers versions.
+Implement an EvidenceMetadataPort adapter over the current evidence bundle (optionally delegating document metadata to an existing metadata store).
 
-If a simpler version-compatible configuration eliminates the shim, that is preferable, but do not risk destabilizing the already-working BGE-M3 smoke merely for cleanup.
+For H1:
+- ref_id must resolve;
+- locator must exist in the current retrieved evidence set for selected anchors;
+- NOT_CHECKED remains distinct from VERIFIED_ABSENT exactly as frozen in Phase 4.0.2.
 
-## 10. status.json encoding
+A claim cannot cite a valid KB reference that was not in its current retrieved evidence set and still pass the retrieval-set binding check.
 
-Repair status.json as valid UTF-8 without BOM/mojibake.
-Restore exact authoritative document names:
-- docs/01-总体架构与数据流设计.md
-- docs/03-文献自动调研与知识入库流水线.md
+## 10. H2 behavior
 
-Do not leave garbled Chinese paths/constraints.
+Reuse existing local H2 semantics:
+- KB ref existence;
+- local DOI/title match when citation metadata is available.
 
-## 11. Tests
+Do NOT add Crossref/web calls in this phase.
 
-Maintain:
-- integration/dsh >= 70 passed / 0 failed;
-- knowledge_curator current baseline >= 255 passed / 0 failed.
+If H2 metadata service is unavailable, return an explicit checked/unavailable diagnostic; do not pretend H2 was checked.
 
-Add/adjust tests for:
-- real_smoke indexes coarse + fine, not fine-only;
-- full PASS requires coarse_filter_applied;
-- full PASS requires reranker_used;
-- degraded no-reranker is not full PASS;
-- reranker score normalization/finite validation;
-- provenance survives real rerank.
+## 11. H3 behavior
 
-## 12. Deliverables
+Reuse MechanismValidator Port.
+
+When structured assertions corresponding to claims are supplied:
+- run real/injected MechanismValidator;
+- map violations through existing detect_h3.
+
+When no validator/assertion representation is available:
+- return the existing explicit MECHANISM_UNAVAILABLE / not-checked state;
+- do not invent a mechanism pass.
+
+## 12. Synthetic/real integration fixture
+
+Reuse the Phase 4.2 fixture for real retrieval, but enrich synthetic FINE evidence used for guard tests with explicit:
+- confidence;
+- quality;
+- evidence_type=literature provenance;
+- locator;
+- optional synthetic access pointer.
+
+Do not assign synthetic confidence to production data at runtime.
+
+Add dedicated guard cases:
+1. HIGH evidence -> FACTUAL_ALLOWED;
+2. MEDIUM single-source -> CAVEATED_ONLY;
+3. HYPOTHESIS critical numeric -> PENDING/Abstain;
+4. unknown anchor_chunk_id -> H1/Abstain;
+5. uncovered subquestion -> Abstain;
+6. disjoint numeric ranges -> CONFLICT_DISCLOSURE_REQUIRED;
+7. fake H3 violation -> H3 finding;
+8. private unauthorized -> Abstain.
+
+## 13. MCP tools
+
+Extend the EXISTING `knowledge_curator.mcp_server`.
+Keep current:
+- `curate_assertion_set`;
+- health diagnostic.
+
+Add business tools with clear names, recommended:
+- `retrieve_evidence`;
+- `validate_retrieved_claims`.
+
+### retrieve_evidence
+Returns only structured evidence bundle + diagnostics/Abstain state.
+No scientific prose answer.
+
+### validate_retrieved_claims
+To avoid trusting client-fabricated evidence bundles, it should accept:
+- original query/subqueries;
+- proposed claims with anchor_chunk_ids;
+- optional guard context;
+then RE-RUN deterministic retrieval and validate selections against those fresh results.
+
+This is intentionally stateless for Phase 4.3.
+Do not add a hidden mutable production session cache merely to connect two tool calls.
+
+## 14. Production runtime vs integration fixture
+
+The default MCP runtime must NOT secretly use the synthetic fixture.
+
+Production retrieval corpus/index enumeration is still under the L2 boundary (CG-004).
+
+Required behavior:
+- injected/configured retrieval runtime -> tool works;
+- production runtime without retrieval corpus/index configuration -> explicit `retrieval_unavailable/not_configured`, not fake data;
+- integration smoke may explicitly enable a synthetic fixture runtime by test-only configuration/environment and label it integration-only.
+
+## 15. Real Python end-to-end smoke
+
+Add an opt-in smoke using the already-working local real models:
+- BGE-M3;
+- FAISS;
+- Jieba BM25;
+- real coarse->fine;
+- real bge-reranker-v2-m3;
+then pass final retrieved evidence through the evidence bundle + guard service.
+
+Must prove at least:
+- one HIGH claim passes factual policy without Abstain/H1/H2;
+- one invalid/uncovered claim Abstains;
+- one medium claim is caveated;
+- provenance survives retrieval -> rerank -> EvidenceRecord.
+
+Record a result JSON.
+
+## 16. MCP contract tests
+
+Add offline/keyless tests using injected deterministic retrieval ports.
+
+Verify:
+- `retrieve_evidence` JSON shape;
+- canonical evidence provenance;
+- unguardable missing-confidence behavior;
+- exact anchor_chunk_id binding;
+- claim policy results;
+- Abstain coverage results;
+- H1/H2/H3 statuses;
+- default runtime does not expose fixture as production data;
+- invalid input returns MCP ToolError / structured error consistent with existing style.
+
+## 17. DSH integration
+
+Reuse the existing knowledge-curator DSH preset and official MCP client path.
+
+Do not create another agent.
+
+Add DSH/MCP integration coverage proving:
+- new MCP tools are discovered by the existing knowledge-curator Agent runtime;
+- tool call/result envelopes are structurally valid;
+- retrieve_evidence result contains the same key evidence identities as direct service execution;
+- validate_retrieved_claims returns the same deterministic policy/Abstain result as direct service execution.
+
+For live-model smoke, keep the prompt constrained to:
+“retrieve/validate evidence; do not independently answer from memory.”
+
+Do not require prose wording equality; compare structured tool results/identities.
+
+## 18. Tests / regressions
+
+Maintain at least:
+- knowledge_curator >= 269 passed / 0 failed;
+- integration/dsh >= 70 passed / 0 failed.
+
+Add Phase 4.3 tests without weakening existing assertions.
+
+## 19. Deliverables
 
 Create:
-results/phase-04-2-3-executor-report.md
-results/phase-04-2-3-real-smoke.json
+- `results/phase-04-3-executor-report.md`;
+- real evidence-guard smoke JSON;
+- DSH/MCP smoke evidence/log summary as appropriate.
 
 Report:
-- implementation CODE SHA;
-- BGE-M3 real load;
-- real coarse->fine status;
-- coarse fallback used? must be NO for PASS;
-- reranker real load/use;
-- candidate score count;
-- device;
-- package/model versions;
-- Recall@1;
-- Recall@3;
-- MRR;
+- EvidenceRetrievalService: PASS/FAILED;
+- evidence normalization: PASS/FAILED;
+- retrieval-set anchor binding: PASS/FAILED;
+- confidence policy: PASS/FAILED;
+- Abstain coverage: PASS/FAILED;
+- H1/H2/H3 integration: PASS/FAILED/PARTIAL with exact unavailable reason;
+- real retrieval->guard smoke: PASS/FAILED/NOT_RUN_ENV;
+- MCP retrieve_evidence: PASS/FAILED;
+- MCP validate_retrieved_claims: PASS/FAILED;
+- DSH tool discovery/roundtrip: PASS/FAILED/NOT_RUN_ENV;
 - exact test counts;
-- public contracts changed? NO.
+- public contracts changed: NO;
+- implementation CODE SHA;
+- origin/main SHA;
+- new CONTRACT_GAPS.
 
-## 13. Completion
+## 20. Completion
 
 Update status.json:
-- phase = 4.2.3
+- phase = 4.3
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE implementation SHA
-- result_expected = results/phase-04-2-3-executor-report.md
+- result_expected = results/phase-04-3-executor-report.md
 
 Push main and STOP.
-Do not start Phase 4.3.
+Do not start §7 or a final QA generator.
