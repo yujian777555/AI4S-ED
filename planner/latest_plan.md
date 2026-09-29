@@ -1,228 +1,193 @@
-# Phase 4.2.2 Plan — Remote-Code Parity + Real Retrieval Smoke Closure
+# Phase 4.2.3 Plan — Full Real Coarse→Fine + Reranker Smoke Closure
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
-## 0. Purpose
+## 0. Goal
 
-Recover the missing Phase 4.2.1 implementation into origin/main and close real BGE-M3/reranker smoke validation.
+Close only the two remaining full-stack validation gaps:
+- real coarse->fine retrieval;
+- real bge-reranker-v2-m3 execution.
 
-GitHub main is the source of truth. A report is not implementation evidence.
+Do not redesign contracts or add new retrieval features.
 
-Do not start Phase 4.3.
+## 1. Use the full fixture corpus in the real backends
 
-## 1. First diagnose the missing code
+real_smoke.py must index BOTH:
+- ChunkLevel.COARSE summary chunks;
+- ChunkLevel.FINE chunks.
 
-Before editing, run:
-- git status
-- git diff
-- git diff --cached
-- git log --all --decorate --oneline -30
-- git reflog -30
+The same VectorSearchPort / KeywordSearchPort objects may hold both levels because RetrievalQuery.level already filters them correctly.
 
-Determine whether the Phase 4.2.1 source changes:
-- exist uncommitted;
-- exist in a local-only commit/branch;
-- were lost and must be reimplemented.
+Do not pre-delete coarse chunks before building the real indexes.
 
-If recoverable, cherry-pick/commit them cleanly.
-If not recoverable, reimplement from planner/phase-04-2-review.md and this plan.
+## 2. Prove real coarse->fine happened
 
-Do not merely update the executor report again.
+For every smoke query record diagnostics:
+- coarse_backend_present;
+- coarse_status;
+- coarse_filter_applied;
+- coarse_channels_attempted;
+- coarse_channels_with_hits;
+- coarse_fused_hit_count;
+- fallback_used.
 
-## 2. Required remote source changes
+Full-stack PASS requires, for every labelled fixture query:
+- coarse_backend_present == true;
+- coarse_filter_applied == true;
+- fallback_used == false;
+- coarse_fused_hit_count > 0.
 
-The implementation commit must contain actual source/test changes where applicable, including at minimum:
-- knowledge_curator/retrieval/embedder.py
-- knowledge_curator/retrieval/faiss_index.py
-- knowledge_curator/retrieval/reranker.py
-- knowledge_curator/tests/test_phase42_retrieval_backends.py
+At least one expected relevant ref must survive the coarse allowed_ref_ids filter and reach fine retrieval.
 
-And for the missing smoke requirement, add:
-- synthetic multilingual retrieval fixture;
-- real smoke module/script;
-- tests for fixture/metrics/preflight.
+## 3. Run real reranker
 
-If a listed production file genuinely needs no change after inspecting FlagEmbedding 1.4.2, explain why in the report; but the claimed fixes must be visible in committed files.
+Provide real local weights through:
+KC_BGE_RERANKER_MODEL=<path>
 
-## 3. FlagEmbedding 1.4.2 real API
+Recommended portable local location:
+D:\models\bge-reranker-v2-m3
 
-Use the ACTUAL installed FlagEmbedding 1.4.2 API.
+Source code must NOT require that exact path; env override/default model id remains the contract.
 
-Inspect constructor/method signatures at runtime and implement the supported device argument form.
+If weights are not local but network/model registry access is available, official model id BAAI/bge-reranker-v2-m3 is acceptable.
 
-Requirements:
-- BGE-M3 model can actually instantiate on CPU;
-- BGE reranker can actually instantiate on CPU;
-- lazy import remains;
-- source defaults remain portable;
-- no hard-coded D:\ local path;
-- allow model id/path/env override.
+The smoke must actually call BgeReranker.rerank on a NON-EMPTY hit list.
 
-Record exact constructor signatures/args in report.
+## 4. Reranker evidence
 
-## 4. Dense embedder real path
+Record:
+- reranker_used = true;
+- reranker_model_path/id;
+- number of candidate pairs scored;
+- score count;
+- finite-score check;
+- pre-rerank top-k;
+- post-rerank top-k.
 
-Prefer installed official query/corpus methods if FlagEmbedding 1.4.2 provides them.
+If useful, add an internal diagnostic field for rerank scores; do not change public contracts.
 
-Expose internally:
-- embed_documents(texts)
-- embed_query(text)
+Full-stack PASS requires all reranker scores finite and count matching candidate count.
 
-A compatibility embed(texts) wrapper may remain.
+## 5. Tighten reranker adapter if needed
 
-Requirements:
-- real returned ndarray float32;
-- finite;
-- normalized when cosine/IP mode expects normalization;
-- measured dimension recorded from actual model, not documentation only.
+Make BgeReranker robust to actual FlagEmbedding 1.4.2 compute_score return shapes:
+- scalar for one pair;
+- list/tuple/ndarray-like for multiple pairs.
 
-## 5. FAISS exact filtered correctness
+Normalize to a flat list[float].
+Reject non-finite values.
+Preserve:
+- chunk/provenance;
+- rrf_score;
+- channels;
+- final rank.
 
-REMOVE correctness dependence on fixed oversampling such as top_k*10/100.
+Add unit tests with mocked scalar/list/ndarray-like outputs if practical.
 
-For IndexFlat baseline:
-- if level/allowed_ref_ids filter is active, evaluate the complete eligible candidate universe, or search all indexed rows then filter;
-- return exact top_k among eligible rows;
-- deterministic equal-score tie break by chunk_id;
-- 1-based ranks after filtering.
+## 6. Smoke status semantics
 
-Mandatory regression:
-- >150 indexed chunks;
-- only allowed ref deliberately outside global first 100;
-- query.top_k=1;
-- allowed ref MUST still be returned.
-
-Also test:
-- level filter;
-- empty eligible set;
-- dimension mismatch;
-- duplicate chunk-id policy.
-
-## 6. Tests must really run
-
-Remove module-level numpy importorskip.
-
-Split dependency gates locally:
-- pure BM25 tests run without numpy/faiss;
-- real Jieba test gated only on jieba;
-- FAISS tests gated only where faiss/numpy required;
-- mocked FlagEmbedding API tests do not need model weights;
-- real-model smoke separately env-gated.
-
-Delete broad `except Exception: pass` acceptance.
-Unexpected exceptions fail.
-
-## 7. Real Jieba BM25
-
-Run real Jieba tests for Chinese and English/mixed synthetic content.
-
-At minimum verify:
-- 双极膜电渗析 / 能耗 retrieval;
-- current efficiency retrieval;
-- zero-overlap returns zero hits;
-- level/ref/top_k semantics.
-
-## 8. Synthetic fixture
-
-Add checked-in synthetic fixture:
-- >= 6 refs;
-- coarse summary each;
-- multiple fine chunks each;
-- Chinese, English, mixed language;
-- >= 6 labelled queries;
-- expected ref_ids and/or chunk_ids.
-
-No copyrighted paper text.
-
-## 9. Real smoke harness
-
-Add executable harness, e.g.:
-`KC_RUN_REAL_RETRIEVAL=1 python -m knowledge_curator.retrieval.real_smoke`
-
-It MUST use existing hybrid_retrieve:
-fixture
--> real BGE-M3
--> real FAISS
-+ real Jieba BM25
--> coarse fusion
--> fine retrieval
--> RRF
--> real BGE reranker
--> final ranked hits
-
-No parallel demo pipeline.
-
-## 10. Smoke terminal status
-
-Only:
+Full-stack smoke terminal status remains:
 - PASS
 - NOT_RUN_ENV
 - FAILED
 
-"PARTIAL" is not terminal.
+PASS only when:
+- real BGE-M3 used;
+- real FAISS used;
+- real Jieba BM25 used;
+- real coarse filter applied;
+- no coarse fallback;
+- real bge-reranker-v2-m3 used;
+- all labelled queries retrieve at least one expected evidence in final top-k;
+- no invalid/non-finite score.
 
-Rules:
-- NOT_RUN_ENV only if preflight cannot access required dependency/model;
-- once model loading/execution starts, an execution error is FAILED;
-- "takes longer" is not an environment absence by itself.
+If reranker weights are unavailable BEFORE reranker load begins:
+- full-stack status = NOT_RUN_ENV;
+- you may separately record degraded_without_reranker = PASS for diagnostics.
 
-If local BGE-M3 path exists and dependencies are installed, run the load to completion for this phase.
+Do not label degraded execution as full-stack PASS.
 
-## 11. Metrics
+## 7. Metrics
 
-For all labelled fixture queries record:
-- Recall@1
-- Recall@3
-- MRR
-- per-query expected and returned top-k refs/chunks.
+Recompute on the COMPLETE pipeline:
+- Recall@1;
+- Recall@3;
+- MRR;
+- per-query expected refs/chunks;
+- coarse candidate refs;
+- pre-rerank final-fusion refs;
+- post-rerank refs.
 
-PASS cannot contain a fixture query with zero relevant evidence anywhere in the configured final top-k.
+Do not require metrics to remain 1.0; report honestly.
+The minimum acceptance rule remains: every labelled query has at least one expected evidence in final configured top-k.
 
-Do not invent a broader project quality threshold.
+## 8. Coarse fixture quality
 
-## 12. Reranker validation
+If real BGE/BM25 coarse retrieval cannot find the intended ref because summaries are too weak, improve ONLY the synthetic fixture summaries so they faithfully summarize their fine chunks.
 
-Must score a non-empty candidate set with real bge-reranker-v2-m3.
+Do not special-case queries or inject expected ref IDs into search logic.
 
-Verify:
-- score count matches candidates;
-- finite scores;
-- final ranking produced;
-- RRF score/channels/chunk provenance preserved.
+## 9. Compatibility shim
 
-## 13. Commit integrity gate
+Keep flag_compat isolated and documented.
+Do not broaden monkey patches beyond what is needed for the tested FlagEmbedding/transformers versions.
 
-Before reporting completion:
-1. git status must show intended state;
-2. git diff origin/main...HEAD must include the actual Phase 4.2.2 implementation;
-3. push main;
-4. fetch/verify origin/main SHA;
-5. verify at least these remote blobs changed relative to Phase 4.2 where fixes apply.
+If a simpler version-compatible configuration eliminates the shim, that is preferable, but do not risk destabilizing the already-working BGE-M3 smoke merely for cleanup.
 
-The "implementation SHA" must be the commit containing CODE, not a later report-only bookkeeping commit.
+## 10. status.json encoding
 
-Report separately:
-- implementation_code_sha
-- origin/main_sha
+Repair status.json as valid UTF-8 without BOM/mojibake.
+Restore exact authoritative document names:
+- docs/01-总体架构与数据流设计.md
+- docs/03-文献自动调研与知识入库流水线.md
 
-## 14. Baselines
+Do not leave garbled Chinese paths/constraints.
+
+## 11. Tests
 
 Maintain:
 - integration/dsh >= 70 passed / 0 failed;
-- knowledge_curator existing baseline;
-- report exact passed/skipped/failed counts.
+- knowledge_curator current baseline >= 255 passed / 0 failed.
 
-## 15. Deliverables
+Add/adjust tests for:
+- real_smoke indexes coarse + fine, not fine-only;
+- full PASS requires coarse_filter_applied;
+- full PASS requires reranker_used;
+- degraded no-reranker is not full PASS;
+- reranker score normalization/finite validation;
+- provenance survives real rerank.
 
-Create results/phase-04-2-2-executor-report.md.
+## 12. Deliverables
+
+Create:
+results/phase-04-2-3-executor-report.md
+results/phase-04-2-3-real-smoke.json
+
+Report:
+- implementation CODE SHA;
+- BGE-M3 real load;
+- real coarse->fine status;
+- coarse fallback used? must be NO for PASS;
+- reranker real load/use;
+- candidate score count;
+- device;
+- package/model versions;
+- Recall@1;
+- Recall@3;
+- MRR;
+- exact test counts;
+- public contracts changed? NO.
+
+## 13. Completion
 
 Update status.json:
-- phase = 4.2.2
+- phase = 4.2.3
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE implementation SHA
-- result_expected = results/phase-04-2-2-executor-report.md
+- result_expected = results/phase-04-2-3-executor-report.md
 
-Push and STOP. Do not start Phase 4.3.
+Push main and STOP.
+Do not start Phase 4.3.
