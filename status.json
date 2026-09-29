@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "3.2.3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "3.2.4",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,21 +12,20 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-03-2-3-executor-report.md",
+  "result_expected": "results/phase-03-2-4-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5.1-§5.4, MCP bridge, DSH 0.2 bundle activation/mount are frozen",
-    "Phase 3.2.3 isolates PreparedCall/session-aware extension behavior without changing product semantics",
+    "§5.1-§5.4, MCP bridge, DSH bundle/preset activation/mount are frozen",
+    "Phase 3.2.4 must use real SessionId, Session.toolHistory, and exported markAgentLoopRequest",
+    "capture the exact AgentLoop llm/stream request and replay it in memory",
     "upstream pin remains 4878cdabd87d4041bdaff61d04c966883b9fd07a",
-    "remove request-body preview logging from diagnostics",
-    "report exact pytest collected/pass/skip counts",
-    "do not modify knowledge_curator core or accepted MCP semantics",
+    "do not modify knowledge_curator core, MCP semantics, or product preset",
+    "no full prompt/request-body/secret logging",
     "keep CG-015 open unless source-pinned 0.2 mounted Agent strict MCP round-trip passes",
     "no §6/§7 implementation",
-    "no DeepSeek Harness source modifications/vendor copy",
-    "no secrets committed or logged"
+    "no DeepSeek Harness source modifications/vendor copy"
   ],
   "latest_commit": "f54394a4b7a864a61fb18ce077aacabcb4ade920",
-  "planner_review": "planner/phase-03-2-2-review.md",
-  "live_smoke": "C0_P1_P2_P3_P4_PASS_MINIMAL_AGENT_FAIL_INVENTORY_NOT_ROOT_CAUSE"
+  "planner_review": "planner/phase-03-2-3-review.md",
+  "live_smoke": "PHASE323_PROBES_PARTIALLY_INVALID_EXACT_LOOP_CAPTURE_REQUIRED"
 }
