@@ -8,8 +8,13 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const AI4S_ED_ROOT = process.env.AI4S_ED_ROOT ?? 'C:/Users/于舰/XiaomiMiMoProjects/AI4S-ED'
-const DSH_SRC = process.env.DSH_SRC ?? 'C:/dsh-src'
+
+function throwIfMissing(name: string): never {
+  throw new Error(`${name} environment variable is required and cannot be defaulted to a machine-local path`)
+}
+
+const AI4S_ED_ROOT = process.env.AI4S_ED_ROOT ?? resolve(HERE, '..', '..', '..', '..')
+const DSH_SRC = process.env.DSH_SRC ?? (throwIfMissing('DSH_SRC'), '')
 const PRODUCT_BUNDLE = join(AI4S_ED_ROOT, 'dsh', 'knowledge-curator')
 const RESULT_PATH = join(AI4S_ED_ROOT, 'results', 'phase-03-2-1-dsh-preset-live.json')
 const EXPECTED_TOOL = 'mcp__knowledge_curator__curate_assertion_set'
@@ -75,7 +80,9 @@ async function runSmoke() {
   if (!result.dsh_source_clean_before) errors.push('DSH source dirty before test')
 
   const { launchWebScaffold } = await import(pathToFileURL(join(DSH_SRC, 'apps', 'web', 'tests', 'scaffold.ts')).href)
-  process.env.AI4S_KC_PYTHON = process.env.AI4S_KC_PYTHON ?? process.execPath
+  if (!process.env.AI4S_KC_PYTHON) {
+    throw new Error('AI4S_KC_PYTHON must be set to a real Python executable (process.execPath is Node and is not a valid fallback)')
+  }
   process.env.AI4S_KC_WORKSPACE = process.env.AI4S_KC_WORKSPACE ?? AI4S_ED_ROOT
   const live = process.env.LIVE === '1' && result.credential_available
 

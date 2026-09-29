@@ -5,13 +5,13 @@
  */
 import { mergeConfig } from 'vitest/config'
 // @ts-expect-error resolving from DSH_SRC node_modules at runtime
-import webConfig from 'C:/dsh-src/vitest.web.config.ts'
+import webConfig from 'vitest/web.config.ts'
 
 export default mergeConfig(webConfig, {
   test: {
     include: [
       ...(webConfig.test?.include ?? []),
-      'C:/Users/于舰/XiaomiMiMoProjects/AI4S-ED/integration/dsh/phase321_preset_smoke.e2e.ts',
+      'integration/dsh/phase321_preset_smoke.e2e.ts',
     ],
     testTimeout: 180_000,
   },

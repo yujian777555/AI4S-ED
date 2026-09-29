@@ -1,6 +1,6 @@
 """Phase 3.2 DSH package qualification via real source-built 0.2 Loader.
 
-Uses the pinned external checkout (C:/dsh-src by default; override DSH_SRC).
+Uses the pinned external checkout; set DSH_SRC to its absolute path.
 Does not run a live LLM turn.
 """
 
@@ -12,7 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-DSH_SRC = Path(os.environ.get("DSH_SRC", r"C:\dsh-src"))
+DSH_SRC = Path(os.environ.get("DSH_SRC", ""))
+if not str(DSH_SRC):
+    raise SystemExit("DSH_SRC environment variable is required")
 PRODUCT_BUNDLE = Path("dsh/knowledge-curator")
 QUALIF_PATCH = Path("integration/dsh/fixtures/knowledge-curator-qualification.patch.yml")
 RESULT_PATH = Path("results/phase-03-2-dsh-package-qualification.json")

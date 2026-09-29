@@ -1,0 +1,36 @@
+{
+  "upstream_repo": "https://github.com/deepseek-ai/deepseek-harness",
+  "upstream_commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "dsh_version": "0.2.0-rc.1",
+  "lane_a_upstream_adapter": "PASS",
+  "lane_a_diagnostic_fallback": "NOT_RUN",
+  "lane_b_scaffold_direct_llm": "PASS",
+  "lane_c_baseline_agent": "FAILED",
+  "lane_d_kc_plain_agent": "NOT_RUN",
+  "lane_e_kc_tool_roundtrip": "NOT_RUN",
+  "blocking_layer": "AgentLoop / request assembly",
+  "lane_notes": {
+    "lane_a": "official runtime.e2e.ts 'streams raw chunks in protocol order' PASS; official tool-call round trip also PASS",
+    "lane_b": "ctx.llm.stream async iterable returns PONG (block-start/text-delta/finish)",
+    "lane_c": "minimal-preset Agent followup -> TRANSPORT 'DeepSeek Messages transport failed'; 5 retries EMPTY_RESPONSE-classified",
+    "lane_c_diagnosis": "agent-scope ctx.llm.stream direct call returns PONG; global fetch spy empty; AgentLoop does not use ctx.llm.stream and its own request path fails",
+    "lane_c2_bare_agent": "empty-preset (0 tools) Agent also FAILED with same TRANSPORT — not tool-schema related"
+  },
+  "exact_tool_call_count": 0,
+  "exact_tool_result_count": 0,
+  "direct_core_summary": {},
+  "tool_result_summary": {},
+  "final_response_summary": {},
+  "abc_match": false,
+  "credential_available": true,
+  "secret_leaked": false,
+  "dsh_source_clean": true,
+  "cg015": "OPEN",
+  "errors": [
+    "Lane C AgentLoop TRANSPORT failure isolates blocker outside knowledge_curator"
+  ],
+  "warnings": [
+    "Lane D/E not run because Lane C failed (per plan ordering)",
+    "DeepSeekHarness 0.1.5rc1 reference path is not used as 0.2 acceptance evidence"
+  ]
+}

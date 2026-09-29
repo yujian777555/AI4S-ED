@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.2.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,7 @@
     "no DeepSeek Harness source modifications/vendor copy",
     "no secrets committed or logged"
   ],
-  "latest_commit": "f29f20e8d5e8452e851782d459056f17b677cdf5",
+  "latest_commit": "PENDING_UPDATE",
   "planner_review": "planner/phase-03-2-1-review.md",
-  "live_smoke": "DSH_0_2_PRESET_MOUNT_PASS_MODEL_TRANSPORT_EMPTY_RESPONSE"
+  "live_smoke": "LANE_A_B_PASS_LANE_C_AGENTLOOP_TRANSPORT_BLOCK"
 }

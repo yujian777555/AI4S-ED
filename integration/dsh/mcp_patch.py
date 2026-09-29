@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,7 @@ def build_patch(
     current environment — never hard-coded in the committed template.
     """
     py = python_executable or sys.executable
-    cwd = workspace or str(Path.cwd())
+    cwd = workspace or os.environ.get('AI4S_KC_WORKSPACE') or str(Path.cwd())
     return [
         {
             "insert": [

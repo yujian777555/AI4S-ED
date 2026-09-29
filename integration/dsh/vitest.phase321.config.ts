@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'node:path'
 
-const DSH_SRC = process.env.DSH_SRC ?? 'C:/dsh-src'
+const DSH_SRC = process.env.DSH_SRC
+if (!DSH_SRC) throw new Error('DSH_SRC env var is required')
 const HERE = resolve(import.meta.dirname ?? '.')
 
 export default defineConfig({

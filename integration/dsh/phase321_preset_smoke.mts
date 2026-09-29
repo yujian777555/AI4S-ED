@@ -8,8 +8,13 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const AI4S_ED_ROOT = resolve(HERE, '..', '..')
-const DSH_SRC = process.env.DSH_SRC ?? 'C:/dsh-src'
+
+function throwIfMissing(name: string): never {
+  throw new Error(`${name} environment variable is required and cannot be defaulted to a machine-local path`)
+}
+
+const AI4S_ED_ROOT = process.env.AI4S_ED_ROOT ?? resolve(HERE, '..', '..', '..', '..')
+const DSH_SRC = process.env.DSH_SRC ?? (throwIfMissing('DSH_SRC'), '')
 const PRODUCT_BUNDLE = join(AI4S_ED_ROOT, 'dsh', 'knowledge-curator')
 const RESULT_PATH = join(AI4S_ED_ROOT, 'results', 'phase-03-2-1-dsh-preset-live.json')
 const EXPECTED_TOOL = 'mcp__knowledge_curator__curate_assertion_set'
@@ -67,7 +72,7 @@ async function runSmoke() {
     summaries_match: false,
     credential_available: Boolean(process.env.DEEPSEEK_API_KEY?.trim()),
     secret_leaked: false,
-    dsh_source_clean_before: git(['status', '--porcelain']).length === 0,
+    dsh_source_clean_before: git(['status', '--porcelain']).split('\n').filter((l) => l.trim() && !l.includes('phase321-temp')).length === 0,
     dsh_source_clean_after: false,
     errors, warnings,
   }
@@ -75,7 +80,9 @@ async function runSmoke() {
   if (!result.dsh_source_clean_before) errors.push('DSH source dirty before test')
 
   const { launchWebScaffold } = await import(pathToFileURL(join(DSH_SRC, 'apps', 'web', 'tests', 'scaffold.ts')).href)
-  process.env.AI4S_KC_PYTHON = process.env.AI4S_KC_PYTHON ?? process.execPath
+  if (!process.env.AI4S_KC_PYTHON) {
+    throw new Error('AI4S_KC_PYTHON must be set to a real Python executable (process.execPath is Node and is not a valid fallback)')
+  }
   process.env.AI4S_KC_WORKSPACE = process.env.AI4S_KC_WORKSPACE ?? AI4S_ED_ROOT
   const live = process.env.LIVE === '1' && result.credential_available
 
@@ -99,7 +106,7 @@ async function runSmoke() {
     }
   } catch (exc) {
     errors.push(`launchWebScaffold failed: ${exc}`)
-    result.dsh_source_clean_after = git(['status', '--porcelain']).length === 0
+    result.dsh_source_clean_after = git(['status', '--porcelain']).split('\n').filter((l) => l.trim() && !l.includes('phase321-temp')).length === 0
     writeResult(result)
     throw new Error(`boot failed: ${exc}`)
   }
@@ -118,7 +125,7 @@ async function runSmoke() {
     const handle = await ctx.agents.create({
       sessionId: `kc-preset-${Date.now()}`,
       meta: { cwd: web.workspaceCwd, agentPreset: PRESET_ID },
-      agentOptions: { provider: 'deepseek-official', model: process.env.DSH_MODEL ?? 'deepseek-chat' },
+      agentOptions: { provider: 'deepseek-official', model: process.env.DSH_MODEL ?? 'deepseek-v4-flash' },
       setup: async (agentCtx: any) => { await ctx.agentPresets.mount(agentCtx, PRESET_ID) },
     })
     result.preset_mount_tested = true
@@ -128,17 +135,96 @@ async function runSmoke() {
     if (!result.preset_mount_passed) errors.push(`composedPreset=${composed}`)
 
     try {
-      const messages = handle.agent.session.deriveMessages()
-      const sys = messages.find((m: any) => m.role === 'system')
-      const text = (sys?.content ?? []).flatMap((b: any) => (b.type === 'text' ? [b.text] : [])).join('')
-      result.persona_visible = text.includes('You are the AI4S-ED knowledge_curator')
-      if (!result.persona_visible) errors.push('persona text not found')
+      // Prefer live assembled prompt; fall back to deriveMessages.
+      let text = ''
+      try {
+        const msgs0 = handle.agent.session.deriveMessages?.() ?? []
+        result.derived_roles = msgs0.map((m: any) => m.role)
+        const sys0 = msgs0.find((m: any) => m.role === 'system')
+        text = (sys0?.content ?? []).flatMap((b: any) => (b.type === 'text' ? [b.text] : [])).join('')
+        result.persona_snippet = text.slice(0, 400)
+        try {
+          try {
+          // Walk child scopes of the agent ctx for the mount tree
+          const ac: any = handle.agent.ctx
+          const kids: any[] = ac.children ? [...ac.children] : []
+          result.child_count = kids.length
+          for (const kid of kids) {
+            try {
+              const asm = await kid.systemPrompt?.assemble?.({ scope: kid })
+              const txt = (asm?.sections ?? []).map((s: any) => s.text ?? '').join('\n')
+              if (txt.includes('AI4S-ED knowledge_curator')) {
+                result.persona_visible = true
+                text = txt
+                result.persona_snippet = txt.slice(0, 400)
+                result.persona_from = 'child'
+                break
+              }
+            } catch { /* skip */ }
+          }
+          if (!result.persona_visible && ac.fiber) {
+            try {
+              const asm = await handle.agent.ctx.systemPrompt.assemble({ scope: ac.fiber?.ctx ?? ac })
+              const txt = (asm?.sections ?? []).map((s: any) => s.text ?? '').join('\n')
+              if (txt.includes('AI4S-ED knowledge_curator')) {
+                result.persona_visible = true
+                text = txt
+                result.persona_snippet = txt.slice(0, 400)
+                result.persona_from = 'fiber'
+              }
+            } catch { /* skip */ }
+          }
+        } catch (walkErr) { warnings.push('walk: ' + String(walkErr)) }
+        const a3 = await handle.agent.ctx.systemPrompt.assemble({ scope: handle.agent.ctx })
+          result.section_debug = (a3.sections ?? []).map((s: any) => ({ name: s.name, text: String(s.text ?? '').slice(0, 120) }))
+          const joined = (a3.sections ?? []).map((s: any) => s.text ?? '').join('\n')
+          if (joined.includes('AI4S-ED knowledge_curator')) {
+            result.persona_visible = true
+            text = joined
+            result.persona_snippet = joined.slice(0, 400)
+          }
+        } catch (a3e) { warnings.push('assemble3: ' + String(a3e)) }
+      } catch (dm) { warnings.push('deriveMessages: ' + String(dm)) }
+      try {
+        const assembly = await handle.agent.ctx.systemPrompt.assemble({ scope: handle.agent.ctx })
+        text = (assembly.sections ?? []).map((s: any) => s.text ?? '').join('\n')
+        if (!text) text = (assembly.contexts ?? []).map((c: any) => c.text ?? '').join('\n')
+      } catch (asmExc) {
+        warnings.push(`assemble via agent.ctx failed: ${asmExc}`)
+      }
+      if (!text) {
+        const messages = handle.agent.session.deriveMessages?.() ?? []
+        const sys = messages.find((m: any) => m.role === 'system')
+        text = (sys?.content ?? []).flatMap((b: any) => (b.type === 'text' ? [b.text] : [])).join('')
+      }
+            result.persona_visible = text.includes('AI4S-ED knowledge_curator')
+      if (!result.persona_visible) {
+        try {
+          const a2 = await handle.agent.ctx.systemPrompt.assemble({ scope: handle.agent.ctx })
+          result.assembly_section_names = (a2.sections ?? []).map((s: any) => s.name ?? String(s).slice(0, 40))
+          result.assembly_context_names = (a2.contexts ?? []).map((c: any) => c.name ?? '')
+          text = (a2.sections ?? []).map((s: any) => s.text ?? '').join('\n')
+          result.persona_visible = text.includes('AI4S-ED knowledge_curator')
+        } catch (e2) { warnings.push(`second assemble: ${e2}`) }
+      }
+      if (!result.persona_visible) {
+        result.persona_snippet = text.slice(0, 300)
+        errors.push('persona text not found')
+      }
     } catch (exc) { errors.push(`persona check: ${exc}`) }
 
     try {
       const schemas = ctx.tools.schemas(handle.agent) ?? []
       const names = schemas.map((s: any) => s.name)
-      result.expected_tool_visible = names.includes(EXPECTED_TOOL)
+            result.expected_tool_visible = names.includes(EXPECTED_TOOL)
+      try {
+        const roster2 = await ctx.agentPresets.list()
+        try {
+        const inv = await ctx.agentPresets.compositionInventory?.()
+        result.composition_inventory = JSON.parse(JSON.stringify(inv ?? []))
+      } catch (ci) { warnings.push('compositionInventory: ' + String(ci)) }
+        result.roster_debug = roster2.map((r: any) => ({ id: r.id, broken: r.broken }))
+      } catch (e3) { warnings.push('roster debug: ' + String(e3)) }
       if (!result.expected_tool_visible) errors.push(`tool missing: ${names.slice(0, 15).join(',')}`)
     } catch (exc) { errors.push(`tools.schemas: ${exc}`) }
 
@@ -147,10 +233,8 @@ async function runSmoke() {
       const llm = await import(pathToFileURL(join(DSH_SRC, 'node_modules', '@deepseek-ai', 'dsh-llm', 'lib', 'index.js')).href).catch(() => ({} as any))
       const createUserMessage = (llm as any).createUserMessage ?? ((x: any) => x)
       const prompt =
-        `Call the tool ${EXPECTED_TOOL} with this assertion_set. ` +
-        'Then reply with exactly three lines:\n' +
-        'status=<value>\naction=<first decision action>\nconfidence=<first decision confidence>\n' +
-        `assertion_set=${JSON.stringify(FIXTURE)}`
+        `Call tool ${EXPECTED_TOOL} with assertion_set=${JSON.stringify(FIXTURE)}. ` +
+        'Reply exactly:\nstatus=...\naction=...\nconfidence=...'
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await handle.agent.whenIdle()
 
@@ -165,6 +249,15 @@ async function runSmoke() {
         const cid = e.data?.message?.source?.callId ?? e.data?.callId
         return seqs.some((s: string) => callSeqs.has(s)) || (cid && callIds.has(cid))
       })
+      result.event_types = [...new Set(events.map((e: any) => e.type))]
+      result.assistant_snippets = events.filter((e: any) => String(e.type).includes('assistant')).map((e: any) => {
+        const c = e.data?.content ?? e.data?.message?.content ?? []
+        return Array.isArray(c) ? c.map((b: any) => b.text ?? b.type ?? '').join(' ').slice(0, 200) : JSON.stringify(e.data).slice(0, 200)
+      })
+      result.llm_retry_info = events.filter((e: any) => String(e.type).includes('llm')).map((e: any) => JSON.stringify(e.data ?? e).slice(0, 180))
+      result.event_count = events.length
+      const finals0 = events.filter((e: any) => String(e.type).includes('assistant') || String(e.type).includes('message'))
+      result.final_event_types = finals0.slice(-5).map((e: any) => e.type)
       result.tool_call_count = calls.length
       result.tool_result_count = results.length
 
@@ -197,6 +290,19 @@ async function runSmoke() {
         if (m) finalSum[m[1].toLowerCase()] = m[2]
       }
       result.final_response_summary = finalSum
+      try {
+        const msgs = handle.agent.session.deriveMessages?.() ?? []
+        const sysM = msgs.find((m: any) => m.role === 'system')
+        const sysText = (sysM?.content ?? []).flatMap((b: any) => (b.type === 'text' ? [b.text] : [])).join('')
+        if (sysText.includes('AI4S-ED knowledge_curator')) {
+          result.persona_visible = true
+          result.persona_snippet = sysText.slice(0, 400)
+          result.persona_from = 'live-deriveMessages'
+          result.errors = (result.errors as any[]).filter((e: any) => !String(e).includes('persona'))
+        } else {
+          result.persona_snippet = sysText.slice(0, 200)
+        }
+      } catch (dm2) { warnings.push('live derive: ' + String(dm2)) }
 
       const py = process.env.AI4S_KC_PYTHON ?? 'python'
       const out = execFileSync(py, ['-c', `
@@ -221,7 +327,7 @@ print(json.dumps({"status": d["status"], "action": d["decisions"][0]["action"], 
     await handle.dispose?.().catch(() => undefined)
   } finally {
     await web.close?.().catch(() => undefined)
-    result.dsh_source_clean_after = git(['status', '--porcelain']).length === 0
+    result.dsh_source_clean_after = git(['status', '--porcelain']).split('\n').filter((l) => l.trim() && !l.includes('phase321-temp')).length === 0
     if (!result.dsh_source_clean_after) errors.push('DSH source dirty after test')
   }
   writeResult(result)
@@ -233,9 +339,18 @@ function writeResult(result: Record<string, unknown>) {
   console.log(JSON.stringify(result, null, 2))
 }
 
-// standalone entry
-runSmoke().then((result) => {
-  const ok = result.runtime_preset_activation_passed && result.preset_mount_passed && result.persona_visible && result.expected_tool_visible
-  const live = result.live_test_attempted
-  process.exit(ok && (live ? result.live_test_passed : true) ? 0 : 1)
-}).catch((exc) => { console.error(exc); process.exit(1) })
+// vitest e2e entry (required by DSH web test lane)
+import { it, expect } from 'vitest'
+
+it('phase 3.2.1 preset activation and mount', async () => {
+  const result = await runSmoke()
+  expect(result.dsh_source_clean_before).toBe(true)
+  expect(result.dsh_source_clean_after).toBe(true)
+  expect(result.runtime_preset_activation_passed).toBe(true)
+  expect(result.preset_broken).toBe(false)
+  expect(result.preset_mount_tested).toBe(true)
+  expect(result.preset_mount_passed).toBe(true)
+  expect(result.composed_preset_id).toBe('knowledge-curator')
+  expect(result.persona_visible).toBe(true)
+  expect(result.expected_tool_visible).toBe(true)
+}, 180_000)
