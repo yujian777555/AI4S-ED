@@ -24,7 +24,7 @@
     "no §7 implementation",
     "heavy retrieval dependencies must remain optional for normal unit tests"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "35880748885b62d42f8ee1068728b2f741b6d236",
   "planner_review": "planner/phase-04-1-3-review.md",
   "live_smoke": "REAL_BACKEND_ADAPTERS_READY_SMOKE_NOT_RUN_ENV"
 }
