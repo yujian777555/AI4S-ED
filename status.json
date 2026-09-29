@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.2.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -21,7 +21,7 @@
     "no Phase 4.3 until real backend code is present on origin/main",
     "no L2 graph DB internals, EDDO production expansion, §6 MCP exposure, final QA generator, or §7"
   ],
-  "latest_commit": "2f0cf04b3b8af79690739e50454c4e5f39ec4921",
+  "latest_commit": "PENDING",
   "planner_review": "planner/phase-04-2-1-review.md",
-  "live_smoke": "PHASE421_NOT_ACCEPTED_REMOTE_CODE_MISMATCH"
+  "live_smoke": "CODE_PARITY_FIX_FAISS_BM25_FIXTURE_SMOKE_HARNESS"
 }

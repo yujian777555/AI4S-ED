@@ -1,6 +1,7 @@
-"""FaissVectorSearch — real FAISS flat exact search (Phase 4.2).
+"""FaissVectorSearch — correctness-first FAISS search (Phase 4.2.2).
 
-Independent from §5 VectorIndex commit semantics. Lazy heavy imports.
+Searches ALL indexed rows then filters eligible ones. No oversampling gamble.
+Independent from §5 VectorIndex commit semantics.
 """
 
 from __future__ import annotations
@@ -17,12 +18,12 @@ from knowledge_curator.schemas.chunk import ChunkLevel, KnowledgeChunk
 
 
 class FaissVectorSearch:
-    """FAISS-backed vector search honouring level/ref/top_k (Phase 4.2)."""
+    """FAISS-backed vector search with exact filtered correctness."""
 
     def __init__(self, embedder: DenseEmbedderPort) -> None:
         self._embedder = embedder
         self._chunks: list[KnowledgeChunk] = []
-        self._vectors: Optional[np.ndarray] = None
+        self._vectors = None
         self._index = None
 
     def add_chunks(self, chunks: list[KnowledgeChunk]) -> None:
@@ -47,14 +48,15 @@ class FaissVectorSearch:
         except ImportError as exc:
             raise RuntimeError(
                 "faiss is required for FaissVectorSearch. "
-                "Install via: pip install -r knowledge_curator/requirements-retrieval.txt"
+                "Install: pip install faiss-cpu"
             ) from exc
         dim = self._embedder.dimension
-        self._index = faiss.IndexFlatIP(dim)  # inner product on normalized = cosine
+        self._index = faiss.IndexFlatIP(dim)
         if self._vectors is not None and len(self._vectors) > 0:
-            self._index.add(self._vectors.astype(np.float32))
+            self._index.add(self._vectors.astype("float32"))
 
     def search(self, query: RetrievalQuery) -> list[RetrievalCandidate]:
+        """Search ALL rows then filter — correctness first (Phase 4.2.2)."""
         import numpy as np
 
         if self._index is None or not self._chunks:
@@ -62,13 +64,14 @@ class FaissVectorSearch:
         qvec = self._embedder.embed([query.text])
         if qvec.shape[1] != self._embedder.dimension:
             raise ValueError("query dimension mismatch")
-        # Search a wider pool then filter level/ref, ensuring enough results
-        pool_size = min(len(self._chunks), max(query.top_k * 10, 100))
-        scores, indices = self._index.search(qvec.astype(np.float32), pool_size)
+
+        n = len(self._chunks)
+        # Search ALL indexed rows — no oversampling gamble
+        scores, indices = self._index.search(qvec.astype("float32"), n)
         results: list[RetrievalCandidate] = []
         rank = 0
         for score, idx in zip(scores[0], indices[0]):
-            if idx < 0 or idx >= len(self._chunks):
+            if idx < 0 or idx >= n:
                 continue
             chunk = self._chunks[idx]
             if chunk.level != query.level:
