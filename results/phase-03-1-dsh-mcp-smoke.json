@@ -13,7 +13,7 @@
   "matching_call_events": [
     {
       "seq": 10,
-      "callId": "call_00_KD6i3fzAJUA2LUE2rsG60162",
+      "callId": "call_00_lfDShVFSKCwP6qSHQGmz3280",
       "name": "mcp__knowledge_curator__curate_assertion_set",
       "turn": 1,
       "step": 1,
@@ -27,7 +27,7 @@
       "sourceEventSeqs": [
         "10"
       ],
-      "callId": "call_00_KD6i3fzAJUA2LUE2rsG60162",
+      "callId": "call_00_lfDShVFSKCwP6qSHQGmz3280",
       "name": "mcp__knowledge_curator__curate_assertion_set",
       "isError": false,
       "tool_result_summary": {

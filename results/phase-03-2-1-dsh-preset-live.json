@@ -1,0 +1,776 @@
+{
+  "upstream_commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "dsh_version": "0.2.0-rc.1",
+  "product_bundle_profile_installed": true,
+  "bundle_install_method": "PROFILE_PACKAGE_INSTALL",
+  "runtime_preset_activation_passed": true,
+  "preset_broken": false,
+  "preset_mount_tested": true,
+  "preset_mount_passed": true,
+  "composed_preset_id": "knowledge-curator",
+  "persona_visible": true,
+  "expected_tool_visible": true,
+  "live_test_attempted": true,
+  "live_test_passed": false,
+  "tool_call_count": 0,
+  "tool_result_count": 0,
+  "direct_core_summary": {
+    "status": "successful",
+    "action": "accept",
+    "confidence": "medium"
+  },
+  "tool_result_summary": {},
+  "final_response_summary": {},
+  "summaries_match": false,
+  "credential_available": true,
+  "secret_leaked": false,
+  "dsh_source_clean_before": true,
+  "dsh_source_clean_after": true,
+  "errors": [],
+  "warnings": [
+    "walk: Error: cannot get property \"children\" without inject"
+  ],
+  "derived_roles": [],
+  "persona_snippet": "You are an AI agent powered by DeepSeek Harness.\n\nYou are the AI4S-ED knowledge_curator. Normalize and review already-extracted scientific knowledge (evidence completeness, conflict detection, quality/confidence). Use the provided knowledge curator tools for deterministic curation decisions. Do not act as lit_researcher, orchestrator, proposer, critic, mechanism validator or evaluation scheduler. ",
+  "section_debug": [
+    {
+      "name": "harness:identity",
+      "text": "You are an AI agent powered by DeepSeek Harness."
+    },
+    {
+      "name": "deployment:persona-prefix",
+      "text": "You are a coding agent powered by the {{model}} model."
+    },
+    {
+      "name": "mcp-resource-servers",
+      "text": ""
+    },
+    {
+      "name": "ui:deliverable-file-references",
+      "text": "Prefer showing the primary results within your final response alongside a brief explanation. Use ![Description](<path/to"
+    },
+    {
+      "name": "harness:source",
+      "text": "The DeepSeek Harness implementation checkout is at C:\\dsh-src\\. The checkout location and current working directory are "
+    },
+    {
+      "name": "app:web-surface",
+      "text": "You are interacting with the user through the DeepSeek Harness Web GUI at http://127.0.0.1:52203. When the user refers t"
+    },
+    {
+      "name": "deployment:persona-suffix",
+      "text": "Your working directory is {{cwd}}."
+    }
+  ],
+  "assembly_section_names": [
+    "harness:identity",
+    "deployment:persona-prefix",
+    "mcp-resource-servers",
+    "ui:deliverable-file-references",
+    "harness:source",
+    "app:web-surface",
+    "deployment:persona-suffix"
+  ],
+  "assembly_context_names": [
+    "sandbox:policy",
+    "approval:policy"
+  ],
+  "composition_inventory": [
+    {
+      "id": "standard",
+      "isDefault": true,
+      "rows": [
+        {
+          "entryId": "persona",
+          "moduleName": "@deepseek-ai/dsh-persona",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "agent-instructions",
+          "moduleName": "@deepseek-ai/dsh-agent-instructions",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-bash",
+          "moduleName": "@deepseek-ai/dsh-tool-bash",
+          "enabled": false,
+          "condition": "process.platform === 'win32'"
+        },
+        {
+          "entryId": "tool-pwsh",
+          "moduleName": "@deepseek-ai/dsh-tool-pwsh",
+          "enabled": true,
+          "condition": "process.platform !== 'win32'",
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs",
+          "moduleName": "@deepseek-ai/dsh-tool-fs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs-search",
+          "moduleName": "@deepseek-ai/dsh-tool-fs-search",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-jobs",
+          "moduleName": "@deepseek-ai/dsh-tool-jobs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "skill-filesystem",
+          "moduleName": "@deepseek-ai/dsh-skill-filesystem",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-skill",
+          "moduleName": "@deepseek-ai/dsh-tool-skill",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-goal",
+          "moduleName": "@deepseek-ai/dsh-command-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-goal",
+          "moduleName": "@deepseek-ai/dsh-tool-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-ask-user",
+          "moduleName": "@deepseek-ai/dsh-tool-ask-user",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-todo",
+          "moduleName": "@deepseek-ai/dsh-tool-todo",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-web",
+          "moduleName": "@deepseek-ai/dsh-tool-web",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "present",
+          "moduleName": "@deepseek-ai/dsh-tool-present",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-plugin-manager",
+          "moduleName": "@deepseek-ai/dsh-plugin-manager/tools",
+          "enabled": false
+        },
+        {
+          "entryId": "plan-mode",
+          "moduleName": "@deepseek-ai/dsh-plan-mode",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "compaction-basic",
+          "moduleName": "@deepseek-ai/dsh-compaction-basic",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-compact",
+          "moduleName": "@deepseek-ai/dsh-command-compact",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-result-pruner",
+          "moduleName": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-control",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-list-agents",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-fork",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-codex",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "tool-subagent-claude-code",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "workflow-ptc",
+          "moduleName": "@deepseek-ai/dsh-workflow-ptc",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-workflow",
+          "moduleName": "@deepseek-ai/dsh-tool-workflow",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-ralph",
+          "moduleName": "@deepseek-ai/dsh-tool-ralph",
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "ptc",
+      "isDefault": false,
+      "rows": [
+        {
+          "entryId": "persona",
+          "moduleName": "@deepseek-ai/dsh-persona",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "agent-instructions",
+          "moduleName": "@deepseek-ai/dsh-agent-instructions",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-bash",
+          "moduleName": "@deepseek-ai/dsh-tool-bash",
+          "enabled": false,
+          "condition": "process.platform === 'win32'"
+        },
+        {
+          "entryId": "tool-pwsh",
+          "moduleName": "@deepseek-ai/dsh-tool-pwsh",
+          "enabled": true,
+          "condition": "process.platform !== 'win32'",
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs",
+          "moduleName": "@deepseek-ai/dsh-tool-fs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs-search",
+          "moduleName": "@deepseek-ai/dsh-tool-fs-search",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-jobs",
+          "moduleName": "@deepseek-ai/dsh-tool-jobs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "skill-filesystem",
+          "moduleName": "@deepseek-ai/dsh-skill-filesystem",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-skill",
+          "moduleName": "@deepseek-ai/dsh-tool-skill",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-goal",
+          "moduleName": "@deepseek-ai/dsh-command-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-goal",
+          "moduleName": "@deepseek-ai/dsh-tool-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-ask-user",
+          "moduleName": "@deepseek-ai/dsh-tool-ask-user",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-todo",
+          "moduleName": "@deepseek-ai/dsh-tool-todo",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-web",
+          "moduleName": "@deepseek-ai/dsh-tool-web",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-presentation",
+          "moduleName": "@deepseek-ai/dsh-agent-tool-presentation",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "present",
+          "moduleName": "@deepseek-ai/dsh-tool-present",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-plugin-manager",
+          "moduleName": "@deepseek-ai/dsh-plugin-manager/tools",
+          "enabled": false
+        },
+        {
+          "entryId": "plan-mode",
+          "moduleName": "@deepseek-ai/dsh-plan-mode",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "compaction-basic",
+          "moduleName": "@deepseek-ai/dsh-compaction-basic",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-compact",
+          "moduleName": "@deepseek-ai/dsh-command-compact",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-result-pruner",
+          "moduleName": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-control",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-list-agents",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-fork",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-codex",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "tool-subagent-claude-code",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "workflow-ptc",
+          "moduleName": "@deepseek-ai/dsh-workflow-ptc",
+          "enabled": false
+        },
+        {
+          "entryId": "tool-workflow",
+          "moduleName": "@deepseek-ai/dsh-tool-workflow",
+          "enabled": false
+        },
+        {
+          "entryId": "tool-ralph",
+          "moduleName": "@deepseek-ai/dsh-tool-ralph",
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "minimal",
+      "isDefault": false,
+      "rows": [
+        {
+          "entryId": "persona",
+          "moduleName": "@deepseek-ai/dsh-persona",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "pty",
+          "moduleName": "@deepseek-ai/dsh-terminal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "terminal-bash",
+          "moduleName": "@deepseek-ai/dsh-terminal-bash",
+          "enabled": false,
+          "condition": "process.platform === 'win32'"
+        },
+        {
+          "entryId": "persistent-bash",
+          "moduleName": "@deepseek-ai/dsh-tool-bash-persistent",
+          "enabled": false,
+          "condition": "process.platform === 'win32'"
+        },
+        {
+          "entryId": "terminal-pwsh",
+          "moduleName": "@deepseek-ai/dsh-terminal-bash",
+          "enabled": true,
+          "condition": "process.platform !== 'win32'",
+          "fiberState": 2
+        },
+        {
+          "entryId": "persistent-pwsh",
+          "moduleName": "@deepseek-ai/dsh-tool-pwsh-persistent",
+          "enabled": true,
+          "condition": "process.platform !== 'win32'",
+          "fiberState": 2
+        }
+      ]
+    },
+    {
+      "id": "cordis",
+      "isDefault": false,
+      "rows": [
+        {
+          "entryId": "persona",
+          "moduleName": "@deepseek-ai/dsh-persona",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "agent-instructions",
+          "moduleName": "@deepseek-ai/dsh-agent-instructions",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-bash",
+          "moduleName": "@deepseek-ai/dsh-tool-bash",
+          "enabled": false,
+          "condition": "process.platform === 'win32'"
+        },
+        {
+          "entryId": "tool-pwsh",
+          "moduleName": "@deepseek-ai/dsh-tool-pwsh",
+          "enabled": true,
+          "condition": "process.platform !== 'win32'",
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs",
+          "moduleName": "@deepseek-ai/dsh-tool-fs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-fs-search",
+          "moduleName": "@deepseek-ai/dsh-tool-fs-search",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-jobs",
+          "moduleName": "@deepseek-ai/dsh-tool-jobs",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-goal",
+          "moduleName": "@deepseek-ai/dsh-command-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-goal",
+          "moduleName": "@deepseek-ai/dsh-tool-goal",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-ask-user",
+          "moduleName": "@deepseek-ai/dsh-tool-ask-user",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-todo",
+          "moduleName": "@deepseek-ai/dsh-tool-todo",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-web",
+          "moduleName": "@deepseek-ai/dsh-tool-web",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-cordis",
+          "moduleName": "@deepseek-ai/dsh-tool-cordis",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "skill-filesystem",
+          "moduleName": "@deepseek-ai/dsh-skill-filesystem",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-skill",
+          "moduleName": "@deepseek-ai/dsh-tool-skill",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "present",
+          "moduleName": "@deepseek-ai/dsh-tool-present",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-plugin-manager",
+          "moduleName": "@deepseek-ai/dsh-plugin-manager/tools",
+          "enabled": true,
+          "condition": "!ctx.get('profileContext')",
+          "fiberState": 2
+        },
+        {
+          "entryId": "plan-mode",
+          "moduleName": "@deepseek-ai/dsh-plan-mode",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "compaction-basic",
+          "moduleName": "@deepseek-ai/dsh-compaction-basic",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "command-compact",
+          "moduleName": "@deepseek-ai/dsh-command-compact",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-result-pruner",
+          "moduleName": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-control",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-list-agents",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-fork",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-subagent-codex",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "tool-subagent-claude-code",
+          "moduleName": "@deepseek-ai/dsh-tool-subagent",
+          "enabled": false
+        },
+        {
+          "entryId": "workflow-ptc",
+          "moduleName": "@deepseek-ai/dsh-workflow-ptc",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-workflow",
+          "moduleName": "@deepseek-ai/dsh-tool-workflow",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "tool-ralph",
+          "moduleName": "@deepseek-ai/dsh-tool-ralph",
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "knowledge-curator",
+      "name": "AI4S-ED Knowledge Curator",
+      "description": "Evidence completeness, conflict detection, quality scoring and trusted knowledge curation gate for already-extracted scientific assertions (AI4S-ED §5).",
+      "isDefault": false,
+      "rows": [
+        {
+          "entryId": "mcp-knowledge-curator",
+          "moduleName": "@deepseek-ai/dsh-mcp-client",
+          "enabled": true,
+          "fiberState": 2
+        },
+        {
+          "entryId": "bbe2279a",
+          "moduleName": "@deepseek-ai/dsh-persona",
+          "enabled": true,
+          "fiberState": 2
+        }
+      ]
+    }
+  ],
+  "roster_debug": [
+    {
+      "id": "standard"
+    },
+    {
+      "id": "ptc"
+    },
+    {
+      "id": "minimal"
+    },
+    {
+      "id": "cordis"
+    },
+    {
+      "id": "knowledge-curator"
+    }
+  ],
+  "event_types": [
+    "permission/preset",
+    "sandbox/mode",
+    "approval/policy",
+    "agent/inbox/spliced",
+    "turn/start",
+    "step/start",
+    "system/message",
+    "user/message",
+    "request/header",
+    "request/context",
+    "session/title",
+    "assistant/attempt",
+    "llm/retry",
+    "llm/retry-started",
+    "step/end",
+    "turn/end"
+  ],
+  "assistant_snippets": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "llm_retry_info": [
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"provider\":\"deepseek-official\",\"mode\":\"normal\",\"policyKey\":\"[\\\"normal\\\",5,[\\\"EMPTY_RESPONSE\\\",\\\"RATE_LIMIT\\\",\\\"S",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"retry\":1}",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"provider\":\"deepseek-official\",\"mode\":\"normal\",\"policyKey\":\"[\\\"normal\\\",5,[\\\"EMPTY_RESPONSE\\\",\\\"RATE_LIMIT\\\",\\\"S",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"retry\":2}",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"provider\":\"deepseek-official\",\"mode\":\"normal\",\"policyKey\":\"[\\\"normal\\\",5,[\\\"EMPTY_RESPONSE\\\",\\\"RATE_LIMIT\\\",\\\"S",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"retry\":3}",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"provider\":\"deepseek-official\",\"mode\":\"normal\",\"policyKey\":\"[\\\"normal\\\",5,[\\\"EMPTY_RESPONSE\\\",\\\"RATE_LIMIT\\\",\\\"S",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"retry\":4}",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"provider\":\"deepseek-official\",\"mode\":\"normal\",\"policyKey\":\"[\\\"normal\\\",5,[\\\"EMPTY_RESPONSE\\\",\\\"RATE_LIMIT\\\",\\\"S",
+    "{\"retryId\":\"2a17db74-d859-47cf-9cda-7d1e845e208a\",\"turn\":1,\"step\":1,\"retry\":5}"
+  ],
+  "event_count": 30,
+  "final_event_types": [
+    "assistant/attempt",
+    "assistant/attempt",
+    "assistant/attempt",
+    "assistant/attempt",
+    "assistant/attempt"
+  ],
+  "persona_from": "live-deriveMessages",
+  "live_dsh_harness_mcp": {
+    "path": "DeepSeekHarness + product MCP patch (sdk-minimal)",
+    "tool_call_count": 1,
+    "tool_result_count": 1,
+    "direct_core_summary": {
+      "status": "successful",
+      "action": "accept",
+      "confidence": "medium"
+    },
+    "tool_result_summary": {
+      "status": "successful",
+      "action": "accept",
+      "confidence": "medium"
+    },
+    "final_response_summary": {
+      "status": "successful",
+      "action": "accept",
+      "confidence": "medium"
+    },
+    "summaries_match": true,
+    "finish_reason": "completed"
+  },
+  "live_scaffold_model_note": "0.2 web scaffold record-mode model calls returned EMPTY_RESPONSE after retries; tool/call evidence taken from DeepSeekHarness+MCP reference path (0.1.5rc1).",
+  "cg015_closeable": false,
+  "cg015_reason": "0.2 scaffold live tool/call not achieved (EMPTY_RESPONSE)"
+}
