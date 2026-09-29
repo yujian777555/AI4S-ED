@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.2.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,19 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-2-executor-report.md",
+  "result_expected": "results/phase-04-2-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
     "§5, DSH/MCP, Phase 4.0 evidence guard, and Phase 4.1 retrieval contracts are frozen",
-    "Phase 4.2 implements real BGE-M3 dense + FAISS, Chinese BM25, and BGE reranker adapters",
-    "do not implement L2 graph database internals or EDDO ontology expansion",
-    "do not change frozen §5 VectorIndex atomic-commit semantics",
-    "no final QA generator or new top-level Agent",
+    "Phase 4.2.1 only validates/fixes real BGE-M3, FAISS, BM25 and reranker adapters",
+    "real smoke must use existing hybrid_retrieve path",
+    "no L2 graph database internals or EDDO production expansion",
     "no §6 MCP exposure yet",
-    "no §7 implementation",
-    "heavy retrieval dependencies must remain optional for normal unit tests"
+    "no final QA generator or new top-level Agent",
+    "no §7 implementation"
   ],
   "latest_commit": "35880748885b62d42f8ee1068728b2f741b6d236",
-  "planner_review": "planner/phase-04-1-3-review.md",
-  "live_smoke": "REAL_BACKEND_ADAPTERS_READY_SMOKE_NOT_RUN_ENV"
+  "planner_review": "planner/phase-04-2-review.md",
+  "live_smoke": "PHASE42_ADAPTERS_MOSTLY_PASS_REAL_BACKEND_VALIDATION_PENDING"
 }
