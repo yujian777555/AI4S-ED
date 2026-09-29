@@ -24,7 +24,7 @@
     "no DeepSeek Harness source modifications/vendor copy",
     "no secrets committed or logged"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "eddd2e2e73f980bd883e38388fa5067f2340e034",
   "planner_review": "planner/phase-03-1-1-review.md",
   "live_smoke": "SOURCE_BUILD_AND_LOADER_QUALIFIED_PRESET_MOUNT_PENDING"
 }

@@ -114,7 +114,7 @@ knowledge_curator: 127 passed / 0 failed
 ## 16. Implementation commit SHA
 
 ```
-implementation commit: <pending>
+implementation commit: eddd2e2e73f980bd883e38388fa5067f2340e034
 ```
 
 ## 17. Qualification artifact
