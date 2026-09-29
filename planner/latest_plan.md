@@ -1,344 +1,351 @@
-# Phase 3.2.1 Plan — Real Preset Mount + Live Knowledge Curator Agent Smoke
+# Phase 3.2.2 Plan — Isolate DSH 0.2 EMPTY_RESPONSE and Close Live Agent Qualification
 
 **Planner:** ChatGPT  
 **Executor:** MiMo  
 **State:** READY_FOR_EXECUTOR
 
-## 0. Goal
+## 0. Scope
 
-Close the only remaining DSH Agent packaging gap.
+This is a targeted runtime-diagnosis and integration-harness cleanup round.
 
-Prove this exact chain on pinned DSH 0.2.0-rc.1:
+Already accepted/frozen:
+- §5.1–§5.4 knowledge_curator core;
+- Python MCP server + strict event evidence;
+- DSH 0.2 config-only product bundle;
+- profile installation;
+- runtime preset activation;
+- preset mount;
+- persona visibility;
+- scoped MCP tool visibility.
 
-```text
-source-built DSH 0.2.0-rc.1
-  -> real preset registry
-  -> profile-installed @ai4s-ed/knowledge-curator-dsh bundle
-  -> knowledge-curator preset activates
-  -> Agent created with setup: agentPresets.mount(...)
-  -> mounted Agent sees persona + curator MCP tool
-  -> real DeepSeek turn
-  -> exact MCP tool/call
-  -> linked tool/result
-  -> deterministic core summary
-  -> final model response
-```
+Do **not** rewrite those layers unless a concrete regression is found.
 
-This is still integration qualification. Do not start §6/§7.
+The only product acceptance blocker is the source-built 0.2 real model turn returning `EMPTY_RESPONSE`.
 
-## 1. Fixed baselines
+## 1. Fixed upstream
 
-AI4S-ED:
-- accepted §5.1–§5.4 core;
-- accepted Python MCP bridge;
-- accepted DSH product bundle structure from Phase 3.2.
-
-DeepSeek Harness:
+Use exactly:
 - repo: `https://github.com/deepseek-ai/deepseek-harness`
 - commit: `4878cdabd87d4041bdaff61d04c966883b9fd07a`
 - version: `0.2.0-rc.1`
-- Node: `^22.19.0 || >=24`
 - pnpm: `11.7.0`
+- Node satisfying upstream engine range.
 
-Use the existing external checkout. Verify its HEAD before testing.
+Do not follow master and do not edit upstream source.
+
+Before and after every live lane:
+```bash
+git -C <DSH_SRC> rev-parse HEAD
+git -C <DSH_SRC> status --porcelain
+```
 
 ## 2. Read first
 
-- `planner/phase-03-2-review.md`
+AI4S-ED:
+- `planner/phase-03-2-1-review.md`
 - `planner/latest_plan.md`
 - `planner/CONTRACT_GAPS.md`
-- `dsh/knowledge-curator/package.json`
-- `dsh/knowledge-curator/cordis.patch.yml`
-- existing Phase 3.1.1 strict MCP event parser/tests.
+- existing Phase 3.2.1 runner/artifact.
 
-Pinned DSH source:
-- `apps/web/tests/scaffold.ts`
-- `apps/web/tests/shipped-composition.e2e.ts`
-- `packages/preset/agent-preset-registry/src/index.ts`
-- `packages/preset/agent-preset-registry/README.md`.
+Pinned DSH:
+- `packages/llm/llm-deepseek/README.md`
+- `packages/llm/llm-deepseek/tests/runtime.e2e.ts`
+- `packages/llm/llm-deepseek/tests/adapter.e2e.ts`
+- `apps/web/tests/scaffold.ts`.
 
-## 3. Fix config-only bundle dependency policy
+Important upstream facts:
+- official Messages root defaults to `https://api.deepseek.com/anthropic`;
+- `deepseek-official` API-key route uses `DEEPSEEK_API_KEY`;
+- upstream real-API tests explicitly exercise `deepseek-v4-flash`;
+- `EMPTY_RESPONSE` means provider stop with no content blocks.
 
-Remove:
+## 3. First fix the committed integration harness
 
-```json
-"@deepseek-ai/dsh-agent-preset": "*",
-"@deepseek-ai/dsh-persona": "*",
-"@deepseek-ai/dsh-mcp-client": "*"
-```
+Remove every executor-specific absolute default from committed integration code.
 
-Prefer no DSH plugin dependencies in the product package, matching the official configuration-only MCP bundle pattern.
+Forbidden committed defaults:
+- `C:/Users/.../AI4S-ED`;
+- `C:/dsh-src`;
+- other user-home-specific paths.
 
-The running pinned DSH installation already owns these packages and runtime resolution.
+Resolve AI4S root from the integration file location where possible.
 
-Add a regression test:
-- no `@deepseek-ai/*` dependency uses `"*"`;
-- preferably product package has no `dependencies` field at all.
+Require `DSH_SRC` as an explicit absolute environment variable if it cannot be derived.
 
-If real profile installation proves dependencies are required, stop and report the exact resolver error before adding anything. Only exact `0.2.0-rc.1` pins would be acceptable, not wildcard versions.
+Require `AI4S_KC_PYTHON` explicitly for Node-driven live MCP tests, or discover a Python executable via a deterministic documented launcher step. Do **not** use Node `process.execPath` as Python.
 
-## 4. Use the real 0.2 Web scaffold as the qualification host
+Fail preflight with a clear message when required configuration is missing.
 
-Do not create a production root-Agent factory.
+Also remove/reduce temporary duplicate phase321 runners or vitest stubs that are no longer needed. Keep one canonical keyless/live runner path.
 
-Create an integration-only source qualification runner under `integration/dsh/`.
+## 4. Lane A — run official upstream 0.2 real-API adapter test unchanged
 
-Recommended approach:
-- execute it with the pinned DSH checkout's `pnpm exec tsx`;
-- dynamically import the pinned source's `apps/web/tests/scaffold.ts` from `DSH_SRC`;
-- do not copy or edit tracked DSH source;
-- DSH checkout must be clean before and after.
+Before any AI4S Agent request, execute an **upstream-owned** real API test from the pinned checkout.
 
-Use the scaffold's **profile package** support to install/enable:
-
-`dsh/knowledge-curator/`
-
-as a local bundle, rather than merely copying its YAML text.
-
-This proves:
-- package manifest;
-- `dsh.bundle.patch`;
-- runtime plugin resolution;
-- preset activation.
-
-If the scaffold's profile package mechanism is unavailable in the exact pinned source, use its documented `extraOverlayPath` fallback and report that fallback explicitly. Profile-package qualification is preferred.
-
-## 5. Keyless runtime activation + mount test
-
-First run without any model call.
-
-Boot the real scaffold with:
-- isolated harness home;
-- real global registry from the shipped Web composition;
-- product bundle enabled;
-- `AI4S_KC_PYTHON` pointing to the active Python executable;
-- `AI4S_KC_WORKSPACE` pointing to the AI4S-ED repo.
-
-Then verify from the live `ctx`:
-
-### Registry/preset activation
-- `ctx.agentPresets.list()` contains exactly the expected `knowledge-curator` row in addition to shipped rows;
-- that row has no `broken` diagnostic;
-- product bundle did not create a second registry;
-- the MCP child actually starts successfully under `failOnStartupError=true`.
-
-### Mount
-Create one test Agent:
-
-```ts
-const handle = await ctx.agents.create({
-  sessionId,
-  meta: { cwd: AI4S_ED_ROOT },
-  agentOptions: {
-    provider: 'deepseek-official',
-    model: modelFromEnv
-  },
-  setup: async agentCtx => {
-    await ctx.agentPresets.mount(agentCtx, 'knowledge-curator')
-  }
-})
-```
-
-No prompt is needed for the keyless mount lane.
-
-Assert:
-- `ctx.agentPresets.composedPreset(handle.agent.ctx) === 'knowledge-curator'`;
-- the mounted Agent's tool schema contains `mcp__knowledge_curator__curate_assertion_set`;
-- tool schema lookup is Agent-scoped, not inferred from global catalog text;
-- assembled system prompt for that Agent contains the knowledge_curator persona boundary;
-- it does not contain §6/§7 claims introduced by this bundle.
-
-Dispose the Agent cleanly.
-
-This is the first authoritative `preset_mount_passed=true` evidence.
-
-## 6. Do not infer activation from dump-config
-
-Update Phase 3.2 qualification semantics:
-- `loader_config_passed` remains config-only;
-- runtime activation fields must come only from the live scaffold/ctx;
-- do not compute `preset_broken` by grepping `--dump-config`.
-
-Keep `--dump-config` as a useful separate config qualification.
-
-## 7. Live preset-aware DeepSeek smoke
-
-Only after keyless activation/mount passes.
-
-Use the same pinned 0.2 scaffold/runtime with the real DeepSeek adapter enabled.
-
-Use:
-- `DEEPSEEK_API_KEY` from environment only;
-- provider `deepseek-official`;
-- model from `DSH_MODEL`;
-- do not hard-code an architecture-level model requirement.
-
-Create a fresh Agent with the same official setup/mount contract.
-
-Prompt it with the same deterministic curation fixture used by Phase 3.1.1 and explicitly require:
-- call `mcp__knowledge_curator__curate_assertion_set`;
-- reply only with:
-  - `status=...`
-  - `action=...`
-  - `confidence=...`
-
-## 8. Strict live evidence
-
-Do not use string scanning.
-
-Read the mounted Agent's actual Session events.
-
-Require exactly matching structural evidence:
+Preferred single-call target:
 
 ```text
-tool/call
-  data.name == mcp__knowledge_curator__curate_assertion_set
+packages/llm/llm-deepseek/tests/runtime.e2e.ts
+"streams raw chunks in protocol order"
 ```
 
-and a real linked:
+Use the pinned repo's own vitest config/command as required.
 
-```text
-tool/result
-```
-
-paired by the official event identity/linkage available in 0.2 (callId and/or source event link as actually emitted).
+The test already uses:
+- `deepseek-official`;
+- `deepseek-v4-flash`;
+- real `DEEPSEEK_API_KEY`;
+- official 0.2 Messages transport.
 
 Record:
-- call seq;
-- callId;
-- exact name;
-- result seq;
-- isError;
-- bounded argument hash/ref id.
+- command;
+- exact test name;
+- PASS/FAIL;
+- normalized failure code only;
+- no API key/header/body secrets.
 
-No full sensitive prompt dump.
+### Decision A
 
-## 9. A == B == C again
+If Lane A fails with `EMPTY_RESPONSE` or another provider error:
+- run **one** additional minimal upstream/direct adapter probe using catalog model `deepseek-flash` with `reasoningEffort=off`, `maxTokens=50`, prompt “Reply with exactly PONG.”
+- do not modify AI4S business code;
+- classify the blocker as 0.2 adapter/provider/account compatibility;
+- keep CG-015 open;
+- stop before burning calls on later lanes unless the alternate catalog probe passes.
 
-For the same fixture:
+If Lane A passes, continue.
 
-A = direct Python `KnowledgeCurator.curate()` summary  
-B = actual linked 0.2 DSH `tool/result` summary  
-C = final model response summary
+## 5. Lane B — same Web scaffold, direct ctx.llm.stream, no Agent/preset
 
-Require:
+Boot the same source-built 0.2 Web scaffold in:
+`DSH_SNAPSHOT=record`.
 
-`A == B == C`
+Install no knowledge-curator requirement for this lane.
 
-Expected current fixture:
+Call the live adapter directly through:
+`ctx.llm.stream(...)`.
 
-```text
-successful / accept / medium
-```
-
-Do not hard-code this as a substitute for computing A.
-
-## 10. Source checkout cleanliness
-
-Before and after Phase 3.2.1 qualification:
-
-```bash
-git -C <DSH_SRC> status --porcelain
-git -C <DSH_SRC> rev-parse HEAD
-```
+Use:
+- provider: `deepseek-official`;
+- model: `deepseek-v4-flash`;
+- reasoning effort: `off`;
+- max tokens: 50;
+- one user message: `Reply with exactly PONG.`;
+- no tools.
 
 Acceptance:
-- HEAD remains exact pinned commit;
-- no tracked or untracked qualification files remain in the DSH checkout.
+- at least one text block;
+- terminal finish kind `stop`;
+- text contains PONG.
 
-All AI4S qualification code stays in AI4S-ED.
+Record a sanitized adapter summary only.
 
-## 11. Product boundary
+### Decision B
 
-Still forbidden:
-- product bundle owning global registry;
-- production root Agent factory;
-- editing/forking DSH source;
-- adding other Agent presets;
-- §6/§7 implementation;
-- changing docs/01 public architecture;
-- adding new scientific business tools.
+If A passes but B fails:
+- the issue belongs to Web scaffold/composition configuration, not knowledge-curator;
+- record provider list/model resolution and sanitized effective route facts;
+- do not alter knowledge-curator preset;
+- keep CG-015 open and stop before later lanes unless the root cause is corrected without upstream source edits.
 
-The qualification scaffold is integration/test-only.
+If B passes, continue.
 
-## 12. Tests
+## 6. Lane C — baseline 0.2 Agent plain turn, non-knowledge-curator preset
 
-Keep:
-- all 60 existing integration tests green;
-- all 127 knowledge_curator tests green.
+Create a real Agent through the same scaffold and mount a shipped lightweight preset such as `minimal` using the official setup contract.
 
-Add keyless tests for:
-- no wildcard DSH dependencies;
-- runtime qualification artifact fields;
-- exact preset mount evidence schema;
-- exact live event evidence parser for 0.2 if its event shape differs from 0.1.5;
-- source checkout cleanliness result.
+Explicit AgentOptions:
+- provider `deepseek-official`;
+- model `deepseek-v4-flash`;
+- reasoningEffort `off`;
+- maxTokens `50`.
 
-Live DeepSeek smoke remains separate from ordinary pytest.
+Prompt:
+`Reply with exactly PONG.`
 
-## 13. Artifact
+Acceptance:
+- Agent turn completes;
+- assistant text contains PONG;
+- no EMPTY_RESPONSE.
+
+This isolates AgentLoop/request assembly from the knowledge-curator preset.
+
+## 7. Lane D — knowledge-curator mounted Agent, plain text only
+
+Mount `knowledge-curator` exactly as already accepted.
+
+Do **not** require a tool call yet.
+
+Use:
+- reasoningEffort `off`;
+- maxTokens `50`;
+- prompt `Reply with exactly PONG.`
+
+Acceptance:
+- composed preset remains `knowledge-curator`;
+- persona remains visible;
+- curator MCP tool remains visible;
+- model returns PONG.
+
+### Decision D
+
+If C passes but D fails:
+- inspect the difference introduced by the product preset (persona/tool schema/MCP child);
+- do not touch core curation logic;
+- record exact Session failure evidence.
+
+If D passes, continue.
+
+## 8. Lane E — final mounted knowledge-curator tool round-trip
+
+Now run the actual acceptance case.
+
+Use the previously validated deterministic AssertionSet fixture.
+
+Create a fresh mounted knowledge-curator Agent with:
+- provider `deepseek-official`;
+- model `deepseek-v4-flash`;
+- explicit bounded maxTokens (recommend 2,000);
+- reasoning effort matching the upstream real tool-call test, preferably `max` unless the resolved model reports a different supported set.
+
+Require model to call:
+`mcp__knowledge_curator__curate_assertion_set`.
+
+Final response format:
+```text
+status=...
+action=...
+confidence=...
+```
+
+## 9. Strict Lane E evidence
+
+Only Session structural events count.
+
+Require:
+- exact `tool/call` with expected public tool name;
+- exactly linked `tool/result` using 0.2 callId/event linkage;
+- tool result not error;
+- final assistant response after tool result.
+
+Compute:
+A = direct Python KnowledgeCurator summary  
+B = actual linked 0.2 tool/result summary  
+C = final 0.2 model response summary
+
+Require:
+`A == B == C`.
+
+Do not import the 0.1.5 reference result as B or C.
+
+## 10. Diagnostics for EMPTY_RESPONSE
+
+For every Agent lane, persist sanitized failure evidence:
+- selected provider/model;
+- resolved model id/capabilities;
+- request/header config from Session events;
+- turn/end reason;
+- assistant/attempt failure code/message;
+- retry count;
+- whether any assistant content blocks were logged.
+
+Do not persist:
+- API key;
+- Authorization/x-api-key;
+- full credentials;
+- full provider raw response.
+
+If needed, a fetch wrapper may record only:
+- URL origin/path;
+- HTTP status;
+- response content-type;
+- sanitized request fields such as model/max_tokens/thinking/tools count.
+
+Never store headers or full request bodies.
+
+## 11. Do not randomly switch architecture models
+
+`deepseek-v4-flash` remains the primary qualification model because pinned upstream real-API tests use it.
+
+Only use `deepseek-flash` as the single diagnostic fallback described in Lane A if the upstream primary test itself fails.
+
+Do not test a list of models until one happens to work.
+
+## 12. Result matrix
 
 Create:
+`results/phase-03-2-2-dsh-live-isolation.json`
 
-`results/phase-03-2-1-dsh-preset-live.json`
+Required:
 
-Required fields:
-- upstream_commit;
-- dsh_version;
-- product_bundle_profile_installed;
-- runtime_preset_activation_passed;
-- preset_broken;
-- preset_mount_tested;
-- preset_mount_passed;
-- composed_preset_id;
-- persona_visible;
-- expected_tool_visible;
-- live_test_attempted;
-- live_test_passed;
-- tool_call_count;
-- tool_result_count;
-- call evidence summary;
-- direct_core_summary;
-- tool_result_summary;
-- final_response_summary;
-- summaries_match;
-- credential_available;
-- secret_leaked;
-- dsh_source_clean_before;
-- dsh_source_clean_after;
-- errors/warnings.
+```json
+{
+  "upstream_commit": "...",
+  "dsh_version": "0.2.0-rc.1",
+  "lane_a_upstream_adapter": {"passed": true, "model": "deepseek-v4-flash"},
+  "lane_b_scaffold_direct_llm": {"passed": true},
+  "lane_c_baseline_agent": {"passed": true, "preset": "minimal"},
+  "lane_d_kc_plain_agent": {"passed": true},
+  "lane_e_kc_tool_roundtrip": {"passed": true},
+  "tool_call_count": 1,
+  "tool_result_count": 1,
+  "direct_core_summary": {},
+  "tool_result_summary": {},
+  "final_response_summary": {},
+  "summaries_match": true,
+  "credential_available": true,
+  "secret_leaked": false,
+  "dsh_source_clean_before": true,
+  "dsh_source_clean_after": true,
+  "blocking_layer": null,
+  "errors": [],
+  "warnings": []
+}
+```
 
-## 14. CG-015 close rule
+When a lane fails, later unrun lanes must be `not_run`, not falsely marked failed/pass.
 
-Close CG-015 only if all are true:
-- DSH 0.2 source build already PASS;
-- product bundle real Loader/profile install PASS;
-- runtime preset activation PASS;
-- preset mount PASS;
-- mounted Agent sees persona and curator MCP tool;
-- real DeepSeek preset-aware tool call PASS;
-- A == B == C;
-- source checkout remains clean;
-- no mixed DSH plugin versions are installed.
+## 13. Tests
 
-If any item fails, keep CG-015 open and report the exact blocker.
+Keep all current:
+- integration/dsh: at least 60 passed;
+- knowledge_curator: 127 passed.
+
+Add keyless tests for:
+- no committed executor-specific absolute paths in integration runners;
+- Node `process.execPath` is never used as Python fallback;
+- lane-result state machine: pass/fail/not_run;
+- strict 0.2 event parsing;
+- secret redaction;
+- CG-015 closeability requires Lane E + A==B==C.
+
+Live lanes are separate from ordinary pytest.
+
+## 14. CG-015
+
+Close CG-015 **only** if Lane A through E all pass and A==B==C on Lane E.
+
+If Lane A/B/C fails:
+- keep CG-015 open;
+- state the exact blocking layer;
+- do not compensate by citing the 0.1.5 reference path.
+
+If A-D pass and E fails:
+- the remaining blocker is specifically knowledge-curator tool round-trip on DSH 0.2.
 
 ## 15. Report
 
 Create:
-
-`results/phase-03-2-1-executor-report.md`
+`results/phase-03-2-2-executor-report.md`
 
 Include:
-- dependency policy fix;
-- profile install path used;
-- live registry activation result;
-- mount result;
-- composed preset id;
-- persona/tool visibility;
-- live DeepSeek result;
-- exact tool call/result evidence;
-- A/B/C summaries;
+- harness portability cleanup;
+- each lane command and PASS/FAIL/NOT_RUN;
+- first failing layer;
+- exact normalized failure;
+- model/provider/config;
+- Lane E strict event evidence if reached;
+- A/B/C if reached;
 - test counts;
 - source cleanliness;
 - CG-015 decision;
@@ -348,10 +355,12 @@ Include:
 ## 16. status.json
 
 On completion:
-- phase = "3.2.1"
+- phase = "3.2.2"
 - actor = "executor"
 - state = "executor_complete"
 - latest_commit = actual implementation SHA
-- result_expected = "results/phase-03-2-1-executor-report.md"
+- result_expected = "results/phase-03-2-2-executor-report.md"
 
-Stop. Do not start §6.
+Stop after Phase 3.2.2.
+
+Do not start §6.
