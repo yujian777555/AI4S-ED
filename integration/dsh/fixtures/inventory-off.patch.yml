@@ -1,0 +1,5 @@
+# TEST ONLY — disable plugin-package-inventory-deepseek (Phase 3.2.3 diagnostic)
+# Do NOT bake into product bundle.
+
+- id: plugin-package-inventory-deepseek
+  disabled: true

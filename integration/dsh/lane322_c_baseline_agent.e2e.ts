@@ -40,8 +40,8 @@ it('lane C: minimal preset Agent returns PONG', async () => {
     const origFetch = globalThis.fetch
     globalThis.fetch = async (input: any, init: any) => {
       const url = typeof input === 'string' ? input : (input?.url ?? '')
-      const bodyPreview = typeof init?.body === 'string' ? init.body.slice(0, 300) : String(init?.body?.slice?.(0, 300) ?? '')
-      fetchLog.push({ url: String(url).slice(0, 120), method: init?.method, bodyLen: typeof init?.body === 'string' ? init.body.length : -1, bodyPreview })
+      
+      fetchLog.push({ url: String(url).slice(0, 120), method: init?.method })
       try {
         const resp = await origFetch(input, init)
         fetchLog.push({ status: resp.status, ok: resp.ok })

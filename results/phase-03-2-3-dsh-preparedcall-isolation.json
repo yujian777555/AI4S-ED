@@ -1,0 +1,40 @@
+{
+  "upstream_commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "dsh_version": "0.2.0-rc.1",
+  "C0_direct_stream": "PASS",
+  "P1_preparedcall_no_session": "PASS",
+  "P2_direct_stream_session": "PASS",
+  "P3_preparedcall_session": "PASS",
+  "P4a_toolHistory": "PASS",
+  "P4b_frozen_shape": "PASS",
+  "P4c_loop_marker": "PASS",
+  "session_log_deepseek_enabled": false,
+  "plugin_package_inventory_toggle": "DISABLED_AND_RETESTED_STILL_FAIL",
+  "minimal_agent_with_inventory_off": "FAILED",
+  "minimal_agent_retries": 5,
+  "llm_stream_observer_facts": {
+    "isAgentLoopRequest": "not directly observable via public ctx.llm.stream spy (Agent uses PreparedCall dispatch)",
+    "sessionId_present": true,
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "tools_count_minimal": 2,
+    "toolHistory_present": "P4a PASS when synthetic",
+    "request_frozen": "P4b PASS when synthetic"
+  },
+  "blocking_subsystem": "DSH 0.2 AgentLoop full request-assembly/dispatch envelope (not isolated to PreparedCall, sessionId, toolHistory, freeze, loop-marker, or plugin-package-inventory-deepseek individually)",
+  "normalized_failure": "TRANSPORT / DeepSeek Messages transport failed / EMPTY_RESPONSE-class retries",
+  "first_pass_fail_transition": "P4c (synthetic loop envelope) PASS -> real minimal Agent FAIL; difference is full AgentLoop prepareRequest+dispatch composition",
+  "exact_tool_call_count": 0,
+  "exact_tool_result_count": 0,
+  "abc_match": false,
+  "credential_available": true,
+  "secret_leaked": false,
+  "dsh_source_clean": true,
+  "cg015": "OPEN",
+  "errors": [],
+  "warnings": [
+    "inventory overlay verified via dump-config disabled:true; still FAIL",
+    "no upstream source modified",
+    "diagnostic workaround not written into product bundle"
+  ]
+}
