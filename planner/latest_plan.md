@@ -1,152 +1,97 @@
-# Phase 4.0.1 Plan — H1 Anchor Reality + H2 Local Citation Metadata Closure
+# Phase 4.0.2 Plan — Separate H1 Violations from Locator Validation Status
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
 ## 0. Scope
-This is a narrow closure round for the Phase 4.0 evidence guard.
+This is the final closure round for the deterministic §6 evidence guard foundation.
 
-Do not add FAISS/BM25/RRF/reranker.
-Do not expose §6 MCP tools.
-Do not start §7.
-Do not modify frozen §5 or DSH/MCP integration.
+Do not add retrieval engines, FAISS, BM25, RRF, reranker, §6 MCP tools, or §7.
 
-## 1. H1 must validate real locator support
-Update EvidenceMetadataPort so locator validation can represent three states:
-- TRUE: the KB can verify this ref_id + locator exists;
-- FALSE: the KB can verify it does not exist;
-- UNKNOWN/UNSUPPORTED: this adapter cannot validate locator existence.
+## 1. Introduce explicit H1 check result
+Create an internal result model, recommended:
 
-Recommended signature:
-anchor_exists(ref_id, locator) -> Optional[bool]
+H1CheckResult:
+- findings: list[HallucinationFinding]
+- locator_checks: list[LocatorCheck]
+- fully_checked: bool
 
-Semantics:
-- True => aligned locator check passes;
-- False => emit H1 finding for unresolvable/misaligned anchor locator;
-- None => do not claim alignment PASS; preserve a structured NOT_CHECKED/validation-unavailable signal.
-
-Do not treat unsupported validation as False unless the adapter explicitly knows the locator is absent.
-
-## 2. Improve InMemoryEvidenceStore
-Allow tests to register known locators per ref_id.
-
-Example internal shape:
-REF-1 -> metadata + {'p.1','T12','Fig.3'}
-
-anchor_exists must:
-- return False for nonexistent ref_id;
-- return True for registered locator;
-- return False for an unregistered locator when locator checking is configured for that ref;
-- return None when the fixture/ref has no locator index capability.
-
-Keep this adapter test-only.
-
-## 3. H1 result must expose unavailable alignment checks
-Do not overload HallucinationFinding to mean both violation and not-checked if avoidable.
-
-Recommended:
-add a small H1CheckResult containing:
-- findings
-- locator_validation_checked: bool or per-anchor status.
-
-If changing detect_h1 return type would cause unnecessary churn, add a parallel detect_h1_with_status and keep detect_h1 compatibility wrapper.
-
-Acceptance behavior:
-- no anchor => H1;
-- missing ref => H1;
-- empty locator => H1;
-- real ref + fabricated known-checkable locator => H1;
-- real ref + valid locator => no H1;
-- real ref + locator validator unavailable => no fabricated PASS claim; status explicitly NOT_CHECKED/PARTIAL.
-
-## 4. Add internal citation metadata input for H2
-Do not mutate the docs/03 anchor tuple semantics.
-
-Add a separate internal temporary model, e.g. CitationMetadata or CitedReference:
+LocatorCheck:
 - ref_id
-- optional cited_title
-- optional cited_doi.
+- locator
+- status: VERIFIED_PRESENT / VERIFIED_ABSENT / NOT_CHECKED
 
-Claim may carry zero or more citation metadata records, or detector may receive them as an explicit argument.
-Prefer the least invasive option.
+These are internal temporary compatibility models.
 
-This is temporary compatibility data only; mark it clearly.
+## 2. Add detect_h1_with_status
+Implement:
+detect_h1_with_status(claim, metadata) -> H1CheckResult
 
-## 5. H2 local metadata checks
-For literature citations:
-- cited ref_id absent in KB => H2;
-- cited DOI present and KB DOI present but normalized values differ => H2;
-- cited title present and KB title present but normalized exact/casefold-whitespace comparison differs materially => H2 in Phase 4.0.1;
-- when cited DOI/title is absent, do not invent it;
-- when KB metadata lacks DOI/title, return only what can be checked.
+Rules:
+- no anchors => actual H1 finding;
+- empty ref_id => actual H1 finding;
+- unknown ref_id => actual H1 finding;
+- empty locator => actual H1 finding;
+- anchor_exists == False => actual H1 finding + VERIFIED_ABSENT;
+- anchor_exists == True => no H1 finding + VERIFIED_PRESENT;
+- anchor_exists == None => NO H1 finding + NOT_CHECKED.
 
-Do not perform fuzzy semantic title matching yet.
-Do not call Crossref or web.
+fully_checked must be false if any required locator validation is NOT_CHECKED.
 
-Normalize DOI conservatively:
-- strip whitespace;
-- casefold;
-- remove optional https://doi.org/ or http://doi.org/ prefix;
-- do not rewrite the DOI path.
+Do not convert NOT_CHECKED into a hallucination finding.
 
-Normalize title conservatively:
-- Unicode-safe casefold;
-- collapse whitespace;
-- trim.
+## 3. Preserve detect_h1 compatibility
+Keep detect_h1(claim, metadata) returning list[HallucinationFinding].
 
-## 6. Avoid duplicate H1/H2 semantics
-Missing literature ref_id may legitimately produce both:
-- H1 because the claim anchor is not resolvable;
-- H2 because the literature citation is fabricated/nonexistent.
+Implement it as a thin compatibility wrapper:
+return detect_h1_with_status(...).findings
 
-That is acceptable because docs/03 defines distinct hallucination classes.
+This avoids unnecessary caller churn.
 
-Do not deduplicate away one class.
+## 4. Metric safety
+Add tests proving:
+- H1 metric/count based on findings does not increase when locator validation is unavailable;
+- fabricated locator still produces one H1 finding;
+- missing ref can still produce H1 independently of locator status.
 
-## 7. Regression tests
-Keep:
-- knowledge_curator baseline 151 tests green;
-- integration/dsh baseline 70 tests green.
+No global metrics engine is needed; just prove the detector output semantics.
 
-Add tests for at least:
-- H1 valid registered locator => no finding;
-- H1 fabricated locator on existing ref => finding;
-- H1 locator validation unavailable => explicit not-checked/partial status;
-- H2 DOI exact normalized match => no finding;
-- H2 DOI mismatch => finding;
-- H2 title normalized match => no finding;
-- H2 title mismatch => finding;
-- H2 absent cited metadata does not fabricate mismatch;
-- non-literature evidence does not trigger literature H2 metadata checks.
+## 5. Preserve H2
+Do not change accepted H2 DOI/title behavior unless required by type imports.
 
-Also keep DSH strict regression hardening unchanged.
+## 6. Tests
+Keep current baselines:
+- integration/dsh: 70 passed / 0 failed;
+- knowledge_curator: 166 passed / 0 failed.
 
-## 8. No public contract change
-Do not edit docs/01 public schemas.
-Do not claim EvidenceMetadataPort/CitationMetadata is a frozen cross-team contract.
+Add deterministic tests for:
+- valid locator -> VERIFIED_PRESENT, no finding;
+- fabricated locator -> VERIFIED_ABSENT + H1 finding;
+- unavailable locator -> NOT_CHECKED + no H1 finding;
+- mixed anchors -> fully_checked false when one locator is unavailable;
+- detect_h1 compatibility wrapper returns only actual findings;
+- H1+H2 missing-reference dual finding remains possible.
 
-If a future public answer/citation schema is needed from another team, note it in existing temporary-compatibility comments rather than inventing a cross-team API now.
-
-## 9. Report
-Create results/phase-04-0-1-executor-report.md.
+## 7. Report
+Create results/phase-04-0-2-executor-report.md.
 
 Report:
-- H1 locator validation behavior;
-- unavailable-validation semantics;
-- H2 local DOI/title behavior;
+- H1 result model;
+- NOT_CHECKED semantics;
+- compatibility wrapper;
 - exact test counts;
 - public contracts changed? NO;
 - CONTRACT_GAPS changes;
 - implementation SHA.
 
-## 10. status.json
+## 8. status.json
 On completion:
-- phase = 4.0.1
+- phase = 4.0.2
 - actor = executor
 - state = executor_complete
 - latest_commit = actual implementation SHA
-- result_expected = results/phase-04-0-1-executor-report.md
+- result_expected = results/phase-04-0-2-executor-report.md
 
 Push main and stop.
 Do not begin Phase 4.1.
