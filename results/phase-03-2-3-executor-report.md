@@ -68,5 +68,5 @@ normalized failure: `TRANSPORT` / `DeepSeek Messages transport failed` / EMPTY_R
 ## 11. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: f54394a4b7a864a61fb18ce077aacabcb4ade920
 ```

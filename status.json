@@ -26,7 +26,7 @@
     "no DeepSeek Harness source modifications/vendor copy",
     "no secrets committed or logged"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "f54394a4b7a864a61fb18ce077aacabcb4ade920",
   "planner_review": "planner/phase-03-2-2-review.md",
   "live_smoke": "C0_P1_P2_P3_P4_PASS_MINIMAL_AGENT_FAIL_INVENTORY_NOT_ROOT_CAUSE"
 }
