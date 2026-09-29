@@ -1,14 +1,57 @@
-"""BgeReranker — real FlagReranker (Phase 4.2.2).
+"""BgeReranker — real FlagReranker (Phase 4.2.2/4.2.3).
 
 Constructor uses devices= (FlagEmbedding 1.4.2 signature).
+compute_score() return shapes are normalized to list[float] with finite checks.
 """
 
 from __future__ import annotations
 
+import math
 import os
-from typing import Optional
+from typing import Any, Optional, Sequence
 
 from knowledge_curator.ports.retrieval import RankedHit, RetrievalQuery
+
+
+def _to_float_list(raw: Any, expected: int) -> list[float]:
+    """Normalize FlagEmbedding compute_score output to a flat list[float].
+
+    Accepts scalar, list, tuple, or ndarray-like for one or many pairs.
+    Raises ValueError on count mismatch or non-finite scores.
+    """
+    # numpy scalar / 0-dim array
+    if hasattr(raw, "item") and getattr(raw, "ndim", 1) == 0:
+        values: list[Any] = [raw.item()]
+    elif hasattr(raw, "tolist"):
+        values = raw.tolist()
+    elif isinstance(raw, (list, tuple)):
+        values = list(raw)
+    else:
+        # scalar int/float or anything convertible
+        values = [raw]
+
+    # Nested sequences (e.g. [[0.1], [0.2]]) -> flatten one level of singletons
+    flat: list[float] = []
+    for v in values:
+        if isinstance(v, (list, tuple)):
+            if len(v) != 1:
+                raise ValueError(f"unexpected nested score shape: {v!r}")
+            v = v[0]
+        elif hasattr(v, "item"):
+            v = v.item()
+        try:
+            f = float(v)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"non-numeric reranker score: {v!r}") from exc
+        if not math.isfinite(f):
+            raise ValueError(f"non-finite reranker score: {f}")
+        flat.append(f)
+
+    if len(flat) != expected:
+        raise ValueError(
+            f"reranker score count {len(flat)} != candidate count {expected}"
+        )
+    return flat
 
 
 class BgeReranker:
@@ -28,6 +71,10 @@ class BgeReranker:
         self._devices = devices
         self._fp16 = fp16
         self._model = None
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     def _ensure_loaded(self):
         if self._model is not None:
@@ -61,11 +108,8 @@ class BgeReranker:
             return []
         self._ensure_loaded()
         pairs = [(query.text, h.chunk.payload) for h in hits]
-        scores = self._model.compute_score(pairs, normalize=True)
-        if not isinstance(scores, list):
-            scores = [scores]
-        if len(scores) != len(hits):
-            raise ValueError(f"reranker score count {len(scores)} != candidate count {len(hits)}")
+        raw = self._model.compute_score(pairs, normalize=True)
+        scores = _to_float_list(raw, expected=len(hits))
         scored = list(zip(hits, scores))
         scored.sort(key=lambda x: (-x[1], x[0].chunk.chunk_id))
         out: list[RankedHit] = []

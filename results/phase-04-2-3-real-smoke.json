@@ -1,0 +1,297 @@
+{
+  "status": "PASS",
+  "full_stack_pass": true,
+  "degraded_without_reranker": null,
+  "embedding_dimension": 1024,
+  "device": "cuda",
+  "flagembedding_version": "1.4.2",
+  "faiss_version": "1.13.0",
+  "numpy_version": "1.26.4",
+  "jieba_version": "0.42.1",
+  "torch_version": "2.5.1+cu121",
+  "m3_model_path": "D:\\models\\bge-m3",
+  "reranker_model_path": "D:\\models\\bge-reranker-v2-m3",
+  "reranker_used": true,
+  "reranker_candidate_pair_count": 5,
+  "reranker_score_count": 5,
+  "reranker_scores_finite": true,
+  "real_bge_m3": true,
+  "real_faiss": true,
+  "real_bm25": true,
+  "real_coarse_filter": true,
+  "coarse_fallback_used": false,
+  "load_seconds": 12.65,
+  "index_counts": {
+    "coarse": 6,
+    "fine": 8,
+    "total": 14
+  },
+  "recall_at_1": 1.0,
+  "recall_at_3": 1.0,
+  "mrr": 1.0,
+  "per_query": [
+    {
+      "query_id": "Q1",
+      "query": "双极膜电渗析 能耗",
+      "expected_ref_ids": [
+        "REF-1"
+      ],
+      "expected_chunk_ids": [
+        "R1-F1",
+        "R1-F2"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-1",
+        "REF-2",
+        "REF-2",
+        "REF-1",
+        "REF-6"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-1",
+        "REF-2",
+        "REF-2",
+        "REF-6",
+        "REF-1"
+      ]
+    },
+    {
+      "query_id": "Q2",
+      "query": "current efficiency electrodialysis",
+      "expected_ref_ids": [
+        "REF-2"
+      ],
+      "expected_chunk_ids": [
+        "R2-F1"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-1",
+        "REF-5"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-1",
+        "REF-5"
+      ]
+    },
+    {
+      "query_id": "Q3",
+      "query": "膜污染 cleaning",
+      "expected_ref_ids": [
+        "REF-3"
+      ],
+      "expected_chunk_ids": [
+        "R3-F1"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-3",
+        "REF-6",
+        "REF-1",
+        "REF-2",
+        "REF-4"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-3",
+        "REF-6",
+        "REF-1",
+        "REF-2",
+        "REF-4"
+      ]
+    },
+    {
+      "query_id": "Q4",
+      "query": "锂离子电池 热管理",
+      "expected_ref_ids": [
+        "REF-4"
+      ],
+      "expected_chunk_ids": [
+        "R4-F1"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-4",
+        "REF-2",
+        "REF-1",
+        "REF-1",
+        "REF-3"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-4",
+        "REF-1",
+        "REF-2",
+        "REF-1",
+        "REF-3"
+      ]
+    },
+    {
+      "query_id": "Q5",
+      "query": "catalyst CO2 reduction ethanol",
+      "expected_ref_ids": [
+        "REF-5"
+      ],
+      "expected_chunk_ids": [
+        "R5-F1"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-5",
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-3"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-5",
+        "REF-2",
+        "REF-1",
+        "REF-2",
+        "REF-3"
+      ]
+    },
+    {
+      "query_id": "Q6",
+      "query": "反渗透 脱盐 reverse osmosis",
+      "expected_ref_ids": [
+        "REF-6"
+      ],
+      "expected_chunk_ids": [
+        "R6-F1"
+      ],
+      "coarse_backend_present": true,
+      "coarse_status": "coarse_backend_ran_with_hits",
+      "coarse_filter_applied": true,
+      "coarse_channels_attempted": [
+        "vector",
+        "keyword"
+      ],
+      "coarse_channels_with_hits": [
+        "vector"
+      ],
+      "coarse_fused_hit_count": 6,
+      "fallback_used": false,
+      "post_rerank_refs": [
+        "REF-6",
+        "REF-1",
+        "REF-2",
+        "REF-3",
+        "REF-2"
+      ],
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "reciprocal_rank": 1.0,
+      "pre_rerank_refs": [
+        "REF-6",
+        "REF-3",
+        "REF-1",
+        "REF-2",
+        "REF-2"
+      ]
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "reranker_sample_scores": [
+    0.999293,
+    0.108189,
+    0.078642,
+    0.007877,
+    0.022074
+  ],
+  "reranker_sample_pre_refs": [
+    "REF-1",
+    "REF-2",
+    "REF-2",
+    "REF-6",
+    "REF-1"
+  ],
+  "reranker_sample_post_refs": [
+    "REF-1",
+    "REF-2",
+    "REF-2",
+    "REF-1",
+    "REF-6"
+  ]
+}
