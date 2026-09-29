@@ -1,203 +1,228 @@
-# Phase 4.2.1 Plan — Real Retrieval Backend Validation & Correctness Closure
+# Phase 4.2.2 Plan — Remote-Code Parity + Real Retrieval Smoke Closure
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
-## 0. Goal
-Turn the Phase 4.2 backend code from 'adapter implementation ready' into an actually validated real retrieval stack.
+## 0. Purpose
 
-Do not redesign the frozen retrieval contracts.
-Do not start §6 MCP, final answer generation, graph DB internals, EDDO expansion, or §7.
+Recover the missing Phase 4.2.1 implementation into origin/main and close real BGE-M3/reranker smoke validation.
 
-## 1. Fix FlagEmbedding construction against the installed official API
-Install/use a real FlagEmbedding version from `requirements-retrieval.txt` in the executor environment.
+GitHub main is the source of truth. A report is not implementation evidence.
 
-For BGE-M3 and BGE reranker:
-- inspect the installed constructor signature/version;
-- use the supported `devices`/device argument form for that version;
-- verify CPU works;
-- optional CUDA may be reported if available;
-- preserve lazy loading.
+Do not start Phase 4.3.
 
-Do not claim compatibility based only on source reading.
+## 1. First diagnose the missing code
 
-Record:
-- FlagEmbedding version;
-- torch version;
-- actual constructor args used;
-- device selected;
-- model path/id.
+Before editing, run:
+- git status
+- git diff
+- git diff --cached
+- git log --all --decorate --oneline -30
+- git reflog -30
 
-## 2. Distinguish query and corpus embedding if supported
-Prefer official BGE-M3 retrieval methods when available:
-- `encode_queries` for query;
-- `encode_corpus` for chunk corpus;
-fall back to documented equivalent only if the installed version does not expose them.
+Determine whether the Phase 4.2.1 source changes:
+- exist uncommitted;
+- exist in a local-only commit/branch;
+- were lost and must be reimplemented.
 
-Update DenseEmbedderPort minimally if needed without changing public contracts, e.g.:
+If recoverable, cherry-pick/commit them cleanly.
+If not recoverable, reimplement from planner/phase-04-2-review.md and this plan.
+
+Do not merely update the executor report again.
+
+## 2. Required remote source changes
+
+The implementation commit must contain actual source/test changes where applicable, including at minimum:
+- knowledge_curator/retrieval/embedder.py
+- knowledge_curator/retrieval/faiss_index.py
+- knowledge_curator/retrieval/reranker.py
+- knowledge_curator/tests/test_phase42_retrieval_backends.py
+
+And for the missing smoke requirement, add:
+- synthetic multilingual retrieval fixture;
+- real smoke module/script;
+- tests for fixture/metrics/preflight.
+
+If a listed production file genuinely needs no change after inspecting FlagEmbedding 1.4.2, explain why in the report; but the claimed fixes must be visible in committed files.
+
+## 3. FlagEmbedding 1.4.2 real API
+
+Use the ACTUAL installed FlagEmbedding 1.4.2 API.
+
+Inspect constructor/method signatures at runtime and implement the supported device argument form.
+
+Requirements:
+- BGE-M3 model can actually instantiate on CPU;
+- BGE reranker can actually instantiate on CPU;
+- lazy import remains;
+- source defaults remain portable;
+- no hard-coded D:\ local path;
+- allow model id/path/env override.
+
+Record exact constructor signatures/args in report.
+
+## 4. Dense embedder real path
+
+Prefer installed official query/corpus methods if FlagEmbedding 1.4.2 provides them.
+
+Expose internally:
 - embed_documents(texts)
 - embed_query(text)
-or keep a compatibility `embed()` wrapper.
 
-Do not add ad-hoc query instructions to BGE-M3.
-
-## 3. Fix FAISS filter correctness
-For the flat exact baseline, filtered queries must be complete.
+A compatibility embed(texts) wrapper may remain.
 
 Requirements:
-- if no level/ref filter: normal top-k exact search is fine;
-- if level or allowed_ref_ids filters reduce the candidate universe, search/score the complete eligible candidate set or search all indexed rows before filtering;
-- never rely on a fixed `top_k*10`/100 pool for correctness;
-- exact deterministic tie-break by score then chunk_id;
-- duplicate chunk_id policy must be explicit (reject, replace, or deterministic rebuild) and tested.
+- real returned ndarray float32;
+- finite;
+- normalized when cosine/IP mode expects normalization;
+- measured dimension recorded from actual model, not documentation only.
 
-Add a regression with >150 chunks where the only allowed ref is intentionally outside the first 100 global neighbors; it still must be returned.
+## 5. FAISS exact filtered correctness
 
-## 4. Make offline tests genuinely execute
-Do not skip the entire Phase 4.2 module just because one optional dependency is absent.
+REMOVE correctness dependence on fixed oversampling such as top_k*10/100.
 
-Split tests by dependency:
-- pure BM25 tests should run without numpy/faiss;
-- embedder model-load tests can monkeypatch/mock FlagEmbedding;
-- FAISS tests use importorskip locally only for tests that need real faiss;
-- real-model tests are separately environment-gated.
+For IndexFlat baseline:
+- if level/allowed_ref_ids filter is active, evaluate the complete eligible candidate universe, or search all indexed rows then filter;
+- return exact top_k among eligible rows;
+- deterministic equal-score tie break by chunk_id;
+- 1-based ranks after filtering.
 
-Unexpected exceptions must fail tests.
-Remove broad `except Exception: pass` patterns.
+Mandatory regression:
+- >150 indexed chunks;
+- only allowed ref deliberately outside global first 100;
+- query.top_k=1;
+- allowed ref MUST still be returned.
 
-## 5. Test real Jieba tokenizer
-When jieba is installed, add a real Chinese tokenization/retrieval test.
-Example synthetic concepts may include:
-- 双极膜电渗析;
-- 能耗;
-- 膜电阻;
-- current efficiency.
+Also test:
+- level filter;
+- empty eligible set;
+- dimension mismatch;
+- duplicate chunk-id policy.
 
-Do not depend on external documents.
+## 6. Tests must really run
 
-## 6. Add the required synthetic retrieval fixture
-Create a checked-in fixture under a test/results fixture directory.
+Remove module-level numpy importorskip.
 
-Requirements:
-- >=6 refs;
-- one coarse summary per ref;
-- multiple fine chunks per ref;
-- Chinese + English + mixed-language content;
-- >=6 labelled queries;
-- expected relevant ref_ids and/or chunk_ids.
+Split dependency gates locally:
+- pure BM25 tests run without numpy/faiss;
+- real Jieba test gated only on jieba;
+- FAISS tests gated only where faiss/numpy required;
+- mocked FlagEmbedding API tests do not need model weights;
+- real-model smoke separately env-gated.
 
-Use synthetic content only.
+Delete broad `except Exception: pass` acceptance.
+Unexpected exceptions fail.
 
-Fixture data must preserve canonical prefix/provenance using existing chunk builders where practical.
+## 7. Real Jieba BM25
 
-## 7. Add real smoke harness
-Create an executable opt-in smoke, for example:
-`python -m knowledge_curator.retrieval.real_smoke`
-gated by `KC_RUN_REAL_RETRIEVAL=1`.
+Run real Jieba tests for Chinese and English/mixed synthetic content.
 
-Preflight must check:
-- numpy;
-- faiss;
-- jieba;
-- FlagEmbedding;
-- model path/id resolvable.
+At minimum verify:
+- 双极膜电渗析 / 能耗 retrieval;
+- current efficiency retrieval;
+- zero-overlap returns zero hits;
+- level/ref/top_k semantics.
 
-Status semantics:
-- PASS: full real stack executed successfully;
-- NOT_RUN_ENV: preflight dependency/model unavailable, with exact reason;
-- FAILED: dependencies/models loaded but execution or expected retrieval correctness failed.
+## 8. Synthetic fixture
 
-Never downgrade FAILED to NOT_RUN_ENV after execution begins.
+Add checked-in synthetic fixture:
+- >= 6 refs;
+- coarse summary each;
+- multiple fine chunks each;
+- Chinese, English, mixed language;
+- >= 6 labelled queries;
+- expected ref_ids and/or chunk_ids.
 
-## 8. Real smoke flow
-Run the actual existing hybrid pipeline:
-fixture chunks
--> BGE-M3 embeddings
--> FAISS vector search
+No copyrighted paper text.
+
+## 9. Real smoke harness
+
+Add executable harness, e.g.:
+`KC_RUN_REAL_RETRIEVAL=1 python -m knowledge_curator.retrieval.real_smoke`
+
+It MUST use existing hybrid_retrieve:
+fixture
+-> real BGE-M3
+-> real FAISS
 + real Jieba BM25
--> coarse fusion/filter
--> fine vector/BM25 (+ optional fake graph only if desired)
+-> coarse fusion
+-> fine retrieval
 -> RRF
--> real bge-reranker-v2-m3
--> final hits.
+-> real BGE reranker
+-> final ranked hits
 
-Do not create a parallel demo pipeline that bypasses hybrid_retrieve.
+No parallel demo pipeline.
 
-## 9. Metrics
-For fixture queries compute at least:
-- Recall@1;
-- Recall@3 (or Recall@k matching output k);
-- MRR.
+## 10. Smoke terminal status
 
-Also record per-query final top-k ref_ids/chunk_ids.
+Only:
+- PASS
+- NOT_RUN_ENV
+- FAILED
 
-Do not set a new global project-quality threshold.
-Smoke FAIL condition remains minimal correctness:
-- non-finite embedding/score;
-- stage exception after successful preflight;
-- every labelled relevant item missed for a fixture query.
+"PARTIAL" is not terminal.
 
-## 10. Reranker validation
-Real smoke must prove the reranker model actually loads and scores non-empty candidate pairs.
+Rules:
+- NOT_RUN_ENV only if preflight cannot access required dependency/model;
+- once model loading/execution starts, an execution error is FAILED;
+- "takes longer" is not an environment absence by itself.
 
-Check:
-- score count == candidate count;
-- all scores finite;
-- result order deterministic for a repeated identical run on CPU within practical equality;
-- provenance/RRF channel metadata preserved.
+If local BGE-M3 path exists and dependencies are installed, run the load to completion for this phase.
 
-## 11. Dependency/version report
-After installation/run, record exact versions actually imported:
-- FlagEmbedding;
-- faiss;
-- numpy;
-- jieba;
-- torch;
-- transformers if relevant.
+## 11. Metrics
 
-`requirements-retrieval.txt` may be updated with compatible lower bounds or exact tested constraints only after observing the real environment.
+For all labelled fixture queries record:
+- Recall@1
+- Recall@3
+- MRR
+- per-query expected and returned top-k refs/chunks.
 
-## 12. Model path portability
-Do not encode the Windows path reported by one environment into source/default config.
-Support:
-- default model id;
-- explicit constructor path;
-- optional env override, e.g. KC_BGE_M3_MODEL / KC_BGE_RERANKER_MODEL.
+PASS cannot contain a fixture query with zero relevant evidence anywhere in the configured final top-k.
 
-Local paths/weights remain uncommitted.
+Do not invent a broader project quality threshold.
 
-## 13. Baselines
-Keep:
-- integration/dsh >=70 passed;
-- existing knowledge_curator baseline >=243 passed;
-- Phase 4.2 tests should now actually run rather than whole-module skip where dependencies are present.
+## 12. Reranker validation
 
-## 14. Deliverables
-Create `results/phase-04-2-1-executor-report.md`.
+Must score a non-empty candidate set with real bge-reranker-v2-m3.
 
-Report:
-- FlagEmbedding real constructor compatibility;
-- FAISS filter-correctness fix;
-- fixture location/query count;
-- real smoke status PASS / NOT_RUN_ENV / FAILED;
-- exact package versions;
-- real embedding dimension;
-- device;
-- Recall@1;
-- Recall@3/k;
-- MRR;
-- exact test counts and skips;
-- public contracts changed? NO;
-- implementation SHA.
+Verify:
+- score count matches candidates;
+- finite scores;
+- final ranking produced;
+- RRF score/channels/chunk provenance preserved.
 
-## 15. status.json
-On completion:
-- phase = 4.2.1
+## 13. Commit integrity gate
+
+Before reporting completion:
+1. git status must show intended state;
+2. git diff origin/main...HEAD must include the actual Phase 4.2.2 implementation;
+3. push main;
+4. fetch/verify origin/main SHA;
+5. verify at least these remote blobs changed relative to Phase 4.2 where fixes apply.
+
+The "implementation SHA" must be the commit containing CODE, not a later report-only bookkeeping commit.
+
+Report separately:
+- implementation_code_sha
+- origin/main_sha
+
+## 14. Baselines
+
+Maintain:
+- integration/dsh >= 70 passed / 0 failed;
+- knowledge_curator existing baseline;
+- report exact passed/skipped/failed counts.
+
+## 15. Deliverables
+
+Create results/phase-04-2-2-executor-report.md.
+
+Update status.json:
+- phase = 4.2.2
 - actor = executor
 - state = executor_complete
-- latest_commit = actual implementation SHA
-- result_expected = results/phase-04-2-1-executor-report.md
+- latest_commit = actual CODE implementation SHA
+- result_expected = results/phase-04-2-2-executor-report.md
 
-Push main and stop.
-Do not start Phase 4.3.
+Push and STOP. Do not start Phase 4.3.
