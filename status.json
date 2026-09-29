@@ -23,7 +23,7 @@
     "no final QA generator or new top-level Agent",
     "no §7 implementation"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "2f0cf04b3b8af79690739e50454c4e5f39ec4921",
   "planner_review": "planner/phase-04-2-review.md",
   "live_smoke": "REAL_BACKEND_FAISS_BM25_PASS_BGE_PARTIAL"
 }
