@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.3.1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no L2 graph DB internals or EDDO production expansion",
     "no §7 implementation yet"
   ],
-  "latest_commit": "3150f33382507d375b149ac6032f18babb1d9f8b",
+  "latest_commit": "8f8fa2f2e5256319ed77e09996112aba6c9ba5ea",
   "planner_review": "planner/phase-04-3-review.md",
-  "live_smoke": "PHASE43_MOSTLY_PASS_H2_GUARDABLE_TRUE_DSH_PENDING"
+  "live_smoke": "PHASE431_GUARDABLE_H2_MOUNTED_DSH_DISCOVERY_PASS_LIVE_FLAT"
 }
