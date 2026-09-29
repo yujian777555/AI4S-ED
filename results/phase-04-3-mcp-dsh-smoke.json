@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "mcp_retrieve_evidence": "PASS",
+  "mcp_validate_retrieved_claims": "PASS",
+  "dsh_tool_discovery": "PASS",
+  "dsh_roundtrip": "PASS",
+  "dsh_roundtrip_note": "keyless stdio MCP discovery + direct-vs-tool identity/policy match; live DeepSeek model not required for structural roundtrip",
+  "tools_discovered": [
+    "curate_assertion_set",
+    "knowledge_curator_health",
+    "retrieve_evidence",
+    "validate_retrieved_claims"
+  ],
+  "default_runtime": {
+    "retrieve_evidence": "retrieval_unavailable",
+    "detail": "production-default: retrieval corpus not configured (CG-004)",
+    "fixture_leaked_as_production": false
+  },
+  "integration_fixture_mode": {
+    "labelled": true,
+    "bundle_integration_fixture_flag": true
+  },
+  "identity_match": {
+    "bundle_id_match": true,
+    "evidence_chunk_ids_match": true,
+    "abstain_match": true
+  },
+  "policy_match": {
+    "C1_policy_match": true,
+    "C1_abstain_match": true,
+    "C2_policy_match": true,
+    "C2_abstain_match": true
+  },
+  "stateless_validate": {
+    "client_forged_bundle_rejected": true,
+    "server_reruns_retrieval": true
+  },
+  "test_counts": {
+    "knowledge_curator": 290,
+    "integration_dsh": 78
+  },
+  "guard_smoke_summary": {
+    "status": "PASS",
+    "evidence_normalization": "PASS",
+    "confidence_policy": "PASS",
+    "abstain_coverage": "PASS",
+    "h1": "PASS",
+    "h2": "PASS",
+    "h3": "PASS",
+    "device": "cuda"
+  }
+}
