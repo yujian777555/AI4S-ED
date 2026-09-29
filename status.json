@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.0.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "4.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-0-2-executor-report.md",
+  "result_expected": "results/phase-04-1-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5 and DSH/MCP integration are frozen",
-    "Phase 4.0.2 only separates actual H1 violations from locator NOT_CHECKED status",
-    "no FAISS/BM25/RRF/reranker",
+    "§5, DSH/MCP integration, and Phase 4.0 evidence guard semantics are frozen",
+    "Phase 4.1 implements only deterministic chunking and runtime-independent retrieval contracts/skeleton",
+    "no real FAISS/Qdrant/BGE-M3/BM25/reranker backend in Phase 4.1",
     "no final QA generator or new top-level Agent",
-    "no §6 MCP exposure yet",
-    "no Crossref/web calls in core",
-    "no §7 implementation"
+    "no §6 MCP exposure in Phase 4.1",
+    "no §7 implementation",
+    "public retrieval/chunk models remain temporary compatibility models"
   ],
   "latest_commit": "2c0fe196631a278082f2dce08b8032d511f4a2d5",
-  "planner_review": "planner/phase-04-0-1-review.md",
-  "live_smoke": "H1_STATUS_SEPARATION_PASS"
+  "planner_review": "planner/phase-04-0-2-review.md",
+  "live_smoke": "PHASE40_DETERMINISTIC_EVIDENCE_GUARD_FROZEN"
 }
