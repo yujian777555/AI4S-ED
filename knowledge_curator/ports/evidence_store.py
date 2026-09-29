@@ -19,6 +19,15 @@ class RefMetadata:
     year: Optional[int] = None
 
 
+@dataclass
+class CitationMetadata:
+    """Internal temporary citation metadata for H2 local DOI/title comparison."""
+
+    ref_id: str
+    cited_title: Optional[str] = None
+    cited_doi: Optional[str] = None
+
+
 @runtime_checkable
 class EvidenceMetadataPort(Protocol):
     """KB metadata lookup for evidence/anchor validation."""
@@ -31,6 +40,12 @@ class EvidenceMetadataPort(Protocol):
         """Return stored metadata when locally available."""
         ...
 
-    def anchor_exists(self, ref_id: str, locator: str) -> bool:
-        """True when the anchor (ref_id, locator) is supported where possible."""
+    def anchor_exists(self, ref_id: str, locator: str) -> Optional[bool]:
+        """Check whether an anchor (ref_id, locator) exists.
+
+        Returns:
+            True  — locator is verified present
+            False — locator is verified absent
+            None  — this adapter cannot validate locators (NOT_CHECKED)
+        """
         ...

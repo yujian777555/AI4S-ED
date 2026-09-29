@@ -13,9 +13,12 @@ from knowledge_curator.retrieval.hallucination import (
     H3Status,
     HallucinationFinding,
     HallucinationType,
+    LocatorCheckStatus,
     detect_h1,
     detect_h2,
     detect_h3,
+    normalize_doi,
+    normalize_title,
 )
 
 __all__ = [
@@ -26,10 +29,13 @@ __all__ = [
     "H3Status",
     "HallucinationFinding",
     "HallucinationType",
+    "LocatorCheckStatus",
     "MissingEvidence",
     "classify_claim_policy",
     "detect_h1",
     "detect_h2",
     "detect_h3",
     "evaluate_abstain",
+    "normalize_doi",
+    "normalize_title",
 ]
