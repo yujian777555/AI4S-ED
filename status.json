@@ -21,7 +21,7 @@
     "no Phase 4.3 until real backend code is present on origin/main",
     "no L2 graph DB internals, EDDO production expansion, §6 MCP exposure, final QA generator, or §7"
   ],
-  "latest_commit": "PENDING",
+  "latest_commit": "f6e6e9997d83936a47a0a6f6d11428222c6d66c9",
   "planner_review": "planner/phase-04-2-1-review.md",
   "live_smoke": "CODE_PARITY_FIX_FAISS_BM25_FIXTURE_SMOKE_HARNESS"
 }
