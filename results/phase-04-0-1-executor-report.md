@@ -66,5 +66,5 @@ confidence gate / Abstain / H3 / numeric conflict / coverage / DSH regression / 
 ## 8. Implementation SHA
 
 ```
-implementation commit: <pending>
+implementation commit: fdba150afc1fb915aac20920e2d8c8290b05c90a
 ```

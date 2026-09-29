@@ -24,7 +24,7 @@
     "no §6 MCP exposure yet",
     "no §7 implementation"
   ],
-  "latest_commit": "PENDING_UPDATE",
+  "latest_commit": "fdba150afc1fb915aac20920e2d8c8290b05c90a",
   "planner_review": "planner/phase-04-0-review.md",
   "live_smoke": "H1_H2_LOCAL_VALIDATION_CLOSURE_PASS"
 }
