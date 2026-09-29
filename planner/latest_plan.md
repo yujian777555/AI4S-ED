@@ -1,295 +1,152 @@
-# Phase 4.0 Plan — §6 Evidence Guard Foundation
+# Phase 4.0.1 Plan — H1 Anchor Reality + H2 Local Citation Metadata Closure
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
 ## 0. Scope
-Begin docs/03 §6, but only the deterministic evidence/anchor/Abstain/guard foundation.
+This is a narrow closure round for the Phase 4.0 evidence guard.
 
-This phase DOES implement:
-- §6 evidence/claim-anchor compatibility models;
-- confidence-driven factual-assertion gate;
-- Abstain decision logic and structured missing-evidence output;
-- H1/H2/H3 detector result models and local deterministic checks;
-- Ports for retrieval metadata lookup and L3 validation;
-- regression hardening of the already accepted DSH live round-trip.
+Do not add FAISS/BM25/RRF/reranker.
+Do not expose §6 MCP tools.
+Do not start §7.
+Do not modify frozen §5 or DSH/MCP integration.
 
-This phase does NOT implement:
-- full FAISS/BGE-M3 vector retrieval;
-- BM25 index;
-- EDDO query expansion;
-- RRF/reranker;
-- final user-facing answer generation;
-- lit_researcher;
-- L3 validator internals;
-- Crossref/network lookup;
-- §7 lifecycle.
+## 1. H1 must validate real locator support
+Update EvidenceMetadataPort so locator validation can represent three states:
+- TRUE: the KB can verify this ref_id + locator exists;
+- FALSE: the KB can verify it does not exist;
+- UNKNOWN/UNSUPPORTED: this adapter cannot validate locator existence.
 
-## 1. Read first
-- docs/01-总体架构与数据流设计.md
-- docs/03-文献自动调研与知识入库流水线.md §6
-- planner/KNOWLEDGE_CURATOR_BOUNDARY.md
-- planner/phase-03-2-4-review.md
-- planner/CONTRACT_GAPS.md
-- status.json
-- current schemas/ports/core.
+Recommended signature:
+anchor_exists(ref_id, locator) -> Optional[bool]
 
-Authoritative §6 rules to preserve exactly:
-- evidence types = 文献 / 图谱 / 仿真 / 实验;
-- anchor tuple semantics = evidence type + ref_id + locator + confidence;
-- confidence enum remains verified/high/medium/hypothesis;
-- verified/high may support factual assertion;
-- medium must be explicitly caveated as single-source/unverified;
-- hypothesis may only appear as pending hypothesis, not factual statement;
-- unresolved numeric conflict must expose ranges/sources rather than silently select one;
-- insufficient evidence triggers Abstain;
-- H1 = unsupported/misaligned claim anchor;
-- H2 = fabricated/nonexistent literature citation;
-- H3 = mechanism violation;
-- M1 metrics belong to 07; this module emits per-sample findings/metrics, it does not own watchdog thresholds.
+Semantics:
+- True => aligned locator check passes;
+- False => emit H1 finding for unresolvable/misaligned anchor locator;
+- None => do not claim alignment PASS; preserve a structured NOT_CHECKED/validation-unavailable signal.
 
-## 2. First harden Phase 3.2.4 live regression
-Update integration/dsh/lane324_kc_roundtrip.e2e.ts.
+Do not treat unsupported validation as False unless the adapter explicitly knows the locator is absent.
 
-Required hardening:
-- require tool_call_count == 1 for the deterministic fixture;
-- require tool_result_count == 1 and linked to that call;
-- require abc_match === true;
-- structured tool-result parse failure must FAIL the live acceptance;
-- delete acceptance fallbacks that infer B by copying A after keyword presence;
-- optional diagnostics may keep bounded raw snippets, but they must never turn an unparsable B into PASS.
+## 2. Improve InMemoryEvidenceStore
+Allow tests to register known locators per ref_id.
 
-Add keyless tests protecting these rules.
+Example internal shape:
+REF-1 -> metadata + {'p.1','T12','Fig.3'}
 
-Do not otherwise change DSH/MCP architecture.
+anchor_exists must:
+- return False for nonexistent ref_id;
+- return True for registered locator;
+- return False for an unregistered locator when locator checking is configured for that ref;
+- return None when the fixture/ref has no locator index capability.
 
-## 3. New package area
-Create narrowly scoped modules, recommended:
+Keep this adapter test-only.
 
-knowledge_curator/
-  retrieval/
-    __init__.py
-    evidence_guard.py
-    abstain.py
-    hallucination.py
-  schemas/
-    evidence.py
-  ports/
-    evidence_store.py
+## 3. H1 result must expose unavailable alignment checks
+Do not overload HallucinationFinding to mean both violation and not-checked if avoidable.
 
-Names may vary, but do not bury §6 logic inside DSH/MCP wrappers.
+Recommended:
+add a small H1CheckResult containing:
+- findings
+- locator_validation_checked: bool or per-anchor status.
 
-Core must remain runtime-independent.
+If changing detect_h1 return type would cause unnecessary churn, add a parallel detect_h1_with_status and keep detect_h1 compatibility wrapper.
 
-## 4. Temporary compatibility evidence schemas
-Create internal/temporary compatibility models. Do NOT claim public Schema Registry ownership.
-
-Required concepts:
-
-EvidenceType enum:
-- literature
-- graph
-- simulation
-- experiment
-
-Choose English wire values only if docs/01 existing A.6 vocabulary already maps that way; document the mapping to 文献/图谱/仿真/实验.
-
-EvidenceAnchor:
-- evidence_type
-- ref_id
-- locator
-- confidence
-- optional quality
-- optional access/reference pointer
-
-EvidenceRecord / EvidenceHit:
-- anchor
-- claim/assertion id when available
-- bounded evidence text/summary
-- optional score
-- provenance fields needed by §6.2:
-  ref_id, page/object id, sentence/cell pointer, confidence, quality, access link.
-
-Do not invent a final cross-team retrieval result schema.
-
-## 5. Claim compatibility model
-Introduce an internal Claim model for guard evaluation, not final answer generation.
-
-Recommended fields:
-- claim_id
-- text
-- numeric flag/value/unit where available
-- anchors: list[EvidenceAnchor]
-- requested subquestion id / coverage key optional.
-
-Do not create an LLM answer generator.
-
-## 6. Confidence gate
-Implement a deterministic function/service that classifies how a claim may be surfaced.
-
-Expected policy:
-- verified/high => FACTUAL_ALLOWED
-- medium => CAVEATED_ONLY
-- hypothesis => PENDING_HYPOTHESIS_ONLY
-
-If anchors disagree:
-- do not elevate confidence;
-- unresolved numeric conflict => CONFLICT_DISCLOSURE_REQUIRED.
-
-The service should return policy metadata; it should not generate prose.
-
-Do not modify the frozen Confidence enum.
-
-## 7. Abstain decision
-Implement docs/03 §6.3 conditions as deterministic inputs/decisions.
-
-Required reasons:
-- LOW_RETRIEVAL_SUPPORT
-- SUBQUESTION_NOT_COVERED
-- CRITICAL_NUMERIC_ONLY_HYPOTHESIS_OR_PENDING
-- UNSUPPORTED_INFERENCE_NO_MECHANISM
-- PRIVATE_DATA_UNAUTHORIZED
-
-Return a structured AbstainDecision:
-- abstain: bool
-- reasons
-- missing_evidence items
-- optional recommended gap kinds.
-
-Do not hard-code external database subscriptions or take over exp_designer routing.
-The model may carry a recommendation category, but orchestration belongs elsewhere.
-
-Retrieval similarity threshold must be configuration-driven and marked temporary unless 07/05 freezes it.
-
-## 8. H1 detector
-Implement the local part of H1 deterministically.
-
-For each factual/numeric claim:
-- require at least one valid anchor;
-- anchor ref_id must resolve through an EvidenceMetadataPort/KB metadata lookup;
-- locator must be non-empty;
-- confidence policy must permit the intended claim mode;
-- if an expected assertion/evidence id is supplied, check anchor alignment where current temporary data allows.
-
-Return HallucinationFinding(type=H1, claim_id, reason, anchor ids).
-
-Do not attempt semantic sentence entailment with an LLM in this phase.
-
-## 9. H2 detector
-Implement only the KB-existence portion in Phase 4.0.
-
-Required:
-- cited ref_id must exist in KB metadata port;
-- if DOI/title metadata is locally available, compare against stored metadata;
-- nonexistent ref_id => H2.
-
-Do NOT call Crossref/web in core.
-External DOI existence verification belongs to a future adapter/phase.
-
-## 10. H3 detector
-Reuse the existing MechanismValidator Port.
-
-Do not implement electrochemical rules.
-
-Map mechanism violations to H3 findings.
-If validator unavailable, return a structured NOT_CHECKED / mechanism_unavailable state; do not claim H3 pass.
-
-## 11. Evidence Ports
-Add the minimum runtime-independent Ports required by §6 foundation.
-
-Recommended EvidenceMetadataPort methods:
-- ref_exists(ref_id) -> bool
-- get_ref_metadata(ref_id) -> optional metadata
-- anchor_exists(ref_id, locator) -> bool where supported
-
-Optional retrieval contract for future phases may be a separate protocol, but do not implement full retrieval engine yet.
-
-Do not hard-code SQLite/FAISS/HTTP.
-
-Provide simple InMemory adapters for tests only.
-
-## 12. Cross-source numeric conflict input
-For a numeric claim, provide an internal structure that can receive the same subject+property source ranges from L2/graph later.
-
-Phase 4.0 may implement the deterministic decision:
-- intervals consistent/overlap => no forced conflict disclosure;
-- disjoint unresolved intervals => conflict disclosure required;
-
-Do not duplicate or mutate frozen §5 conflict truth adjudication.
-This is answer-consumption guard behavior only.
-
-## 13. Coverage model
-Represent multi-subquestion coverage explicitly.
-
-Given requested coverage keys and supported coverage keys:
-- any uncovered required subquestion => Abstain or partial-answer-with-abstain flag for that subquestion;
-- never silently omit uncovered subquestions.
-
-Do not own orchestrator decomposition; accept subquestion/coverage ids as input.
-
-## 14. Tests
-Keep all existing tests green:
-- integration/dsh current baseline: 70 tests;
-- knowledge_curator current baseline: 127 tests.
-
-Add deterministic Phase 4.0 tests for at least:
-- verified anchor allows factual;
-- high anchor allows factual;
-- medium => caveated only;
-- hypothesis => pending only;
+Acceptance behavior:
 - no anchor => H1;
-- nonexistent ref_id => H2;
+- missing ref => H1;
 - empty locator => H1;
-- H3 from fake MechanismValidator violation;
-- validator unavailable => NOT_CHECKED, not pass;
-- low support => Abstain;
-- uncovered subquestion => Abstain/partial coverage;
-- critical numeric hypothesis-only => Abstain;
-- unsupported inference without mechanism => Abstain;
-- unauthorized private data => Abstain;
-- disjoint numeric source ranges => conflict disclosure required;
-- overlapping ranges => no forced conflict disclosure;
-- existing DSH strict live-test parser cannot infer B from A;
-- live regression requires exactly one linked result and abc_match.
+- real ref + fabricated known-checkable locator => H1;
+- real ref + valid locator => no H1;
+- real ref + locator validator unavailable => no fabricated PASS claim; status explicitly NOT_CHECKED/PARTIAL.
 
-No real API key is needed for ordinary pytest.
+## 4. Add internal citation metadata input for H2
+Do not mutate the docs/03 anchor tuple semantics.
 
-## 15. No final answer generator
-Important boundary:
-knowledge_curator may return EvidenceGuardResult / ClaimPolicy / AbstainDecision / hallucination findings.
-It must not become the final user-facing QA/orchestrator Agent.
+Add a separate internal temporary model, e.g. CitationMetadata or CitedReference:
+- ref_id
+- optional cited_title
+- optional cited_doi.
 
-Do not add qa_agent, trusted_rag_agent or another top-level Agent.
+Claim may carry zero or more citation metadata records, or detector may receive them as an explicit argument.
+Prefer the least invasive option.
 
-## 16. MCP exposure
-Do NOT expose new §6 MCP tools in Phase 4.0 yet.
-First stabilize deterministic core/contracts.
-DSH/MCP exposure begins only after Planner review.
+This is temporary compatibility data only; mark it clearly.
 
-## 17. Deliverables
-Create:
-- results/phase-04-0-executor-report.md
+## 5. H2 local metadata checks
+For literature citations:
+- cited ref_id absent in KB => H2;
+- cited DOI present and KB DOI present but normalized values differ => H2;
+- cited title present and KB title present but normalized exact/casefold-whitespace comparison differs materially => H2 in Phase 4.0.1;
+- when cited DOI/title is absent, do not invent it;
+- when KB metadata lacks DOI/title, return only what can be checked.
+
+Do not perform fuzzy semantic title matching yet.
+Do not call Crossref or web.
+
+Normalize DOI conservatively:
+- strip whitespace;
+- casefold;
+- remove optional https://doi.org/ or http://doi.org/ prefix;
+- do not rewrite the DOI path.
+
+Normalize title conservatively:
+- Unicode-safe casefold;
+- collapse whitespace;
+- trim.
+
+## 6. Avoid duplicate H1/H2 semantics
+Missing literature ref_id may legitimately produce both:
+- H1 because the claim anchor is not resolvable;
+- H2 because the literature citation is fabricated/nonexistent.
+
+That is acceptable because docs/03 defines distinct hallucination classes.
+
+Do not deduplicate away one class.
+
+## 7. Regression tests
+Keep:
+- knowledge_curator baseline 151 tests green;
+- integration/dsh baseline 70 tests green.
+
+Add tests for at least:
+- H1 valid registered locator => no finding;
+- H1 fabricated locator on existing ref => finding;
+- H1 locator validation unavailable => explicit not-checked/partial status;
+- H2 DOI exact normalized match => no finding;
+- H2 DOI mismatch => finding;
+- H2 title normalized match => no finding;
+- H2 title mismatch => finding;
+- H2 absent cited metadata does not fabricate mismatch;
+- non-literature evidence does not trigger literature H2 metadata checks.
+
+Also keep DSH strict regression hardening unchanged.
+
+## 8. No public contract change
+Do not edit docs/01 public schemas.
+Do not claim EvidenceMetadataPort/CitationMetadata is a frozen cross-team contract.
+
+If a future public answer/citation schema is needed from another team, note it in existing temporary-compatibility comments rather than inventing a cross-team API now.
+
+## 9. Report
+Create results/phase-04-0-1-executor-report.md.
 
 Report:
-- new schemas
-- new Ports
-- confidence-policy behavior
-- Abstain reasons
-- H1/H2/H3 behavior
-- test counts
-- DSH live-regression hardening
-- public contracts changed? NO
-- CONTRACT_GAPS changes
+- H1 locator validation behavior;
+- unavailable-validation semantics;
+- H2 local DOI/title behavior;
+- exact test counts;
+- public contracts changed? NO;
+- CONTRACT_GAPS changes;
 - implementation SHA.
 
-## 18. status.json
+## 10. status.json
 On completion:
-- phase = 4.0
+- phase = 4.0.1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual implementation SHA
-- result_expected = results/phase-04-0-executor-report.md
+- result_expected = results/phase-04-0-1-executor-report.md
 
-Stop after Phase 4.0.
-Do not implement full retrieval/chunking/reranking or §7.
+Push main and stop.
+Do not begin Phase 4.1.
