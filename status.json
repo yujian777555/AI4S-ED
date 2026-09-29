@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "3.2.4",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -15,7 +15,7 @@
   "result_expected": "results/phase-03-2-4-executor-report.md",
   "constraints": [
     "01 is the anchor document",
-    "§5.1-§5.4, MCP bridge, DSH bundle/preset activation/mount are frozen",
+    "§5.1-§5.4, MCP bridge, DSH 0.2 bundle/preset activation/mount are frozen",
     "Phase 3.2.4 must use real SessionId, Session.toolHistory, and exported markAgentLoopRequest",
     "capture the exact AgentLoop llm/stream request and replay it in memory",
     "upstream pin remains 4878cdabd87d4041bdaff61d04c966883b9fd07a",
@@ -25,7 +25,7 @@
     "no §6/§7 implementation",
     "no DeepSeek Harness source modifications/vendor copy"
   ],
-  "latest_commit": "f54394a4b7a864a61fb18ce077aacabcb4ade920",
+  "latest_commit": "PENDING_UPDATE",
   "planner_review": "planner/phase-03-2-3-review.md",
-  "live_smoke": "PHASE323_PROBES_PARTIALLY_INVALID_EXACT_LOOP_CAPTURE_REQUIRED"
+  "live_smoke": "KC_0_2_MCP_ROUNDTRIP_PASS_ABC_MATCH_CG015_CLOSED"
 }

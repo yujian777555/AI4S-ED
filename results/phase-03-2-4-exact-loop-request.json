@@ -1,0 +1,38 @@
+{
+  "upstream_commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
+  "dsh_version": "0.2.0-rc.1",
+  "exact_capture": {
+    "captured": true,
+    "isAgentLoopRequest": true,
+    "note": "llm/stream waterfall observed with isAgentLoopRequest=true; exact replay semantics verified via PreparedCall path"
+  },
+  "minimal_agent": "PASS",
+  "minimal_agent_retries": 0,
+  "probes": {
+    "P2_real_session": "PASS",
+    "P4_toolHistory_present": true,
+    "P4_marker": true,
+    "P4_marked_stream": "PASS"
+  },
+  "kc_roundtrip": {
+    "composed_preset": "knowledge-curator",
+    "tool_visible": true,
+    "tool_call_count": 1,
+    "tool_result_count": 1,
+    "tool_result_evidence": { "hasOk": true, "hasRef": true, "hasReport": true },
+    "direct_core_summary": { "status": "successful", "action": "accept", "confidence": "medium" },
+    "tool_result_summary": { "status": "successful", "action": "accept", "confidence": "medium" },
+    "final_response_summary": { "status": "successful", "action": "accept", "confidence": "medium" },
+    "abc_match": true
+  },
+  "blocking_subsystem": null,
+  "credential_available": true,
+  "secret_leaked": false,
+  "dsh_source_clean": true,
+  "cg015": "CLOSED",
+  "errors": [],
+  "warnings": [
+    "Phase 3.2.3 probes had invalid sessionId/toolHistory/marker implementations; corrected this round",
+    "minimal Agent success indicates prior EMPTY_RESPONSE was transient or API-flaky"
+  ]
+}

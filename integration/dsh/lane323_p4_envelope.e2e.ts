@@ -53,7 +53,7 @@ it('P4 envelope dimensions + inventory toggle', async () => {
       try {
         const sess = (web as any).persistenceRoot ? null : null
         // toolHistory from agent session API if present
-        toolHistory = []
+        toolHistory = undefined
       } catch { /* */ }
       const acc = { text: '' }
       for await (const chunk of prepared.stream({
