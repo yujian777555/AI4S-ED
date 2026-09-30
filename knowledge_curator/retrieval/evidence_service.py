@@ -59,18 +59,21 @@ class EvidenceRequest:
     at_version_id: Optional[str] = None
 
 
+class EligibilitySearchLimitError(RuntimeError):
+    """Resource guard hit while backend candidates still grew (not exhaustion)."""
+
+
 class _EligibilityFilteredPort:
-    """Progressive pre-cutoff lifecycle filter (R2-A + R2-C).
+    """Progressive pre-cutoff lifecycle filter (R3-A + R3-B).
 
     Expands backend depth until enough lifecycle-eligible candidates are
-    obtained or the backend is proven exhausted. Applies BOTH document and
-    assertion-level eligibility. Preserves backend rank order and does not
-    re-rank.
+    obtained or the backend is proven exhausted (ALL-candidate growth stops).
+    Applies BOTH document and assertion-level eligibility. Preserves backend
+    rank order and does not re-rank.
     """
 
-    # Deterministic progressive depths. Start small, grow geometrically.
     _INITIAL_DEPTH = 50
-    _MAX_STEPS = 12  # safety bound: 50 * 2^11 is enormous
+    _MAX_STEPS = 12  # resource safety guard; NOT proof of exhaustion
 
     def __init__(self, inner: Any, visibility: Any, at_version_id: Optional[str] = None) -> None:
         self._inner = inner
@@ -97,9 +100,11 @@ class _EligibilityFilteredPort:
         target = max(int(query.top_k or 1), 1)
         depth = self._INITIAL_DEPTH
         best_out: list[Any] = []
-        prev_eligible_ids: frozenset = frozenset()
+        # R3-A: track ALL backend candidate identities, not just eligible ones.
+        prev_all_ids: frozenset = frozenset()
+        exhausted = False
 
-        for _step in range(self._MAX_STEPS):
+        for step in range(self._MAX_STEPS):
             expanded_query = RetrievalQuery(
                 text=query.text,
                 level=query.level,
@@ -109,14 +114,12 @@ class _EligibilityFilteredPort:
             )
             cands = self._inner.search(expanded_query)
             if not cands:
+                exhausted = True
                 break
 
             out = [c for c in cands if self._is_eligible(c)]
-            eligible_ids = frozenset(
-                getattr(c, "chunk", c).chunk_id for c in out
-            )
+            all_ids = frozenset(getattr(c, "chunk", c).chunk_id for c in cands)
 
-            # Keep the deepest successful eligible set (preserves backend order).
             if len(out) >= len(best_out):
                 best_out = out
 
@@ -125,14 +128,22 @@ class _EligibilityFilteredPort:
 
             # Exhaustion A: backend returned fewer than requested depth.
             if len(cands) < depth:
+                exhausted = True
                 break
 
-            # Exhaustion B: expanding produced no new eligible identities.
-            if depth > self._INITIAL_DEPTH and eligible_ids == prev_eligible_ids:
+            # Exhaustion B: ALL backend candidate identities stopped growing.
+            if step > 0 and all_ids == prev_all_ids:
+                exhausted = True
                 break
-            prev_eligible_ids = eligible_ids
 
+            prev_all_ids = all_ids
             depth = depth * 2
+
+        if not exhausted:
+            # Resource guard hit while candidates may still be growing.
+            raise EligibilitySearchLimitError(
+                "eligibility search limit reached before backend exhaustion"
+            )
 
         return best_out
 
@@ -183,8 +194,9 @@ class EvidenceRetrievalService:
         )
 
         allowed = set(request.allowed_ref_ids) if request.allowed_ref_ids else None
-        # Lifecycle composition (Phase 5.0): restrict allowed refs BEFORE frozen
-        # hybrid_retrieve so retracted refs cannot enter candidates at all.
+        # Lifecycle composition (Phase 5.0 / R3-B):
+        # 1) document-level prefilter of finite allowed_ref_ids;
+        # 2) ALWAYS wrap ports so assertion-level eligibility is applied too.
         at_version = request.at_version_id
         vector_port = self._vector_port
         keyword_port = self._keyword_port
@@ -195,22 +207,23 @@ class EvidenceRetrievalService:
                         list(allowed), at_version_id=at_version
                     )
                 )
-                allowed = eligible if eligible else set()
-            else:
-                vector_port = (
-                    _EligibilityFilteredPort(
-                        self._vector_port, self._lifecycle_visibility, at_version_id=at_version
-                    )
-                    if self._vector_port is not None
-                    else None
+                # Empty set means NO restriction-free search — it means zero results.
+                allowed = eligible
+            # Always wrap so chunk.assertion_id is checked (R3-B).
+            vector_port = (
+                _EligibilityFilteredPort(
+                    self._vector_port, self._lifecycle_visibility, at_version_id=at_version
                 )
-                keyword_port = (
-                    _EligibilityFilteredPort(
-                        self._keyword_port, self._lifecycle_visibility, at_version_id=at_version
-                    )
-                    if self._keyword_port is not None
-                    else None
+                if self._vector_port is not None
+                else None
+            )
+            keyword_port = (
+                _EligibilityFilteredPort(
+                    self._keyword_port, self._lifecycle_visibility, at_version_id=at_version
                 )
+                if self._keyword_port is not None
+                else None
+            )
 
         all_hits: list[RankedHit] = []
         diagnostics: list[dict] = []
