@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.0",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -22,7 +22,7 @@
     "no external event-bus technology/topic choices; CG-018 remains open",
     "no final QA generator, L2 graph DB internals, or EDDO production expansion"
   ],
-  "latest_commit": "10d64fbcb7b02e6b9e9d074ce1f83e34b933848d",
+  "latest_commit": "3449a410bf4103ee0aeb37c2f582f288518aef9e",
   "planner_review": "planner/phase-04-3-2-review.md",
-  "live_smoke": "SECTION6_FROZEN_DSH_LIVE_BLOCKED_EXTERNAL_PHASE50_LIFECYCLE_CORE"
+  "live_smoke": "PHASE50_LIFECYCLE_CORE_PASS"
 }
