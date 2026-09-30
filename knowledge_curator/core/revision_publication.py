@@ -35,6 +35,33 @@ def _hash_json(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _commit_assertion_hash(assertion: Assertion) -> str:
+    """Mirror DocumentCommitCoordinator._hash_assertion for manifest agreement checks."""
+    return _hash_json(
+        {
+            "id": assertion.id,
+            "ref_id": assertion.ref_id,
+            "subject_class": assertion.subject.eddo_class,
+            "subject_entity": assertion.subject.resolved_entity,
+            "subject_mention": assertion.subject.original_mention,
+            "property": assertion.property,
+            "value": assertion.object.value,
+            "unit": assertion.object.unit,
+            "value_type": assertion.object.value_type.value,
+            "uncertainty": assertion.object.uncertainty,
+            "conditions": [
+                {"c": cond.eddo_class, "v": cond.value, "u": cond.unit}
+                for cond in assertion.conditions
+            ],
+            "locator": assertion.provenance.locator if assertion.provenance else None,
+            "sentence": assertion.provenance.sentence if assertion.provenance else None,
+            "claim_type": assertion.claim_type.value,
+            "origin": assertion.source_claim_origin.value,
+            "quality": assertion.quality,
+        }
+    )
+
+
 def canonical_value(value: Any) -> Any:
     """Typed canonical representation preserving primitive/nested types (R2-02)."""
     if value is None or isinstance(value, (bool, int, float, str)):
@@ -408,7 +435,7 @@ class RevisionPublicationCoordinator:
     def _existing_commit_guard(
         self, package: RevisionPackage, request: CommitRequest
     ) -> Optional[RevisionPublicationResult]:
-        """Material-exact existing commit guard (R2). Fail closed on store errors."""
+        """Material-exact existing commit guard (R2). Fail closed on published material drift."""
         if self._commit_store is None:
             return None
         ref_id = request.source.ref_id
@@ -423,7 +450,6 @@ class RevisionPublicationCoordinator:
         if existing is None:
             return None
 
-        # R2-03: metadata hash guard
         expected_meta_hash = self._expected_metadata_hash(request)
         existing_meta_hash = getattr(existing, "metadata_hash", None)
         if existing_meta_hash and existing_meta_hash != expected_meta_hash:
@@ -431,6 +457,7 @@ class RevisionPublicationCoordinator:
                 status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                 last_error="existing commit metadata_hash mismatch",
             )
+
         existing_manifest = getattr(existing, "manifest", None)
         if existing_manifest is not None:
             if getattr(existing_manifest, "metadata_hash", None) and existing_manifest.metadata_hash != expected_meta_hash:
@@ -450,10 +477,6 @@ class RevisionPublicationCoordinator:
                 )
 
         admitted = getattr(existing, "admitted", None) or []
-        if not admitted:
-            return None
-
-        # R2-04: expected decision material
         expected_decisions = self._expected_decision_map(request)
         target_by_id = {a.id: a for a in package.target_assertions}
         admitted_ids = set()
@@ -471,7 +494,6 @@ class RevisionPublicationCoordinator:
                     status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                     last_error=f"existing commit material mismatch for {aid}",
                 )
-            # Decision material comparison
             exp = expected_decisions.get(aid)
             if exp is not None:
                 item_action = getattr(item, "action", None)
@@ -495,7 +517,70 @@ class RevisionPublicationCoordinator:
                         status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                         last_error=f"existing visibility {item_vis_val} != expected {exp['visibility']} for {aid}",
                     )
-        if admitted_ids != set(target_by_id):
+
+        phase = getattr(existing, "phase", None)
+        phase_val = phase.value if hasattr(phase, "value") else str(phase or "").lower()
+        if phase_val == "published":
+            # A published exact-replay candidate must carry a complete, request-matching manifest.
+            if existing_meta_hash != expected_meta_hash:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing commit missing/mismatched metadata_hash",
+                )
+            if getattr(existing, "ref_id", ref_id) != ref_id or getattr(existing, "source_fingerprint", fingerprint) != fingerprint:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing commit identity mismatch",
+                )
+            if existing_manifest is None:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing commit missing manifest",
+                )
+            if (
+                existing_manifest.ref_id != ref_id
+                or existing_manifest.source_fingerprint != fingerprint
+                or existing_manifest.metadata_hash != expected_meta_hash
+            ):
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing manifest identity/metadata mismatch",
+                )
+            expected_assertion_hashes = sorted(
+                _commit_assertion_hash(a) for a in request.assertion_set.assertions
+            )
+            if sorted(existing_manifest.assertion_hashes or []) != expected_assertion_hashes:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing manifest assertion_hashes mismatch",
+                )
+            expected_decision_hashes = sorted(
+                _hash_json(
+                    {
+                        "assertion_id": aid,
+                        "action": material["action"],
+                        "confidence": material["confidence"],
+                        "visibility": material["visibility"],
+                    }
+                )
+                for aid, material in expected_decisions.items()
+            )
+            if sorted(existing_manifest.decision_hashes or []) != expected_decision_hashes:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing manifest decision_hashes mismatch",
+                )
+            if not existing_manifest.content_hash or existing_manifest.content_hash != _hash_json(existing_manifest.stable_payload()):
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="published existing manifest content_hash mismatch",
+                )
+            if admitted_ids != set(target_by_id):
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="existing commit admitted ID set mismatch",
+                )
+        elif admitted and admitted_ids != set(target_by_id):
             return RevisionPublicationResult(
                 status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                 last_error="existing commit admitted ID set mismatch",
@@ -681,6 +766,11 @@ class RevisionPublicationCoordinator:
         record: RevisionPublicationRecord,
         new: Any,
     ) -> Optional[RevisionPublicationResult]:
+        if self._commit_store is None:
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error="document commit store not configured",
+            )
         if self._commit is None:
             return RevisionPublicationResult(
                 status=PublicationStatus.FAILED, publication_id=record.publication_id,
@@ -757,43 +847,98 @@ class RevisionPublicationCoordinator:
                 last_error=record.last_error,
             )
 
-        # R2-05: post-target commit-store agreement (when store has a record)
-        if self._commit_store is not None:
-            try:
-                store_rec = self._commit_store.find_by_key(new.ref_id, new.source_fingerprint)
-            except Exception as exc:
-                record.last_error = f"post-commit store read failed: {exc}"
-                self._journal.update(record)
-                return RevisionPublicationResult(
-                    status=PublicationStatus.FAILED, publication_id=record.publication_id,
-                    last_error=record.last_error,
-                )
-            if store_rec is not None:
-                rec_phase = getattr(store_rec, "phase", None)
-                rec_phase_val = rec_phase.value if hasattr(rec_phase, "value") else str(rec_phase or "")
-                if rec_phase_val not in ("published", "PUBLISHED", "idempotent_hit", "IDEMPOTENT_HIT"):
-                    record.last_error = f"post-commit store phase {rec_phase_val} not published"
-                    self._journal.update(record)
-                    return RevisionPublicationResult(
-                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
-                        last_error=record.last_error,
-                    )
-                rec_vid = getattr(store_rec, "version_id", None)
-                rec_sid = getattr(store_rec, "snapshot_id", None)
-                if rec_vid is not None and rec_vid != version_id:
-                    record.last_error = f"post-commit store version_id {rec_vid} != result {version_id}"
-                    self._journal.update(record)
-                    return RevisionPublicationResult(
-                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
-                        last_error=record.last_error,
-                    )
-                if rec_sid is not None and rec_sid != snapshot_id:
-                    record.last_error = f"post-commit store snapshot_id {rec_sid} != result {snapshot_id}"
-                    self._journal.update(record)
-                    return RevisionPublicationResult(
-                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
-                        last_error=record.last_error,
-                    )
+        # R2-05: strict post-target commit-store agreement.
+        # A successful CommitResult is not trusted until the persisted record and
+        # its manifest agree with the resolved VersionStore snapshot.
+        try:
+            store_rec = self._commit_store.find_by_key(new.ref_id, new.source_fingerprint)
+        except Exception as exc:
+            record.last_error = f"post-commit store read failed: {exc}"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if store_rec is None:
+            record.last_error = "post-commit store record missing"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+
+        rec_phase = getattr(store_rec, "phase", None)
+        rec_phase_val = rec_phase.value if hasattr(rec_phase, "value") else str(rec_phase or "").lower()
+        if rec_phase_val != "published":
+            record.last_error = f"post-commit store phase {rec_phase_val} not published"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if getattr(store_rec, "ref_id", None) != new.ref_id:
+            record.last_error = "post-commit store ref_id mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if getattr(store_rec, "source_fingerprint", None) != new.source_fingerprint:
+            record.last_error = "post-commit store source_fingerprint mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if getattr(store_rec, "version_id", None) != version_id:
+            record.last_error = f"post-commit store version_id {getattr(store_rec, 'version_id', None)} != result {version_id}"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if getattr(store_rec, "snapshot_id", None) != snapshot_id:
+            record.last_error = f"post-commit store snapshot_id {getattr(store_rec, 'snapshot_id', None)} != result {snapshot_id}"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+
+        store_manifest = getattr(store_rec, "manifest", None)
+        if store_manifest is None:
+            record.last_error = "post-commit store manifest missing"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if store_manifest.ref_id != new.ref_id or store_manifest.source_fingerprint != new.source_fingerprint:
+            record.last_error = "post-commit store manifest ref/fingerprint mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        resolved_manifest = snap.manifest
+        if (
+            not store_manifest.content_hash
+            or not resolved_manifest.content_hash
+            or store_manifest.content_hash != resolved_manifest.content_hash
+        ):
+            record.last_error = "post-commit store manifest content_hash mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if store_manifest.stable_payload() != resolved_manifest.stable_payload():
+            record.last_error = "post-commit store manifest payload mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
 
         record.target_commit_id = getattr(result, "commit_id", None)
         record.target_version_id = version_id
