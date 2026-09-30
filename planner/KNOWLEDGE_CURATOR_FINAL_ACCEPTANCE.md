@@ -12,16 +12,22 @@ FROZEN
 DELIVERABLE
 
 Final implementation CODE SHA:
-4881288d3259582e559c8c301121e066b6a25f40
+fd33a1221fcd7c14684048d1f48093283caa520d
 
 Final executor bookkeeping tip:
 b63bb903dbfe42647bb7040b25acf48ea077c4a2
 
 Final verified test reports:
-- knowledge_curator: 499 passed / 0 skipped / 0 failed
-- integration/dsh: 90 passed / 0 failed
+- knowledge_curator: 512 passed / 0 skipped / 0 failed
+- integration/dsh: 90 passed / 0 skipped / 0 failed
 
 No public contracts changed in the final phase.
+
+## Continuation revalidation
+
+The final continuation audit did not trust the earlier freeze report as current evidence. It identified and minimally corrected strict fail-closed gaps in published-manifest comparison and post-target DocumentCommitStore agreement. The real P2J E2E was also strengthened so the chain starts from KnowledgeCurator rather than a hand-built CurationReport.
+
+The final verification explicitly covers missing/unreadable commit-store records, version/snapshot/manifest mismatch, metadata/assertion/decision manifest drift, typed canonical material, fresh/replay/recovery semantics, P2J retrieval/training visibility, historical rollback, and post-bind recovery without duplicate outbox events.
 
 ## Frozen capability set
 
