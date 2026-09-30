@@ -286,3 +286,229 @@ def test_commit_store_unreadable_fail_closed():
     err = coord._existing_commit_guard(pkg, req)
     assert err is not None
     assert err.status.value == "failed"
+
+
+# ---- strict published-manifest / post-target store agreement ----
+
+def test_existing_published_missing_manifest_fails_closed():
+    from knowledge_curator.core.revision_publication import RevisionPublicationCoordinator
+    from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
+    from knowledge_curator.adapters.in_memory_source_versions import InMemorySourceVersionRegistry
+    from knowledge_curator.adapters.in_memory_commit import InMemoryVersionStore, FailureInjection
+
+    pkg, req = _make_pkg_req_for_guard()
+    versions = InMemoryVersionStore(failures=FailureInjection())
+    coord = RevisionPublicationCoordinator(
+        publication_store=InMemoryRevisionPublicationStore(),
+        source_registry=InMemorySourceVersionRegistry(),
+        version_store=versions,
+        lifecycle_coordinator=None,
+        document_commit_coordinator=None,
+        document_commit_store=None,
+    )
+    record = FakeCommitRecord(
+        [FakeAdmitted(_assertion("J-A1", value=2.0))],
+        metadata_hash=coord._expected_metadata_hash(req),
+        manifest=None,
+    )
+    coord._commit_store = FakeStore(record)
+    err = coord._existing_commit_guard(pkg, req)
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "manifest" in (err.last_error or "")
+
+
+def test_existing_published_manifest_assertion_hashes_mismatch_conflict():
+    from knowledge_curator.core.revision_publication import RevisionPublicationCoordinator
+    from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
+    from knowledge_curator.adapters.in_memory_source_versions import InMemorySourceVersionRegistry
+    from knowledge_curator.adapters.in_memory_commit import InMemoryVersionStore, FailureInjection
+    from knowledge_curator.schemas.commit import SnapshotManifest
+
+    pkg, req = _make_pkg_req_for_guard()
+    versions = InMemoryVersionStore(failures=FailureInjection())
+    coord = RevisionPublicationCoordinator(
+        publication_store=InMemoryRevisionPublicationStore(),
+        source_registry=InMemorySourceVersionRegistry(),
+        version_store=versions,
+        lifecycle_coordinator=None,
+        document_commit_coordinator=None,
+        document_commit_store=None,
+    )
+    mh = coord._expected_metadata_hash(req)
+    manifest = SnapshotManifest(
+        ref_id="REF-N", source_fingerprint="fp",
+        assertion_hashes=["WRONG"], usdo_hashes=[], vector_ids=[],
+        metadata_hash=mh, decision_hashes=[],
+    )
+    record = FakeCommitRecord(
+        [FakeAdmitted(_assertion("J-A1", value=2.0))],
+        metadata_hash=mh,
+        manifest=manifest,
+    )
+    coord._commit_store = FakeStore(record)
+    err = coord._existing_commit_guard(pkg, req)
+    assert err is not None
+    assert "assertion_hashes" in (err.last_error or "")
+
+
+def test_existing_published_manifest_decision_hashes_mismatch_conflict():
+    from knowledge_curator.core.revision_publication import (
+        RevisionPublicationCoordinator,
+        _commit_assertion_hash,
+    )
+    from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
+    from knowledge_curator.adapters.in_memory_source_versions import InMemorySourceVersionRegistry
+    from knowledge_curator.adapters.in_memory_commit import InMemoryVersionStore, FailureInjection
+    from knowledge_curator.schemas.commit import SnapshotManifest
+
+    pkg, req = _make_pkg_req_for_guard()
+    versions = InMemoryVersionStore(failures=FailureInjection())
+    coord = RevisionPublicationCoordinator(
+        publication_store=InMemoryRevisionPublicationStore(),
+        source_registry=InMemorySourceVersionRegistry(),
+        version_store=versions,
+        lifecycle_coordinator=None,
+        document_commit_coordinator=None,
+        document_commit_store=None,
+    )
+    mh = coord._expected_metadata_hash(req)
+    manifest = SnapshotManifest(
+        ref_id="REF-N", source_fingerprint="fp",
+        assertion_hashes=[_commit_assertion_hash(req.assertion_set.assertions[0])],
+        usdo_hashes=[], vector_ids=[], metadata_hash=mh,
+        decision_hashes=["WRONG"],
+    )
+    record = FakeCommitRecord(
+        [FakeAdmitted(_assertion("J-A1", value=2.0))],
+        metadata_hash=mh,
+        manifest=manifest,
+    )
+    coord._commit_store = FakeStore(record)
+    err = coord._existing_commit_guard(pkg, req)
+    assert err is not None
+    assert "decision_hashes" in (err.last_error or "")
+
+
+def _post_target_case(store_record_factory):
+    import hashlib
+    import json
+    from types import SimpleNamespace
+
+    from knowledge_curator.adapters.in_memory_commit import InMemoryVersionStore, FailureInjection
+    from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
+    from knowledge_curator.adapters.in_memory_source_versions import InMemorySourceVersionRegistry
+    from knowledge_curator.core.revision_publication import RevisionPublicationCoordinator
+    from knowledge_curator.ports.document_commit_store import DocumentCommitRecord
+    from knowledge_curator.schemas.commit import (
+        CommitPhase, CommitResult, CommitStatus, SnapshotManifest,
+    )
+    from knowledge_curator.schemas.revision_publication import (
+        PublicationPhase, RevisionPublicationRecord,
+    )
+
+    pkg, req = _make_pkg_req_for_guard()
+    versions = InMemoryVersionStore(failures=FailureInjection())
+    manifest = SnapshotManifest(
+        ref_id="REF-N", source_fingerprint="fp",
+        assertion_hashes=["a1"], usdo_hashes=["u1"], vector_ids=["v1"],
+        metadata_hash="m1", decision_hashes=["d1"],
+    )
+    manifest.content_hash = hashlib.sha256(
+        json.dumps(manifest.stable_payload(), sort_keys=True).encode()
+    ).hexdigest()
+    snap = versions.create_snapshot(manifest)
+    ver = versions.publish_version(snap.snapshot_id)
+
+    store_record = store_record_factory(
+        DocumentCommitRecord(
+            commit_id="dc-1", ref_id="REF-N", source_fingerprint="fp",
+            phase=CommitPhase.PUBLISHED, snapshot_id=snap.snapshot_id,
+            version_id=ver.version_id, manifest=copy.deepcopy(manifest),
+        ),
+        ver,
+        snap,
+    )
+    store = FakeStore(store_record)
+
+    class Committer:
+        async def commit(self, request):
+            return CommitResult(
+                status=CommitStatus.PUBLISHED, commit_id="dc-1", phase=CommitPhase.PUBLISHED,
+                version_id=ver.version_id, snapshot_id=snap.snapshot_id,
+            )
+
+    journal = InMemoryRevisionPublicationStore()
+    pub_record = RevisionPublicationRecord(
+        publication_id=pkg.package_id, package_id=pkg.package_id,
+        request_material_hash="rmh", phase=PublicationPhase.PREPARED,
+    )
+    pub_record = journal.create(pub_record)
+    coord = RevisionPublicationCoordinator(
+        publication_store=journal,
+        source_registry=InMemorySourceVersionRegistry(),
+        version_store=versions,
+        lifecycle_coordinator=None,
+        document_commit_coordinator=Committer(),
+        document_commit_store=store,
+    )
+    new = SimpleNamespace(ref_id="REF-N", source_fingerprint="fp")
+    return coord, pkg, req, pub_record, new
+
+
+def test_post_target_store_record_missing_fails_closed():
+    coord, pkg, req, record, new = _post_target_case(lambda rec, ver, snap: None)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "failed"
+    assert "record missing" in (err.last_error or "")
+
+
+def test_post_target_version_mismatch_conflict():
+    def mutate(rec, ver, snap):
+        rec.version_id = "kbv-wrong"
+        return rec
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "version_id" in (err.last_error or "")
+
+
+def test_post_target_snapshot_mismatch_conflict():
+    def mutate(rec, ver, snap):
+        rec.snapshot_id = "snap-wrong"
+        return rec
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "snapshot_id" in (err.last_error or "")
+
+
+def test_post_target_missing_manifest_conflict():
+    def mutate(rec, ver, snap):
+        rec.manifest = None
+        return rec
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "manifest missing" in (err.last_error or "")
+
+
+def test_post_target_manifest_content_hash_mismatch_conflict():
+    def mutate(rec, ver, snap):
+        rec.manifest.content_hash = "WRONG"
+        return rec
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "content_hash" in (err.last_error or "")
+
+
+def test_post_target_exact_store_agreement_passes():
+    coord, pkg, req, record, new = _post_target_case(lambda rec, ver, snap: rec)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is None
