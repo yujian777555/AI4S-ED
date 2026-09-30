@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.0-R3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,17 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-0-r3-executor-report.md",
+  "result_expected": "results/phase-05-1-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0 R1/R2 accepted areas remain frozen",
-    "R3 only fixes backend exhaustion detection and allowed_ref assertion-level lifecycle filtering",
-    "docs/03 §6 ranking/guard semantics remain frozen",
-    "no physical deletion of historical knowledge",
-    "no crawler/external event transport/public mutation MCP",
-    "do not start Phase 5.1 until Planner review"
+    "Phase 5.0 / docs03 §7 lifecycle core is frozen",
+    "Phase 5.1 implements incremental source identity/version-family classification only",
+    "no literature crawling, Crossref/arXiv/TOC polling, or fuzzy semantic matching",
+    "title-only match is review-required; no automatic merge",
+    "preprint-to-journal cross-identifier linkage requires explicit caller-supplied relation",
+    "no changed-paragraph extraction or preprint assertion supersede yet",
+    "no public cross-team schema; CG-019 remains internal compatibility boundary"
   ],
   "latest_commit": "91e3d31cd9c7dd49db8396707b183167419f8efc",
-  "planner_review": "planner/phase-05-0-r2-review.md",
-  "live_smoke": "PHASE50_R3_ALL_CORRECTNESS_PASS"
+  "planner_review": "planner/phase-05-0-r3-review.md",
+  "live_smoke": "PHASE50_LIFECYCLE_CORE_PASS_FROZEN_PHASE51_INCREMENTAL_IDENTITY"
 }
