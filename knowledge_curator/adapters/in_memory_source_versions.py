@@ -69,18 +69,8 @@ class InMemorySourceVersionRegistry:
 
     # ---- append ----
 
-    def append_work(self, work: WorkRecord) -> WorkRecord:
-        existing = self._works.get(work.work_id)
-        if existing is not None:
-            return copy.deepcopy(existing)
-        stored = copy.deepcopy(work)
-        if stored.created_seq <= 0:
-            stored.created_seq = self._next_seq()
-        self._works[stored.work_id] = stored
-        self._work_order.append(stored.work_id)
-        return copy.deepcopy(stored)
-
     def append_source_version(self, record: SourceVersionRecord) -> SourceVersionRecord:
+        # Idempotent same source_version_id + identical material.
         existing = self._versions.get(record.source_version_id)
         if existing is not None:
             if source_version_material_equal(existing, record):
@@ -88,19 +78,69 @@ class InMemorySourceVersionRegistry:
             raise ValueError(
                 f"conflicting source_version_id material: {record.source_version_id}"
             )
+
+        # --- Conflict checks BEFORE any mutation (R1 atomicity) ---
+
+        # (ref_id, fingerprint) uniqueness: same key must not map to a different version.
+        ref_fp_key = (record.ref_id, record.source_fingerprint)
+        existing_vid = self._by_ref_fp.get(ref_fp_key)
+        if existing_vid is not None and existing_vid != record.source_version_id:
+            existing_rec = self._versions[existing_vid]
+            if not source_version_material_equal(existing_rec, record):
+                raise ValueError(
+                    f"duplicate (ref_id, fingerprint) maps to different source version: "
+                    f"{ref_fp_key} -> {existing_vid} vs {record.source_version_id}"
+                )
+
+        # DOI across works: same normalized DOI may appear in one work only.
+        if record.normalized_doi:
+            for vid in self._by_doi.get(record.normalized_doi, []):
+                if self._versions[vid].work_id != record.work_id:
+                    raise ValueError(
+                        f"normalized DOI {record.normalized_doi!r} already mapped to work "
+                        f"{self._versions[vid].work_id}; cannot map to work {record.work_id}"
+                    )
+
+        # stable_id across works: same rule.
+        if record.stable_id:
+            for vid in self._by_stable.get(record.stable_id, []):
+                if self._versions[vid].work_id != record.work_id:
+                    raise ValueError(
+                        f"stable_id {record.stable_id!r} already mapped to work "
+                        f"{self._versions[vid].work_id}; cannot map to work {record.work_id}"
+                    )
+
+        # --- All checks passed; now mutate ---
         stored = copy.deepcopy(record)
         if stored.created_seq <= 0:
             stored.created_seq = self._next_seq()
         self._versions[stored.source_version_id] = stored
         self._version_order.append(stored.source_version_id)
-        # Indexes
-        self._by_ref_fp[(stored.ref_id, stored.source_fingerprint)] = stored.source_version_id
+        self._by_ref_fp[ref_fp_key] = stored.source_version_id
         if stored.normalized_doi:
             self._by_doi.setdefault(stored.normalized_doi, []).append(stored.source_version_id)
         if stored.stable_id:
             self._by_stable.setdefault(stored.stable_id, []).append(stored.source_version_id)
         if stored.normalized_title:
             self._by_title.setdefault(stored.normalized_title, []).append(stored.source_version_id)
+        return copy.deepcopy(stored)
+
+    def append_work(self, work: WorkRecord) -> WorkRecord:
+        existing = self._works.get(work.work_id)
+        if existing is not None:
+            # Same work_id + same material -> idempotent; contradictory -> fail closed.
+            if (
+                existing.created_evidence == work.created_evidence
+                and existing.trace_id == work.trace_id
+                and existing.provenance_id == work.provenance_id
+            ):
+                return copy.deepcopy(existing)
+            raise ValueError(f"conflicting work_id material: {work.work_id}")
+        stored = copy.deepcopy(work)
+        if stored.created_seq <= 0:
+            stored.created_seq = self._next_seq()
+        self._works[stored.work_id] = stored
+        self._work_order.append(stored.work_id)
         return copy.deepcopy(stored)
 
     def bind_source_version(

@@ -156,7 +156,9 @@ class IncrementalIntakeService:
         stable_works = {r.work_id for r in stable_hits}
         title_works = {r.work_id for r in title_hits}
 
-        # DOI mapped to multiple works -> registry invariant conflict
+        # --- Cross-identifier invariants BEFORE any positive return (R1) ---
+
+        # DOI mapped to multiple works
         if len(doi_works) > 1:
             return IntakeDecision(
                 disposition=IntakeDisposition.IDENTITY_CONFLICT,
@@ -167,8 +169,33 @@ class IncrementalIntakeService:
                 provenance_id=candidate.provenance_id,
             )
 
-        # B. explicit lineage
-        if candidate.explicit_work_id is not None:
+        # stable_id mapped to multiple works
+        if len(stable_works) > 1:
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["exact_stable_id"],
+                ambiguity_candidates=sorted(stable_works),
+                diagnostics={**diagnostics, "conflict_reason": "stable_id maps to multiple works"},
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
+
+        # DOI and stable_id disagree on work identity
+        if len(doi_works) == 1 and len(stable_works) == 1 and doi_works != stable_works:
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["exact_doi", "exact_stable_id"],
+                ambiguity_candidates=sorted(doi_works | stable_works),
+                diagnostics={**diagnostics, "conflict_reason": "DOI/stable_id work mismatch"},
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
+
+        # B. explicit lineage — enter when EITHER work_id or prior_version_id is set
+        if (
+            candidate.explicit_work_id is not None
+            or candidate.explicit_prior_version_id is not None
+        ):
             decision = self._classify_explicit_lineage(
                 candidate,
                 norm_doi=norm_doi,
@@ -182,7 +209,7 @@ class IncrementalIntakeService:
             if decision is not None:
                 return decision
 
-        # C. exact DOI
+        # C. exact DOI (only after invariant checks passed)
         if norm_doi and len(doi_works) == 1:
             work_id = next(iter(doi_works))
             evidence.append("exact_doi")
@@ -210,17 +237,6 @@ class IncrementalIntakeService:
                 match_evidence=evidence,
                 diagnostics=diagnostics,
                 proceed_to_commit=True,
-                trace_id=candidate.trace_id,
-                provenance_id=candidate.provenance_id,
-            )
-
-        # DOI/stable disagreement -> conflict
-        if len(doi_works) == 1 and len(stable_works) == 1 and doi_works != stable_works:
-            return IntakeDecision(
-                disposition=IntakeDisposition.IDENTITY_CONFLICT,
-                match_evidence=["exact_doi", "exact_stable_id"],
-                ambiguity_candidates=sorted(doi_works | stable_works),
-                diagnostics={**diagnostics, "conflict_reason": "DOI/stable_id work mismatch"},
                 trace_id=candidate.trace_id,
                 provenance_id=candidate.provenance_id,
             )
@@ -290,50 +306,32 @@ class IncrementalIntakeService:
     ) -> Optional[IntakeDecision]:
         """Handle explicit_work_id / explicit_prior_version_id. None -> fall through."""
         work_id = candidate.explicit_work_id
-        work = self._registry.get_work(work_id) if work_id else None
-        if work_id and work is None:
-            return IntakeDecision(
-                disposition=IntakeDisposition.IDENTITY_CONFLICT,
-                match_evidence=["explicit_lineage"],
-                diagnostics={**diagnostics, "conflict_reason": "explicit_work_id not found"},
-                trace_id=candidate.trace_id,
-                provenance_id=candidate.provenance_id,
-            )
-
-        # DOI mapped to a different work than explicit -> conflict
-        if doi_works and work_id and work_id not in doi_works:
-            return IntakeDecision(
-                disposition=IntakeDisposition.IDENTITY_CONFLICT,
-                match_evidence=["explicit_lineage", "exact_doi"],
-                ambiguity_candidates=sorted(doi_works | {work_id}),
-                diagnostics={
-                    **diagnostics,
-                    "conflict_reason": "DOI maps to Work A but explicit_work_id is Work B",
-                },
-                trace_id=candidate.trace_id,
-                provenance_id=candidate.provenance_id,
-            )
-        if stable_works and work_id and work_id not in stable_works:
-            return IntakeDecision(
-                disposition=IntakeDisposition.IDENTITY_CONFLICT,
-                match_evidence=["explicit_lineage", "exact_stable_id"],
-                ambiguity_candidates=sorted(stable_works | {work_id}),
-                diagnostics={
-                    **diagnostics,
-                    "conflict_reason": "stable_id maps to different work than explicit_work_id",
-                },
-                trace_id=candidate.trace_id,
-                provenance_id=candidate.provenance_id,
-            )
-
         prior_id = candidate.explicit_prior_version_id
+        prior = None
+
+        # Validate explicit_work_id existence
+        if work_id is not None:
+            work = self._registry.get_work(work_id)
+            if work is None:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={**diagnostics, "conflict_reason": "explicit_work_id not found"},
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+
+        # Validate prior-only or prior+work
         if prior_id is not None:
             prior = self._registry.get_source_version(prior_id)
             if prior is None:
                 return IntakeDecision(
                     disposition=IntakeDisposition.IDENTITY_CONFLICT,
                     match_evidence=["explicit_lineage"],
-                    diagnostics={**diagnostics, "conflict_reason": "explicit_prior_version_id not found"},
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": "explicit_prior_version_id not found",
+                    },
                     trace_id=candidate.trace_id,
                     provenance_id=candidate.provenance_id,
                 )
@@ -348,20 +346,98 @@ class IncrementalIntakeService:
                     trace_id=candidate.trace_id,
                     provenance_id=candidate.provenance_id,
                 )
-            # If work_id not supplied, inherit from prior
+            # Prior-only: inherit work from prior
             work_id = work_id or prior.work_id
 
         if work_id is None:
-            return None  # fall through
+            return None  # neither work_id nor prior supplied -> fall through
 
-        relation = candidate.explicit_relation or VersionRelation.EXPLICIT_SAME_WORK
+        # DOI/stable disagreement vs resolved work
+        if doi_works and work_id not in doi_works:
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["explicit_lineage", "exact_doi"],
+                ambiguity_candidates=sorted(doi_works | {work_id}),
+                diagnostics={
+                    **diagnostics,
+                    "conflict_reason": "DOI maps to Work A but explicit lineage resolves Work B",
+                },
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
+        if stable_works and work_id not in stable_works:
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["explicit_lineage", "exact_stable_id"],
+                ambiguity_candidates=sorted(stable_works | {work_id}),
+                diagnostics={
+                    **diagnostics,
+                    "conflict_reason": "stable_id maps to different work than explicit lineage",
+                },
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
+
+        relation = candidate.explicit_relation or (
+            VersionRelation.EXPLICIT_SAME_WORK
+            if prior_id is None
+            else VersionRelation.REVISION_OF
+        )
+
+        # PREPRINT_TO_JOURNAL compatibility enforcement (R1-04)
+        if relation == VersionRelation.PREPRINT_TO_JOURNAL:
+            if prior_id is None:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": "PREPRINT_TO_JOURNAL requires explicit_prior_version_id",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+            assert prior is not None
+            if prior.work_id != work_id:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": "PREPRINT_TO_JOURNAL prior does not belong to resolved work",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+            if prior.source_kind != SourceKind.PREPRINT:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": f"PREPRINT_TO_JOURNAL prior source_kind is {prior.source_kind.value}, expected preprint",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+            if candidate.source_kind != SourceKind.JOURNAL:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": f"PREPRINT_TO_JOURNAL candidate source_kind is {candidate.source_kind.value}, expected journal",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+
         evidence.append("explicit_lineage")
         diagnostics["explicit_relation"] = relation.value
 
         # Build upgrade intent for PREPRINT_TO_JOURNAL (Phase 5.2 input)
         upgrade_intent = None
         if relation == VersionRelation.PREPRINT_TO_JOURNAL and prior_id:
-            prior = self._registry.get_source_version(prior_id)
             new_vid = self._source_version_id(
                 candidate.ref_id, candidate.source_fingerprint, work_id
             )
