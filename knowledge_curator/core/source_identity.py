@@ -290,7 +290,11 @@ class IncrementalIntakeService:
         existing: SourceVersionRecord,
         candidate: SourceCandidate,
     ) -> Optional[str]:
-        """R2-A: return conflict reason if explicit lineage contradicts existing record."""
+        """R3: return conflict reason if explicit lineage contradicts existing record.
+
+        Supplied fields must agree EXACTLY with existing material after
+        safe normalization. Omitted optional fields do not create conflict.
+        """
         # explicit_work_id must match existing work
         if candidate.explicit_work_id is not None:
             work = self._registry.get_work(candidate.explicit_work_id)
@@ -302,7 +306,8 @@ class IncrementalIntakeService:
                     f"existing work {existing.work_id}"
                 )
 
-        # explicit_prior must belong to existing work
+        # R3-01: explicit prior must EQUAL existing.prior_source_version_id.
+        # Merely belonging to the same work is NOT sufficient.
         if candidate.explicit_prior_version_id is not None:
             prior = self._registry.get_source_version(candidate.explicit_prior_version_id)
             if prior is None:
@@ -312,29 +317,28 @@ class IncrementalIntakeService:
                     f"explicit prior work {prior.work_id} contradicts "
                     f"existing work {existing.work_id}"
                 )
+            if candidate.explicit_prior_version_id != existing.prior_source_version_id:
+                return (
+                    f"explicit prior {candidate.explicit_prior_version_id} contradicts "
+                    f"existing prior {existing.prior_source_version_id}"
+                )
 
-        # explicit_relation must not contradict existing material
+        # R3-02: explicit relation must EQUAL existing.relation (including NONE).
         rel = candidate.explicit_relation
-        if rel is not None and rel != VersionRelation.NONE:
-            if rel == VersionRelation.PREPRINT_TO_JOURNAL:
-                if existing.source_kind != SourceKind.PREPRINT:
-                    return (
-                        f"PREPRINT_TO_JOURNAL replay but existing source_kind "
-                        f"is {existing.source_kind.value}"
-                    )
-                if candidate.source_kind != SourceKind.JOURNAL:
-                    return (
-                        f"PREPRINT_TO_JOURNAL replay but candidate source_kind "
-                        f"is {candidate.source_kind.value}"
-                    )
-            # REVISION_OF / CORRECTED_VERSION / EXPLICIT_SAME_WORK on replay:
-            # prior must be in same work (already checked above if supplied).
-            # No additional contradiction for a true replay.
-        elif rel is VersionRelation.NONE and (
-            candidate.explicit_work_id is not None
-            or candidate.explicit_prior_version_id is not None
-        ):
-            return "explicit_relation=NONE contradicts supplied explicit lineage"
+        if rel is not None:
+            if rel != existing.relation:
+                return (
+                    f"explicit_relation {rel.value} contradicts "
+                    f"existing relation {existing.relation.value}"
+                )
+
+        # R3-03: source_kind must be consistent on exact replay.
+        if candidate.source_kind != existing.source_kind:
+            return (
+                f"source_kind {candidate.source_kind.value} contradicts "
+                f"existing source_kind {existing.source_kind.value}"
+            )
+
         return None
 
     def _replay_material_conflict(
@@ -352,15 +356,10 @@ class IncrementalIntakeService:
         if norm_stable is not None and existing.stable_id is not None:
             if norm_stable != existing.stable_id:
                 return True
+        # R3-04: normalized title is replay material. Compare only when both
+        # are present. Harmless formatting is already removed by normalize_title.
         if norm_title is not None and existing.normalized_title is not None:
-            # Title change alone is diagnostic, not identity conflict for replay
-            # unless DOI also conflicts. Only treat as conflict when title is the
-            # sole identity evidence and it changed.
-            if (
-                existing.normalized_doi is None
-                and existing.stable_id is None
-                and norm_title != existing.normalized_title
-            ):
+            if norm_title != existing.normalized_title:
                 return True
         return False
 

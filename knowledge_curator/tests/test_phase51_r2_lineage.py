@@ -81,17 +81,18 @@ def test_replay_cross_work_prior_conflict():
 
 
 def test_replay_compatible_lineage_still_replay():
+    """Replay of a root version with omitted prior is compatible."""
     svc, reg = _svc()
     da = _seed(svc, reg, ref="REF-A", fp="fpA", doi="10.1000/X", stable="ST-A")
-    prior = reg.list_versions(da.work_id)[0]
 
+    # Replay root with explicit work only (prior omitted) -> compatible
     c = _cand(
         ref_id="REF-A",
         source_fingerprint="fpA",
         doi="10.1000/X",
         stable_id="ST-A",
+        title="Work REF-A",
         explicit_work_id=da.work_id,
-        explicit_prior_version_id=prior.source_version_id,
     )
     d = svc.prepare(c)
     assert d.disposition == IntakeDisposition.EXACT_REPLAY
