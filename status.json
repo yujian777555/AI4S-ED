@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.1-R2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.1-R3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-1-r2-executor-report.md",
+  "result_expected": "results/phase-05-1-r3-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
     "Phase 5.0 lifecycle core remains frozen",
-    "Phase 5.1-R2 only fixes replay lineage consistency, explicit relation validation/defaults, and registry work/prior referential integrity",
+    "Phase 5.1-R3 only closes exact-replay material consistency",
+    "R1/R2 identity precedence, relation state machine, and registry referential integrity remain frozen",
     "no crawling or fuzzy semantic matching",
-    "title-only remains REVIEW_REQUIRED",
     "no changed-content extraction or lifecycle supersede in this phase",
     "no public cross-team schema changes; CG-019 remains open",
     "do not start Phase 5.2 until Planner review"
   ],
   "latest_commit": "03238e7964337b30af559d1bd4e050c59ee1b0b4",
-  "planner_review": "planner/phase-05-1-r1-review.md",
-  "live_smoke": "PHASE51_R2_LINEAGE_REGISTRY_INTEGRITY_PASS"
+  "planner_review": "planner/phase-05-1-r2-review.md",
+  "live_smoke": "PHASE51_R2_MOSTLY_PASS_R3_EXACT_REPLAY_MATERIAL"
 }
