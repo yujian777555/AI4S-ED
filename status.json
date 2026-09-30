@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "4.3.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.0",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,17 +12,17 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-04-3-2-executor-report.md",
+  "result_expected": "results/phase-05-0-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 4.3.1 core evidence/guard/MCP semantics are accepted; Phase 4.3.2 is validation-harness only unless a real live bug is exposed",
-    "mounted DSH live PASS must come from exact tool calls/results plus direct-vs-DSH comparisons",
-    "do not infer validate/identity/policy PASS from retrieve success",
-    "reuse existing knowledge-curator preset; no new Agent",
-    "production default must remain retrieval_unavailable unless explicitly configured",
-    "no final QA generator, L2 graph DB internals, EDDO production expansion, or §7"
+    "docs/03 §6 knowledge_curator core is frozen; strict live DSH validation remains externally blocked and may be rerun later without changing core",
+    "Phase 5.0 implements §7 lifecycle core: revision/retraction soft archive, versioned visibility, rollback, and internal event outbox",
+    "no physical deletion of published structural/USDO/vector history",
+    "no Crossref/RetractionWatch crawler or automated publisher polling",
+    "no external event-bus technology/topic choices; CG-018 remains open",
+    "no final QA generator, L2 graph DB internals, or EDDO production expansion"
   ],
   "latest_commit": "10d64fbcb7b02e6b9e9d074ce1f83e34b933848d",
-  "planner_review": "planner/phase-04-3-1-review.md",
-  "live_smoke": "PHASE432_STRICT_HARNESS_PASS_LIVE_VALIDATION_BLOCKED_EXTERNAL"
+  "planner_review": "planner/phase-04-3-2-review.md",
+  "live_smoke": "SECTION6_FROZEN_DSH_LIVE_BLOCKED_EXTERNAL_PHASE50_LIFECYCLE_CORE"
 }
