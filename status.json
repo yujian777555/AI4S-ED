@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.2-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,19 +12,17 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-2-executor-report.md",
+  "result_expected": "results/phase-05-2-r1-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0 lifecycle core is frozen",
-    "Phase 5.1 source identity/version lineage is frozen",
-    "Phase 5.2 consumes upstream structured content manifests; it does not parse PDF/XML or crawl literature",
-    "cross-version content alignment is exact only; no embedding/fuzzy/LLM matching",
-    "unsafe alignment falls back to FULL_REEXTRACT_REQUIRED rather than guessing",
-    "Phase 5.2 builds RevisionPackage/RevisionDraft but does not publish lifecycle changes",
-    "no public cross-team schema changes; CG-019 and CG-020 remain compatibility boundaries",
-    "do not start Phase 5.3 until Planner review"
+    "Phase 5.0 lifecycle core remains frozen",
+    "Phase 5.1 source identity/version lineage remains frozen",
+    "Phase 5.2-R1 only hardens input identity, extraction completion, carry-forward independence, and package material idempotency",
+    "no PDF/XML parsing, crawling, fuzzy/embedding/LLM alignment",
+    "no lifecycle publication or Phase 5.3",
+    "no public cross-team schema changes; CG-019/CG-020 remain compatibility boundaries"
   ],
   "latest_commit": "6638077519f447cab8c387e268db3460bbbc6adc",
-  "planner_review": "planner/phase-05-1-r3-review.md",
-  "live_smoke": "PHASE52_CONTENT_DELTA_REVISION_PACKAGE_PASS"
+  "planner_review": "planner/phase-05-2-review.md",
+  "live_smoke": "PHASE52_MOSTLY_PASS_R1_INPUT_MATERIAL_INTEGRITY"
 }
