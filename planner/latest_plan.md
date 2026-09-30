@@ -1,4 +1,4 @@
-# Phase 5.2 Plan — Structured Content Delta + Assertion Transition Revision Package
+# Phase 5.2-R1 Plan — Delta Input Integrity + Extraction Completion + Material Idempotency
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,439 +6,282 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Implement the knowledge_curator-owned deterministic planning layer for docs/03 §7.1:
+Close the seven correctness blockers in:
+planner/phase-05-2-review.md
 
-VersionUpgradeIntent
-→ compare prior/new structured content units
-→ identify unchanged/modified/added/removed scope
-→ request extraction only for changed/new units when safe
-→ combine carried-forward unchanged assertions with delta-extracted assertions
-→ compute assertion transitions
-→ build a deterministic RevisionPackage / RevisionDraft input for frozen §7.3 lifecycle publication.
+Do not start Phase 5.3.
 
-This phase DOES NOT implement PDF/XML parsing or cross-module crawling.
+## 1. Scope freeze
 
-## 1. Architecture boundary
+Do not redesign:
+- exact-only content alignment;
+- UNCHANGED/MODIFIED/ADDED/REMOVED semantics;
+- semantic slot matching;
+- FULL_REEXTRACT fallback decision;
+- Phase 5.0 lifecycle core;
+- Phase 5.1 source lineage;
+- public MCP contracts.
 
-knowledge_curator receives structured content manifests from upstream.
+## 2. Deep-copy carried assertions
 
-Do NOT:
-- parse PDF/XML/LaTeX;
-- run OCR;
-- invent paragraph boundaries;
-- use embeddings/edit distance/LLM to align paragraphs;
-- crawl arXiv/Crossref/TOCs;
-- change Phase 5.0 lifecycle semantics;
-- change Phase 5.1 identity/lineage semantics;
-- expose a new public MCP mutation tool;
-- fake cross-store ACID publication in this phase.
+carry_forward_unchanged must create a fully independent Assertion graph.
 
-CG-020 governs the temporary internal content-delta compatibility model.
+Deep-copy:
+- Subject;
+- ObjectValue;
+- each Condition;
+- any mutable value/metadata nested inside scientific payload where applicable.
 
-## 2. Internal content-unit models
+Rebuild Provenance:
+- locator = new unit locator;
+- sentence may be copied by value.
 
-Add INTERNAL temporary schemas, recommended:
-knowledge_curator/schemas/version_delta.py
+Never reuse mutable nested objects from prior Assertion.
 
-### ContentUnitKind
-At least:
-- TEXT
-- TABLE
-- CHART
-- FORMULA
-- OTHER
+Mandatory regression:
+- carry old -> new;
+- mutate new.subject.original_mention;
+- mutate new.object.value;
+- mutate new.conditions[0].value;
+- old assertion remains byte/material unchanged.
 
-### ContentUnit
-At least:
-- unit_id: stable identity within a source version;
-- locator: page/section/object locator for that version;
-- kind;
-- content_hash;
-- prior_unit_id: optional explicit cross-version alignment;
-- metadata optional.
+Replace the vacuous:
+... == ... or True
+with a real semantic equality assertion.
 
-content_hash is supplied by upstream or deterministically computed over canonical upstream payload.
-knowledge_curator must not hash inaccessible raw PDF bytes.
+## 3. Validate source-version/material identity before delta
 
-### VersionContentManifest
-At least:
-- source_version_id;
-- ref_id;
-- source_fingerprint;
-- units[];
-- trace_id;
-- provenance_id.
+Add pure validators called at the beginning of RevisionPackageBuilder.build.
 
-Require unique unit_id within one manifest.
+### prior manifest
+Require:
+- prior_manifest.source_version_id == prior.source_version_id;
+- prior_manifest.ref_id == prior.ref_id;
+- prior_manifest.source_fingerprint == prior.source_fingerprint.
 
-## 3. Exact cross-version alignment
+### new manifest
+Require:
+- new_manifest.source_version_id == new.source_version_id;
+- new_manifest.ref_id == new.ref_id;
+- new_manifest.source_fingerprint == new.source_fingerprint.
 
-For each NEW content unit, align to prior by this precedence:
+### prior inventory
+Require:
+- source_version_id == prior.source_version_id;
+- ref_id == prior.ref_id.
 
-1. prior_unit_id if explicitly supplied;
-2. same unit_id only when prior_unit_id is absent;
-3. otherwise no alignment.
+### delta batch
+Require:
+- source_version_id == new.source_version_id;
+- ref_id == new.ref_id.
+
+Any mismatch => fail closed before carry-forward/transition/package id generation.
+
+## 4. Validate intent relation + prior KB binding
+
+In validate_intent/build context require:
+- new.relation == intent.relation;
+- new.prior_source_version_id == prior.source_version_id;
+- prior.kb_version_id is non-empty;
+- prior.snapshot_id is non-empty.
+
+This phase prepares lifecycle upgrade from an already published prior source version.
+
+Do NOT require new.kb_version_id; target content is not published yet.
+
+Add tests:
+- intent relation differs from new.relation -> reject;
+- prior unbound -> reject;
+- prior bound -> proceed.
+
+Update fixtures to bind prior version explicitly using SourceVersionRegistry.bind_source_version.
+
+## 5. Prior inventory validation
+
+Add validator:
+validate_prior_inventory(inventory, prior_manifest).
+
+Require:
+- unique assertion ids;
+- every assertion.ref_id == inventory.ref_id;
+- every assertion id has one unit-map entry;
+- every mapped unit exists in prior manifest;
+- assertion_unit_map contains no unknown assertion ids.
+
+No silent skip for missing mapping.
+
+If unsafe mapping prevents delta carry-forward, choose:
+- structural invalidity -> fail closed;
+- explicitly declared upstream identity reset -> FULL_REEXTRACT_REQUIRED.
+
+Do not silently drop assertions.
+
+## 6. Extraction completion evidence
+
+Extend INTERNAL DeltaAssertionBatch with:
+processed_unit_ids: list[str] = field(default_factory=list)
+
+This is CG-020 internal compatibility only.
 
 Validation:
-- one new unit cannot align to multiple prior units;
-- one prior unit cannot be claimed by multiple new units;
-- explicit prior_unit_id must exist;
-- conflicting duplicate ids fail closed.
 
-No fuzzy fallback.
+### DELTA_SAFE
+required processed scope =
+set(plan.extraction_unit_ids)
 
-## 4. Content delta classification
+Require:
+- every required unit is processed;
+- processed units are all in new manifest;
+- processed units do not include unchanged/out-of-scope units unless an explicit future mode says full extraction.
 
-Produce ContentDeltaPlan with exact categories:
+Prefer exact equality for Phase 5.2-R1.
 
-### UNCHANGED
-Aligned prior/new unit and content_hash equal.
+### FULL_REEXTRACT_REQUIRED
+required processed scope =
+all new manifest unit ids.
 
-### MODIFIED
-Aligned prior/new unit and content_hash differ.
+Require exact coverage.
 
-### ADDED
-New unit has no prior alignment.
+Why:
+zero extracted assertions from a processed unit is valid;
+an unprocessed unit is not equivalent to zero assertions.
 
-### REMOVED
-Prior unit is not aligned by any new unit.
+## 7. Delta batch structural validation in ALL modes
 
-Output at least:
-- unchanged pairs;
-- modified pairs;
-- added new units;
-- removed prior units;
-- extraction_unit_ids;
-- mode;
-- diagnostics.
+Always validate:
+- unique assertion ids;
+- assertion.ref_id == batch.ref_id;
+- every assertion id has a unit mapping;
+- no dangling map entry;
+- mapped unit exists in new manifest;
+- mapped unit is in processed_unit_ids.
 
-extraction_unit_ids =
-- all MODIFIED new unit ids;
-- all ADDED new unit ids.
+Then apply mode-specific processed scope rules.
 
-UNCHANGED units must not be requested for re-extraction.
+FULL_REEXTRACT_REQUIRED must no longer bypass validate_delta_batch.
 
-## 5. Safe full-reextract fallback
+## 8. FULL_REEXTRACT behavior
 
-If exact alignment is insufficient to safely carry forward prior assertions, do not guess.
+When mode == FULL_REEXTRACT_REQUIRED:
+- carried assertions = [];
+- carried_records = [];
+- target assertions = validated full extraction batch only;
+- transitions must be computed against the complete new extraction.
 
-Define:
-DeltaMode:
-- DELTA_SAFE
-- FULL_REEXTRACT_REQUIRED
-- REVIEW_REQUIRED
+Because content-unit alignment may be unavailable in a segmentation reset, do NOT use modified_pairs that do not exist to infer old->new automatically.
 
-Examples requiring FULL_REEXTRACT_REQUIRED:
-- prior assertion inventory references a prior unit that cannot be resolved safely into the new version while the assertion would otherwise need carrying;
-- upstream manifest explicitly declares segmentation/identity reset;
-- duplicate/ambiguous cross-version alignment prevents deterministic carry-forward but does not indicate malicious conflict.
+Safe default:
+- prior assertions are ARCHIVE candidates;
+- new assertions are ADDED candidates;
+- if upstream supplies no exact old->new unit alignment, do not invent supersede pairs.
 
-Hard structural contradictions use REVIEW_REQUIRED/fail-closed as appropriate.
+If an exact alignment still exists in a non-segmentation fallback, deterministic transition matching may be used only where alignment is explicitly present.
 
-When FULL_REEXTRACT_REQUIRED:
-- extraction scope = all new units;
-- do not pretend docs/03 changed-only optimization was achieved;
-- diagnostics explain why.
+Never fuzzy match.
 
-## 6. DeltaExtractionRequest
+## 9. Material package identity
 
-Produce an internal request object for the upstream extractor, not the extraction itself.
+Introduce canonical package material payload.
 
-At least:
+package_id must change when any materially relevant input/output changes.
+
+Include at least:
 - work_id;
-- prior_source_version_id;
-- new_source_version_id;
-- new_ref_id;
-- extraction_unit_ids;
-- requested locators;
-- reason;
-- trace_id/provenance_id.
+- prior/new source version ids;
+- relation;
+- prior/new ref/fingerprint;
+- prior bound KB version/snapshot;
+- content delta categories and pair identities;
+- content hashes for involved units;
+- processed_unit_ids;
+- target assertion canonical material;
+- supersede/archive/added transitions;
+- trace/provenance only if current project identity policy treats them as semantic.
 
-For PREPRINT_TO_JOURNAL + DELTA_SAFE:
-reason = changed_or_added_units_only.
-
-No network or LLM call in core.
-
-## 7. Assertion inventories with content-unit binding
-
-Do not change public Assertion schema.
-
-Add INTERNAL wrappers:
-
-### VersionAssertionInventory
-- source_version_id;
-- ref_id;
-- assertions;
-- assertion_unit_map: assertion_id -> unit_id.
-
-### DeltaAssertionBatch
-- source_version_id;
-- ref_id;
-- assertions;
-- assertion_unit_map.
-
-Validation:
-- every assertion id unique;
-- every mapped unit exists in its manifest;
-- delta batch assertions may refer only to extraction_unit_ids;
-- assertion.ref_id must match the batch/new ref_id;
-- no assertion may claim an UNCHANGED unit in DELTA_SAFE mode.
-
-## 8. Carry forward unchanged assertions safely
-
-For UNCHANGED aligned units:
-- prior content hash == new content hash;
-- carry forward the prior assertion semantics without re-extraction.
-
-Create a NEW assertion for the new source version, not a mutable alias of the old assertion.
-
-Required deterministic transformation:
-- new ref_id = target/new ref_id;
-- new assertion id deterministic from:
-  prior assertion id + new source_version_id + new unit_id;
-- semantic subject/property/object/conditions/claim_type/origin/confidence/quality preserved;
-- provenance sentence may be preserved because content hash is identical;
-- provenance locator MUST use the new unit locator.
-
-Do not mutate the prior Assertion object.
-
-Record lineage:
-old_assertion_id -> carried_assertion_id.
-
-## 9. Build complete target AssertionSet
-
-For DELTA_SAFE:
-target assertions =
-- carried-forward assertions from UNCHANGED units;
-- upstream delta-extracted assertions from MODIFIED/ADDED units.
-
-REMOVED prior-unit assertions are not carried.
-
-For FULL_REEXTRACT_REQUIRED:
-- require upstream batch for all new units;
-- no prior assertion carry-forward;
-- target assertions come from the full new extraction.
-
-Target AssertionSet:
-- ref_id = new ref_id;
-- metadata supplied for new source version;
-- normal AssertionSet validation remains applicable.
-
-This target set is intended for existing KnowledgeCurator + DocumentCommitCoordinator in a later publication step.
-
-## 10. Deterministic assertion transition diff
-
-Need map PRIOR assertions to TARGET assertions for lifecycle actions.
-
-First partition by content-unit relationship.
-
-### Unchanged units
-Every carried assertion has explicit lineage:
-old -> carried-new
-=> supersede action.
-
-### Removed units
-All prior assertions bound to removed units:
-=> archive action.
-
-### Modified units
-Compare old assertions in prior unit against new assertions in aligned new unit using a deterministic semantic slot key.
-
-Recommended semantic slot key excludes value and locator, and includes:
-- subject.eddo_class;
-- subject.resolved_entity;
-- property;
-- normalized conditions tuple;
-- claim_type;
-- value_type where needed to avoid category collision.
-
-Do NOT use LLM/fuzzy text.
-
-Rules:
-- unique old slot + unique new slot:
-  - if full semantic payload equal except source/provenance identity -> supersede old -> new as version replacement;
-  - if value/unit/uncertainty/etc changed -> supersede old -> new;
-- old slot with no new match -> archive old;
-- new slot with no old match -> added assertion, no old supersede;
-- multiple old or multiple new assertions with same slot => REVIEW_REQUIRED for that unit; no automatic lifecycle draft.
-
-## 11. Full semantic assertion hash
-
-Implement a deterministic internal semantic payload/hash suitable for comparing assertions.
-
-Include:
-- subject class/entity;
-- property;
-- object value/unit/value_type/uncertainty;
-- normalized conditions;
-- claim_type;
-- source_claim_origin;
-- relevant scientific flags if material.
-
-Exclude:
+For target assertion material include a deterministic canonical structure containing:
 - assertion id;
 - ref_id;
-- provenance locator;
-- trace-only fields.
+- semantic_payload_hash;
+- provenance locator/sentence where evidence identity matters;
+- bound unit id.
 
-Do not redefine the existing §5 commit hash; this is an internal delta comparison function.
+Do not rely only on assertion IDs.
 
-## 12. RevisionPackage
+Regression:
+same IDs/actions but value 2.0 vs 3.0 -> different package_id.
 
-Produce an INTERNAL RevisionPackage containing at least:
-- work_id;
-- prior_source_version_id;
-- new_source_version_id;
-- relation;
-- prior_ref_id;
-- new_ref_id;
-- prior_bound_kb_version_id;
-- content_delta;
-- target_assertion_set;
-- supersede_actions: old assertion id -> new assertion id;
-- archive_actions;
-- added_assertion_ids;
-- extraction evidence/diagnostics;
-- requires_manual_review;
-- trace_id/provenance_id.
+Same exact material -> same package_id.
 
-For PREPRINT_TO_JOURNAL:
-- lifecycle reason = PREPRINT_TO_JOURNAL.
+## 10. RevisionDraft replacement ids
 
-## 13. Build frozen Lifecycle RevisionDraft, but do not publish yet
+package_to_revision_draft:
 
-Add a pure adapter/helper:
-RevisionPackage -> RevisionDraft
+replacement_assertion_ids =
+sorted(unique(
+  list(package.supersede_actions.values())
+  + package.added_assertion_ids
+))
 
-It must populate:
-- trigger=LifecycleReason.PREPRINT_TO_JOURNAL (or mapped supported relation);
-- affected_assertion_ids;
-- supersede_actions;
-- archive_actions;
-- replacement_assertion_ids;
-- evidence_refs;
-- trace/provenance;
-- rationale.
+No old assertion id belongs in replacement_assertion_ids.
 
-Important:
-The final lifecycle base_version_id cannot be safely frozen before target new-version commit advances the current KB version.
+Add regression with:
+- one carried/modified supersede;
+- one added assertion;
+- both NEW ids appear exactly once.
 
-Therefore Phase 5.2 draft/package should carry:
-- prior_bound_kb_version_id for validation/audit;
-- base_version_id unresolved or explicitly marked publication-time.
+## 11. Ambiguity/manual review
 
-Do NOT call apply_revision() in Phase 5.2.
+Keep current duplicate-slot review gate.
 
-Publication orchestration will bind the actual current target commit version as lifecycle base in the next phase.
+If package.requires_manual_review:
+- package_to_revision_draft may produce a MANUAL_ADJUDICATION_REQUIRED draft;
+- it must not fabricate risk metadata to make it auto-rule eligible.
 
-## 14. Risk gate
+Do not call apply_revision.
 
-Do not fabricate:
-high_confidence / multi_source / no_controversy.
-
-RevisionPackage may carry review metadata supplied by the caller.
-
-If deterministic assertion matching is ambiguous:
-- requires_manual_review=true;
-- do not output an auto-publishable lifecycle draft.
-
-Do not bypass frozen evaluate_risk_gate.
-
-## 15. VersionUpgradeIntent validation
-
-Before delta planning:
-- intent work/prior/new source versions must exist in SourceVersionRegistry;
-- both versions belong to intent.work_id;
-- new.prior_source_version_id == prior.source_version_id;
-- relation matches records;
-- for P2J prior PREPRINT / new JOURNAL;
-- prior should have a bound KB version if lifecycle upgrade is being prepared.
-
-Contradiction => fail closed.
-
-## 16. Idempotency
-
-Same:
-- VersionUpgradeIntent;
-- prior/new manifests;
-- assertion inventories/batches
-
-must produce the same:
-- ContentDeltaPlan;
-- carried assertion ids;
-- AssertionTransition diff;
-- RevisionPackage id.
-
-Use canonical deterministic hashes/ids.
-
-No random UUIDs in delta/revision package identity.
-
-## 17. Tests
+## 12. Tests
 
 Maintain:
-- knowledge_curator >= 421 passed / 0 failed;
+- knowledge_curator >= 442 passed / 0 failed;
 - integration/dsh >= 90 passed / 0 failed.
 
 Add at least:
+1. carried assertion nested mutation does not mutate prior;
+2. real semantic payload equality after carry;
+3. prior manifest version/ref/fingerprint mismatch -> reject;
+4. new manifest version/ref/fingerprint mismatch -> reject;
+5. prior inventory identity mismatch -> reject;
+6. delta batch identity mismatch -> reject;
+7. intent relation mismatch -> reject;
+8. prior unbound KB -> reject;
+9. prior bound KB -> pass;
+10. prior inventory duplicate id -> reject;
+11. prior inventory missing unit map -> reject;
+12. prior inventory dangling map -> reject;
+13. DELTA_SAFE processed scope incomplete -> reject;
+14. DELTA_SAFE processed out-of-scope -> reject;
+15. FULL_REEXTRACT incomplete processed scope -> reject;
+16. FULL_REEXTRACT wrong ref/unknown unit/duplicate id -> reject;
+17. processed unit with zero assertions is valid;
+18. FULL_REEXTRACT has no carry-forward;
+19. package scientific value change changes package_id;
+20. identical material preserves package_id;
+21. replacement_assertion_ids includes supersede targets + added ids.
 
-### content delta
-1. same unit id + same hash -> unchanged;
-2. explicit prior_unit_id + same hash -> unchanged;
-3. aligned hash changed -> modified;
-4. new unaligned unit -> added;
-5. prior unaligned unit -> removed;
-6. duplicate prior alignment -> fail closed;
-7. missing explicit prior_unit_id -> fail closed;
-8. unsafe alignment/inventory -> FULL_REEXTRACT_REQUIRED.
-
-### extraction scope
-9. DELTA_SAFE requests only modified+added units;
-10. unchanged unit is never requested;
-11. full fallback requests all new units;
-12. delta batch containing unchanged unit -> reject.
-
-### carry-forward
-13. unchanged assertion cloned with deterministic new id;
-14. prior object remains unmodified;
-15. new ref_id/new locator applied;
-16. semantic payload preserved.
-
-### assertion transitions
-17. unchanged carried old->new supersede;
-18. modified unique slot old->new supersede;
-19. removed old assertion -> archive;
-20. newly added assertion -> added only;
-21. ambiguous duplicate semantic slot -> review required.
-
-### upgrade package
-22. invalid source-version lineage -> reject;
-23. P2J package has correct lifecycle reason;
-24. deterministic replay yields same package id;
-25. RevisionDraft contains exact supersede/archive actions;
-26. Phase 5.2 does not call LifecycleRevisionCoordinator.apply_revision.
-
-## 18. CONTRACT_GAPS
-
-Keep CG-019.
-Add/maintain CG-020 for upstream stable content-unit/alignment schema.
-
-Do not invent a public parser contract.
-
-## 19. Deliverable
+## 13. Deliverable
 
 Create:
-results/phase-05-2-executor-report.md
+results/phase-05-2-r1-executor-report.md
 
 Report:
-- exact content-unit alignment: PASS/FAILED;
-- delta classification: PASS/FAILED;
-- safe full-reextract fallback: PASS/FAILED;
-- delta extraction request: PASS/FAILED;
-- unchanged assertion carry-forward: PASS/FAILED;
-- assertion transition diff: PASS/FAILED;
-- ambiguity review gate: PASS/FAILED;
-- RevisionPackage determinism: PASS/FAILED;
-- lifecycle draft generation: PASS/FAILED;
+- deep-copy carry-forward: PASS/FAILED;
+- manifest/inventory/batch identity validation: PASS/FAILED;
+- intent relation/prior binding validation: PASS/FAILED;
+- prior inventory integrity: PASS/FAILED;
+- extraction completion coverage: PASS/FAILED;
+- FULL_REEXTRACT validation: PASS/FAILED;
+- material package identity: PASS/FAILED;
+- complete draft replacement ids: PASS/FAILED;
 - lifecycle publication performed: NO;
 - integration tests;
 - knowledge_curator tests;
@@ -447,15 +290,14 @@ Report:
 - origin/main SHA;
 - CONTRACT_GAPS changes.
 
-## 20. Completion
+## 14. Completion
 
 Update status.json:
-- phase = 5.2
+- phase = 5.2-R1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-2-executor-report.md
+- result_expected = results/phase-05-2-r1-executor-report.md
 
 Push main and STOP.
-
-Do not start publication orchestration / Phase 5.3 until Planner review.
+Do not start Phase 5.3.
