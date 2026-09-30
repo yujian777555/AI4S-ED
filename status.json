@@ -20,7 +20,7 @@
     "future changes require a confirmed bug, a newly frozen external integration contract, or an explicitly approved new requirement",
     "CG-016/017/018/019/020/021 remain non-blocking cross-team/public-contract boundaries"
   ],
-  "latest_commit": "4881288d3259582e559c8c301121e066b6a25f40",
+  "latest_commit": "fd33a1221fcd7c14684048d1f48093283caa520d",
   "planner_review": "planner/phase-05-3-r2-review.md",
   "live_smoke": "KNOWLEDGE_CURATOR_ACCEPTED_FROZEN_DELIVERABLE",
   "final_acceptance": "planner/KNOWLEDGE_CURATOR_FINAL_ACCEPTANCE.md",
@@ -28,9 +28,12 @@
     "verdict": "ACCEPTED",
     "frozen": true,
     "deliverable": true,
-    "implementation_code_sha": "4881288d3259582e559c8c301121e066b6a25f40",
-    "knowledge_curator_tests": "499 passed / 0 skipped / 0 failed",
-    "integration_dsh_tests": "90 passed / 0 failed",
-    "public_contracts_changed": false
+    "implementation_code_sha": "fd33a1221fcd7c14684048d1f48093283caa520d",
+    "verification_run_id": "36750460836",
+    "verification_head_sha": "38c0c6a626fa74cb1b9149a6d7718ffe78079977",
+    "knowledge_curator_tests": "512 passed / 0 skipped / 0 failed",
+    "integration_dsh_tests": "90 passed / 0 skipped / 0 failed",
+    "public_contracts_changed": false,
+    "contract_gaps_changed": false
   }
 }
