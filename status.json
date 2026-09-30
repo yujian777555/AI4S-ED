@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.2-R3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,20 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-2-r3-executor-report.md",
+  "result_expected": "results/phase-05-3-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0 lifecycle core remains frozen",
-    "Phase 5.1 source identity/version lineage remains frozen",
-    "Phase 5.2-R3 only corrects lifecycle subject direction for upgrade drafts",
-    "P2J lifecycle subject is prior ref; new journal remains active",
-    "no synthetic low-risk metadata to bypass revision review",
-    "no lifecycle publication or Phase 5.3",
-    "CG-021 records the manual revision approval contract gap"
+    "Phase 5.0 lifecycle core is frozen",
+    "Phase 5.1 source identity/version lineage is frozen",
+    "Phase 5.2 version delta/revision package is frozen",
+    "Phase 5.3 is orchestration only: approval -> target commit -> lifecycle -> final source bind",
+    "new SourceVersion binds only to final lifecycle KB version, never the target intermediate version",
+    "no fake cross-store ACID claim; use recoverable saga semantics",
+    "do not fabricate low-risk metadata; CG-021 approval must be explicit and auditable",
+    "no new public MCP contract",
+    "do not start Phase 5.4; Planner performs final freeze after review"
   ],
   "latest_commit": "726f45e31420227d3cf0c3161b0f1ef3fc54e81e",
-  "planner_review": "planner/phase-05-2-r2-review.md",
-  "live_smoke": "PHASE52_R3_P2J_SUBJECT_DIRECTION_PASS"
+  "planner_review": "planner/phase-05-2-r3-review.md",
+  "live_smoke": "PHASE52_FROZEN_PHASE53_PUBLICATION_ORCHESTRATION"
 }
