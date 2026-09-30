@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "4.3.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -22,7 +22,7 @@
     "production default must remain retrieval_unavailable unless explicitly configured",
     "no final QA generator, L2 graph DB internals, EDDO production expansion, or §7"
   ],
-  "latest_commit": "8f8fa2f2e5256319ed77e09996112aba6c9ba5ea",
+  "latest_commit": "10d64fbcb7b02e6b9e9d074ce1f83e34b933848d",
   "planner_review": "planner/phase-04-3-1-review.md",
-  "live_smoke": "PHASE431_CORE_PASS_STRICT_MOUNTED_DSH_LIVE_ACCEPTANCE_PENDING"
+  "live_smoke": "PHASE432_STRICT_HARNESS_PASS_LIVE_VALIDATION_BLOCKED_EXTERNAL"
 }
