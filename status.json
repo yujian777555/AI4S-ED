@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.3-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,20 +12,22 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-3-executor-report.md",
+  "result_expected": "results/phase-05-3-r1-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0 lifecycle core is frozen",
-    "Phase 5.1 source identity/version lineage is frozen",
-    "Phase 5.2 version delta/revision package is frozen",
-    "Phase 5.3 is orchestration only: approval -> target commit -> lifecycle -> final source bind",
-    "new SourceVersion binds only to final lifecycle KB version, never the target intermediate version",
-    "no fake cross-store ACID claim; use recoverable saga semantics",
-    "do not fabricate low-risk metadata; CG-021 approval must be explicit and auditable",
+    "Phase 5.0 lifecycle core remains frozen",
+    "Phase 5.1 source identity/version lineage remains frozen",
+    "Phase 5.2 delta/revision package remains frozen",
+    "Phase 5.3-R1 is final integration hardening only",
+    "RevisionPublicationCoordinator must integrate the real async DocumentCommitCoordinator",
+    "target CommitRequest/report/material and approval scope must be exact and mandatory",
+    "new SourceVersion binds only to validated final lifecycle KB version",
+    "post-bind pre-journal-ack crash must recover idempotently",
+    "no fake cross-store ACID claim",
     "no new public MCP contract",
-    "do not start Phase 5.4; Planner performs final freeze after review"
+    "do not create Phase 5.4; Planner freezes after R1"
   ],
   "latest_commit": "0474ce9066fbce1ea3d7624ba91e50829bb7c523",
-  "planner_review": "planner/phase-05-2-r3-review.md",
-  "live_smoke": "PHASE53_PUBLICATION_ORCHESTRATION_PASS"
+  "planner_review": "planner/phase-05-3-review.md",
+  "live_smoke": "PHASE53_MOSTLY_PASS_R1_REAL_INTEGRATION"
 }
