@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.2-R3",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no lifecycle publication or Phase 5.3",
     "CG-021 records the manual revision approval contract gap"
   ],
-  "latest_commit": "ea03c1365a2f54bc2acc21174de8b95c8932bb0e",
+  "latest_commit": "726f45e31420227d3cf0c3161b0f1ef3fc54e81e",
   "planner_review": "planner/phase-05-2-r2-review.md",
-  "live_smoke": "PHASE52_R2_MOSTLY_PASS_R3_P2J_SUBJECT_DIRECTION"
+  "live_smoke": "PHASE52_R3_P2J_SUBJECT_DIRECTION_PASS"
 }
