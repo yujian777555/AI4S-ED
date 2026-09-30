@@ -1,7 +1,7 @@
-"""Revision publication orchestration (Phase 5.3).
+"""Revision publication orchestration (Phase 5.3 / R1).
 
 Recoverable saga: validate -> target commit -> lifecycle -> final source bind.
-No fake cross-store ACID. Composes frozen Phase 2/5.0/5.1/5.2 components.
+Real async DocumentCommitCoordinator integration. No fake cross-store ACID.
 """
 
 from __future__ import annotations
@@ -12,9 +12,13 @@ import json
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from knowledge_curator.core.commit import validate_commit_request
 from knowledge_curator.ports.revision_publication_store import RevisionPublicationStore
 from knowledge_curator.ports.source_version_registry import SourceVersionRegistry
 from knowledge_curator.ports.version_store import VersionStore
+from knowledge_curator.schemas.assertions import Assertion
+from knowledge_curator.schemas.commit import CommitRequest
+from knowledge_curator.schemas.curation import CurationAction
 from knowledge_curator.schemas.revision_publication import (
     ApprovalDecision,
     PublicationPhase,
@@ -23,7 +27,6 @@ from knowledge_curator.schemas.revision_publication import (
     RevisionPublicationRecord,
     RevisionPublicationResult,
 )
-from knowledge_curator.schemas.source_versions import VersionUpgradeIntent
 from knowledge_curator.schemas.version_delta import RevisionPackage
 
 
@@ -32,43 +35,81 @@ def _hash_json(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def canonical_assertion_material(a: Assertion) -> dict:
+    """Canonical publication material for one assertion (R1-04)."""
+    return {
+        "id": a.id,
+        "ref": a.ref_id,
+        "eddo": a.subject.eddo_class,
+        "entity": a.subject.resolved_entity,
+        "mention": a.subject.original_mention,
+        "prop": a.property,
+        "val": a.object.value,
+        "unit": a.object.unit,
+        "vt": a.object.value_type.value,
+        "unc": a.object.uncertainty,
+        "conds": sorted(
+            [[c.eddo_class, str(c.value), c.unit or ""] for c in (a.conditions or [])]
+        ),
+        "loc": a.provenance.locator if a.provenance else "",
+        "sent": a.provenance.sentence if a.provenance else "",
+        "ct": a.claim_type.value,
+        "org": a.source_claim_origin.value,
+        "conf": a.confidence.value,
+        "q": a.quality,
+        "flags": [a.missing_unit, a.speculative_wording, a.chart_quality_low],
+    }
+
+
+def _assertion_material_equal(a: Assertion, b: Assertion) -> bool:
+    return canonical_assertion_material(a) == canonical_assertion_material(b)
+
+
 def compute_publication_scope_hash(
     package: RevisionPackage,
-    target_commit_request: Any,
-    curation_decisions: Optional[list[dict]] = None,
+    request: CommitRequest,
 ) -> str:
-    """Deterministic scope hash covering publication material (plan §11)."""
-    target = [
-        {
-            "id": a.id,
-            "ref": a.ref_id,
-            "sem": _hash_json(
-                {
-                    "subject": [a.subject.eddo_class, a.subject.resolved_entity, a.subject.original_mention],
-                    "prop": a.property,
-                    "obj": [str(a.object.value), a.object.unit, a.object.value_type.value, a.object.uncertainty],
-                    "conds": [[c.eddo_class, str(c.value), c.unit] for c in (a.conditions or [])],
-                    "ct": a.claim_type.value,
-                    "org": a.source_claim_origin.value,
-                    "conf": a.confidence.value,
-                    "q": a.quality,
-                    "flags": [a.missing_unit, a.speculative_wording, a.chart_quality_low],
-                    "loc": a.provenance.locator if a.provenance else "",
-                    "sent": a.provenance.sentence if a.provenance else "",
-                }
-            ),
-        }
-        for a in package.target_assertions
-    ]
-    decisions = curation_decisions or []
+    """Scope hash binding actual CommitRequest material (R1-03)."""
+    meta = request.assertion_set.metadata
+    report = request.report
+    decisions = []
+    for d in getattr(report, "decisions", []) or []:
+        action = getattr(d, "action", None)
+        conf = getattr(d, "confidence", None)
+        decisions.append(
+            {
+                "aid": getattr(d, "assertion_id", None) or getattr(d, "assertion_id", ""),
+                "act": action.value if hasattr(action, "value") else str(action),
+                "conf": conf.value if hasattr(conf, "value") else str(conf),
+            }
+        )
     return _hash_json(
         {
             "package_id": package.package_id,
             "new_sv": package.new_source_version_id,
             "new_ref": package.new_ref_id,
             "prior_ref": package.prior_ref_id,
-            "target": sorted(target, key=lambda x: x["id"]),
-            "decisions": sorted(decisions, key=lambda x: x.get("assertion_id", "")),
+            "src_ref": request.source.ref_id,
+            "src_fp": request.source.source_fingerprint,
+            "meta": {
+                "title": meta.title,
+                "authors": list(meta.authors),
+                "year": meta.year,
+                "source": meta.source,
+                "doi": meta.doi,
+                "stable_id": meta.stable_id,
+                "quality_grade": getattr(request.assertion_set, "quality_grade", None),
+                "no_structured_data": getattr(request.assertion_set, "no_structured_data", False),
+                "schema_valid": getattr(request.assertion_set, "schema_valid_count", None),
+                "schema_total": getattr(request.assertion_set, "schema_total_count", None),
+            },
+            "assertions": sorted(
+                [canonical_assertion_material(a) for a in request.assertion_set.assertions],
+                key=lambda x: x["id"],
+            ),
+            "decisions": sorted(decisions, key=lambda x: x["aid"]),
+            "report_status": str(getattr(report, "status", "")),
+            "returned_upstream": getattr(report, "returned_upstream_count", 0) or 0,
         }
     )[:16]
 
@@ -78,7 +119,6 @@ def compute_request_material_hash(
     scope_hash: str,
     approval: Optional[RevisionApproval],
 ) -> str:
-    """Request material hash for publication idempotency/conflict (plan §14)."""
     appr_mat = None
     if approval is not None:
         appr_mat = {
@@ -88,6 +128,8 @@ def compute_request_material_hash(
             "dec": approval.decision.value,
             "appr": approval.approver,
             "rat": approval.rationale,
+            "trace": approval.trace_id,
+            "prov": approval.provenance_id,
         }
     return _hash_json(
         {
@@ -98,17 +140,6 @@ def compute_request_material_hash(
             "prov": package.provenance_id,
         }
     )[:16]
-
-
-@dataclass
-class _CommitResultRef:
-    """Minimal view of a DocumentCommitCoordinator result."""
-
-    status: str
-    version_id: Optional[str] = None
-    snapshot_id: Optional[str] = None
-    commit_id: Optional[str] = None
-    admitted: list[Any] = None  # list of AdmittedAssertion-like
 
 
 class RevisionPublicationCoordinator:
@@ -138,189 +169,300 @@ class RevisionPublicationCoordinator:
             return RevisionPublicationResult(
                 status=PublicationStatus.PACKAGE_REVIEW_REQUIRED,
                 publication_id=package.package_id,
-                last_error="package.requires_manual_review=true; semantic ambiguity unresolved",
+                last_error="package.requires_manual_review=true",
             )
         return None
 
-    def _validate_lineage(self, package: RevisionPackage) -> tuple[Optional[dict], Optional[RevisionPublicationResult]]:
+    def _validate_lineage(self, package: RevisionPackage, request: CommitRequest) -> tuple[Optional[dict], Optional[RevisionPublicationResult]]:
         prior = self._registry.get_source_version(package.prior_source_version_id)
         new = self._registry.get_source_version(package.new_source_version_id)
         if prior is None or new is None:
             return None, RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=package.package_id,
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
                 last_error="source version not found",
+            )
+        # R1-06: exact lineage
+        if prior.ref_id != package.prior_ref_id:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="prior.ref_id mismatch",
+            )
+        if new.ref_id != package.new_ref_id:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="new.ref_id mismatch",
+            )
+        if new.relation != package.relation:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="new.relation mismatch",
             )
         if prior.work_id != package.work_id or new.work_id != package.work_id:
             return None, RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="source versions do not belong to package work",
-            )
-        if prior.kb_version_id != package.prior_bound_kb_version_id:
-            return None, RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="prior.kb_version_id does not match package.prior_bound_kb_version_id",
-            )
-        if not prior.snapshot_id:
-            return None, RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="prior source version has no snapshot binding",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="work_id mismatch",
             )
         if new.prior_source_version_id != prior.source_version_id:
             return None, RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                 last_error="new.prior_source_version_id mismatch",
+            )
+        if prior.kb_version_id != package.prior_bound_kb_version_id:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="prior.kb_version_id mismatch",
+            )
+        if not prior.snapshot_id:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="prior has no snapshot binding",
+            )
+        # R1-05: fingerprint agrees with request
+        if request.source.source_fingerprint != new.source_fingerprint:
+            return None, RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="request source fingerprint != new source fingerprint",
             )
         return {"prior": prior, "new": new}, None
 
-    def _validate_approval(
-        self,
-        package: RevisionPackage,
-        approval: Optional[RevisionApproval],
-        scope_hash: str,
+    def _validate_target_request(
+        self, package: RevisionPackage, request: Optional[CommitRequest], new: Any
     ) -> Optional[RevisionPublicationResult]:
-        """Approval must be valid BEFORE any KB side effect (plan §12)."""
-        # If draft is manual-required (default for our packages), approval is mandatory.
-        if approval is None:
+        """R1-02: exact CommitRequest/package gate."""
+        if request is None:
             return RevisionPublicationResult(
-                status=PublicationStatus.APPROVAL_REQUIRED,
-                publication_id=package.package_id,
-                last_error="revision approval required before KB side effects",
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error="target_commit_request is required",
             )
-        if approval.decision != ApprovalDecision.APPROVED:
+        errors = validate_commit_request(request)
+        if errors:
             return RevisionPublicationResult(
-                status=PublicationStatus.APPROVAL_REJECTED,
-                publication_id=package.package_id,
-                last_error="approval decision is REJECTED",
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error=f"invalid CommitRequest: {'; '.join(errors)}",
             )
-        if approval.package_id != package.package_id:
+        # Source identity
+        if request.source.ref_id != package.new_ref_id or request.source.ref_id != new.ref_id:
             return RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="approval.package_id mismatch",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="request.source.ref_id mismatch",
             )
-        if approval.scope_hash != scope_hash:
+        if request.assertion_set.ref_id != package.new_ref_id:
             return RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="approval.scope_hash mismatch",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="assertion_set.ref_id mismatch",
             )
-        if not approval.approval_id or not approval.approver:
+        if request.report.source_ref_id != package.new_ref_id:
             return RevisionPublicationResult(
-                status=PublicationStatus.APPROVAL_REQUIRED,
-                publication_id=package.package_id,
-                last_error="approval_id/approver must be non-empty",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="report.source_ref_id mismatch",
             )
+        # R1-04: exact assertion material
+        pkg_by_id = {a.id: a for a in package.target_assertions}
+        req_by_id = {a.id: a for a in request.assertion_set.assertions}
+        if set(pkg_by_id) != set(req_by_id):
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error=f"assertion ID set mismatch: pkg={sorted(pkg_by_id)} req={sorted(req_by_id)}",
+            )
+        for aid in pkg_by_id:
+            if not _assertion_material_equal(pkg_by_id[aid], req_by_id[aid]):
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error=f"assertion material mismatch for {aid}",
+                )
+        # R1-05: metadata validation
+        meta = request.assertion_set.metadata
+        if meta.title and new.normalized_title:
+            from knowledge_curator.core.source_identity import normalize_title
+
+            if normalize_title(meta.title) != new.normalized_title:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="metadata title mismatch",
+                )
+        if meta.doi and new.normalized_doi:
+            from knowledge_curator.core.source_identity import normalize_doi
+
+            if normalize_doi(meta.doi) != new.normalized_doi:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="metadata DOI mismatch",
+                )
+        if meta.stable_id and new.stable_id:
+            if meta.stable_id.strip() != new.stable_id.strip():
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="metadata stable_id mismatch",
+                )
         return None
 
-    def _validate_curation(self, package: RevisionPackage, report: Any) -> Optional[RevisionPublicationResult]:
-        """Curation gate: only ACCEPT/DOWNGRADE allowed (plan §10)."""
-        allowed = {"accept", "downgrade", "accepted", "downgraded"}
-        decisions = getattr(report, "decisions", None) or []
+    def _validate_curation(self, package: RevisionPackage, request: CommitRequest) -> Optional[RevisionPublicationResult]:
+        """R1-06: curation gate from request.report only."""
+        report = request.report
+        allowed = {CurationAction.ACCEPT, CurationAction.DOWNGRADE}
         target_ids = {a.id for a in package.target_assertions}
         seen: set[str] = set()
-        for d in decisions:
-            aid = getattr(d, "assertion_id", None) or (d.get("assertion_id") if isinstance(d, dict) else None)
-            action = getattr(d, "action", None) or (d.get("action") if isinstance(d, dict) else None)
-            action_val = action.value if hasattr(action, "value") else str(action or "").lower()
+        for d in getattr(report, "decisions", []) or []:
+            aid = getattr(d, "assertion_id", None)
+            action = getattr(d, "action", None)
             if aid is None:
                 return RevisionPublicationResult(
-                    status=PublicationStatus.FAILED,
-                    publication_id=package.package_id,
+                    status=PublicationStatus.FAILED, publication_id=package.package_id,
                     last_error="decision missing assertion_id",
                 )
             if aid in seen:
                 return RevisionPublicationResult(
-                    status=PublicationStatus.FAILED,
-                    publication_id=package.package_id,
+                    status=PublicationStatus.FAILED, publication_id=package.package_id,
                     last_error=f"duplicate decision for {aid}",
                 )
             seen.add(aid)
             if aid not in target_ids:
                 return RevisionPublicationResult(
-                    status=PublicationStatus.CONFLICT,
-                    publication_id=package.package_id,
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                     last_error=f"decision for unknown assertion {aid}",
                 )
-            if action_val not in allowed:
+            if action not in allowed:
+                av = action.value if hasattr(action, "value") else str(action)
                 return RevisionPublicationResult(
-                    status=PublicationStatus.FAILED,
-                    publication_id=package.package_id,
-                    last_error=f"curation action {action_val} not publishable",
+                    status=PublicationStatus.FAILED, publication_id=package.package_id,
+                    last_error=f"curation action {av} not publishable",
                 )
-        # Every target assertion must have exactly one decision
         if seen != target_ids:
             missing = target_ids - seen
-            extra = seen - target_ids
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=package.package_id,
-                last_error=f"decision coverage mismatch: missing={sorted(missing)} extra={sorted(extra)}",
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error=f"decision coverage mismatch: missing={sorted(missing)}",
+            )
+        # returned_upstream_count gate
+        if getattr(report, "returned_upstream_count", 0):
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error="returned_upstream_count > 0",
+            )
+        status_val = str(getattr(report, "status", "") or "").lower()
+        if status_val in ("return_upstream", "pending_review", "rejected"):
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error=f"report.status {status_val} blocks publication",
             )
         return None
 
-    def _existing_commit_material_guard(
-        self,
-        package: RevisionPackage,
-        ref_id: str,
-        fingerprint: str,
+    def _existing_commit_guard(
+        self, package: RevisionPackage, ref_id: str, fingerprint: str
     ) -> Optional[RevisionPublicationResult]:
-        """Inspect existing commit for material conflict (plan §15)."""
+        """R1-05: material-exact existing commit guard. Fail closed on store errors."""
         if self._commit_store is None:
             return None
         try:
             existing = self._commit_store.find_by_key(ref_id, fingerprint)
-        except Exception:
-            return None
+        except Exception as exc:
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=package.package_id,
+                last_error=f"commit store inspection failed: {exc}",
+            )
         if existing is None:
             return None
         admitted = getattr(existing, "admitted", None) or []
         if not admitted:
             return None
-        target_ids = {a.id for a in package.target_assertions}
+        target_by_id = {a.id: a for a in package.target_assertions}
         admitted_ids = set()
         for item in admitted:
             a = getattr(item, "assertion", item)
-            admitted_ids.add(getattr(a, "id", None) or (a.get("id") if isinstance(a, dict) else None))
-        if admitted_ids != target_ids:
+            aid = getattr(a, "id", None)
+            admitted_ids.add(aid)
+            if aid not in target_by_id:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error=f"existing commit has unknown assertion {aid}",
+                )
+            if not _assertion_material_equal(target_by_id[aid], a):
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error=f"existing commit material mismatch for {aid}",
+                )
+        if admitted_ids != set(target_by_id):
             return RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="existing commit admitted material differs from package target",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="existing commit admitted ID set mismatch",
             )
         return None
 
-    # ---- main entry ----
+    # ---- main async entry ----
 
-    def publish(
+    async def publish(
         self,
         *,
         package: RevisionPackage,
-        target_commit_request: Any = None,
-        curation_report: Any = None,
+        target_commit_request: Optional[CommitRequest] = None,
         approval: Optional[RevisionApproval] = None,
-        curation_decisions: Optional[list[dict]] = None,
     ) -> RevisionPublicationResult:
-        """Run the recoverable publication saga."""
-        # --- Pre-side-effect validation ---
+        """Run the recoverable publication saga (async)."""
+        # Pre-side-effect validation
         gate_err = self._validate_package_gate(package)
         if gate_err is not None:
             return gate_err
 
-        lineage, lineage_err = self._validate_lineage(package)
+        lineage, lineage_err = self._validate_lineage(package, target_commit_request) if target_commit_request else (None, RevisionPublicationResult(
+            status=PublicationStatus.FAILED, publication_id=package.package_id,
+            last_error="target_commit_request is required",
+        ))
         if lineage_err is not None:
             return lineage_err
         prior = lineage["prior"]
         new = lineage["new"]
 
-        # Existing binding check (replay exception handled later)
+        req_err = self._validate_target_request(package, target_commit_request, new)
+        if req_err is not None:
+            return req_err
+
+        cur_err = self._validate_curation(package, target_commit_request)
+        if cur_err is not None:
+            return cur_err
+
+        guard_err = self._existing_commit_guard(package, package.new_ref_id, new.source_fingerprint)
+        if guard_err is not None:
+            return guard_err
+
+        # R1-03: scope hash binds actual CommitRequest
+        scope_hash = compute_publication_scope_hash(package, target_commit_request)
+
+        # R1-08: approval logic based on real draft risk state
+        from knowledge_curator.core.version_delta import package_to_revision_draft
+
+        draft = package_to_revision_draft(package)
+        if draft.manual_adjudication_required:
+            if approval is None:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.APPROVAL_REQUIRED, publication_id=package.package_id,
+                    last_error="revision approval required",
+                )
+            if approval.decision != ApprovalDecision.APPROVED:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.APPROVAL_REJECTED, publication_id=package.package_id,
+                    last_error="approval decision is REJECTED",
+                )
+            if approval.package_id != package.package_id:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="approval.package_id mismatch",
+                )
+            if approval.scope_hash != scope_hash:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="approval.scope_hash mismatch",
+                )
+            if not approval.approval_id or not approval.approver:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.APPROVAL_REQUIRED, publication_id=package.package_id,
+                    last_error="approval_id/approver must be non-empty",
+                )
+
+        request_mat = compute_request_material_hash(package, scope_hash, approval)
+        pub_id = package.package_id
+
+        # R1-14: post-bind recovery check
         if new.kb_version_id is not None:
-            # Allowed only if journal already finalized with matching binding.
-            pub_id = package.package_id
             existing_rec = self._journal.get(pub_id)
             if (
                 existing_rec is not None
@@ -329,130 +471,108 @@ class RevisionPublicationCoordinator:
                 and existing_rec.final_snapshot_id == new.snapshot_id
             ):
                 return RevisionPublicationResult(
-                    status=PublicationStatus.FINALIZED,
-                    publication_id=pub_id,
-                    final_version_id=new.kb_version_id,
-                    final_snapshot_id=new.snapshot_id,
+                    status=PublicationStatus.FINALIZED, publication_id=pub_id,
+                    final_version_id=new.kb_version_id, final_snapshot_id=new.snapshot_id,
                     idempotent=True,
                 )
+            if (
+                existing_rec is not None
+                and existing_rec.phase == PublicationPhase.LIFECYCLE_PUBLISHED
+                and existing_rec.final_version_id == new.kb_version_id
+                and existing_rec.final_snapshot_id == new.snapshot_id
+            ):
+                # Crash after bind before journal ack -> finalize idempotently
+                existing_rec.phase = PublicationPhase.FINALIZED
+                self._journal.update(existing_rec)
+                return RevisionPublicationResult(
+                    status=PublicationStatus.FINALIZED, publication_id=pub_id,
+                    final_version_id=new.kb_version_id, final_snapshot_id=new.snapshot_id,
+                    idempotent=True, resumed=True,
+                )
             return RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=package.package_id,
-                last_error="new source version already bound to a different KB version",
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="new source version bound to unexpected KB version",
             )
 
-        scope_hash = compute_publication_scope_hash(
-            package, target_commit_request, curation_decisions
-        )
-        appr_err = self._validate_approval(package, approval, scope_hash)
-        if appr_err is not None:
-            return appr_err
-
-        # Curation gate
-        if curation_report is not None:
-            cur_err = self._validate_curation(package, curation_report)
-            if cur_err is not None:
-                return cur_err
-
-        # Existing commit material guard
-        guard_err = self._existing_commit_material_guard(
-            package, package.new_ref_id, new.source_fingerprint
-        )
-        if guard_err is not None:
-            return guard_err
-
-        request_mat = compute_request_material_hash(package, scope_hash, approval)
-        pub_id = package.package_id  # deterministic from package_id
-
-        # Journal: create or validate idempotency
+        # Journal
         existing = self._journal.get(pub_id)
         if existing is not None:
             if existing.request_material_hash != request_mat:
                 return RevisionPublicationResult(
-                    status=PublicationStatus.CONFLICT,
-                    publication_id=pub_id,
+                    status=PublicationStatus.CONFLICT, publication_id=pub_id,
                     last_error="publication request material conflict",
                 )
             if existing.phase == PublicationPhase.FINALIZED:
                 return RevisionPublicationResult(
-                    status=PublicationStatus.FINALIZED,
-                    publication_id=pub_id,
+                    status=PublicationStatus.FINALIZED, publication_id=pub_id,
                     final_version_id=existing.final_version_id,
-                    final_snapshot_id=existing.final_snapshot_id,
-                    idempotent=True,
+                    final_snapshot_id=existing.final_snapshot_id, idempotent=True,
                 )
             record = existing
         else:
             record = RevisionPublicationRecord(
-                publication_id=pub_id,
-                package_id=package.package_id,
-                request_material_hash=request_mat,
-                phase=PublicationPhase.PREPARED,
+                publication_id=pub_id, package_id=package.package_id,
+                request_material_hash=request_mat, phase=PublicationPhase.PREPARED,
                 approval_id=approval.approval_id if approval else None,
-                trace_id=package.trace_id,
-                provenance_id=package.provenance_id,
+                trace_id=package.trace_id, provenance_id=package.provenance_id,
             )
             record = self._journal.create(record)
 
-        # --- Step A: target commit ---
+        # Step A: target commit
         if record.phase == PublicationPhase.PREPARED:
-            commit_result = self._run_target_commit(package, target_commit_request, record)
-            if commit_result is not None:
-                return commit_result
+            commit_err = await self._run_target_commit(package, target_commit_request, record, new)
+            if commit_err is not None:
+                return commit_err
             record = self._journal.get(pub_id)
 
-        # --- Step B: lifecycle ---
+        # Step B: lifecycle
         if record.phase == PublicationPhase.TARGET_PUBLISHED:
-            life_result = self._run_lifecycle(package, record, prior, approval)
-            if life_result is not None:
-                return life_result
+            life_err = self._run_lifecycle(package, record, prior, approval, draft)
+            if life_err is not None:
+                return life_err
             record = self._journal.get(pub_id)
 
-        # --- Step C: final bind ---
+        # Step C: final bind
         if record.phase == PublicationPhase.LIFECYCLE_PUBLISHED:
-            bind_result = self._run_final_bind(package, record, new)
-            if bind_result is not None:
-                return bind_result
+            bind_err = self._run_final_bind(package, record, new)
+            if bind_err is not None:
+                return bind_err
             record = self._journal.get(pub_id)
 
         if record.phase == PublicationPhase.FINALIZED:
             return RevisionPublicationResult(
-                status=PublicationStatus.FINALIZED,
-                publication_id=pub_id,
+                status=PublicationStatus.FINALIZED, publication_id=pub_id,
                 target_version_id=record.target_version_id,
                 target_snapshot_id=record.target_snapshot_id,
                 final_version_id=record.final_version_id,
                 final_snapshot_id=record.final_snapshot_id,
-                lifecycle_id=record.lifecycle_id,
-                idempotent=True,
+                lifecycle_id=record.lifecycle_id, idempotent=True,
             )
 
         return RevisionPublicationResult(
-            status=PublicationStatus.FAILED,
-            publication_id=pub_id,
+            status=PublicationStatus.FAILED, publication_id=pub_id,
             last_error="publication did not reach FINALIZED",
         )
 
-    def _run_target_commit(
+    async def _run_target_commit(
         self,
         package: RevisionPackage,
-        request: Any,
+        request: CommitRequest,
         record: RevisionPublicationRecord,
+        new: Any,
     ) -> Optional[RevisionPublicationResult]:
         if self._commit is None:
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error="document commit coordinator not configured",
             )
         try:
-            result = self._commit.commit(request)
+            result = await self._commit.commit(request)
         except Exception as exc:
             record.last_error = f"target commit error: {exc}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
@@ -463,38 +583,57 @@ class RevisionPublicationCoordinator:
             record.last_error = f"target commit pending: {status_val}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.TARGET_PENDING,
-                publication_id=record.publication_id,
+                status=PublicationStatus.TARGET_PENDING, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
         if status_val not in ("published", "idempotent_hit"):
             record.last_error = f"target commit not publishable: {status_val}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
-        version_id = getattr(result, "version_id", None) or getattr(result, "kb_version_id", None)
+        version_id = getattr(result, "version_id", None)
         snapshot_id = getattr(result, "snapshot_id", None)
         if version_id is None or snapshot_id is None:
             record.last_error = "target commit result missing version/snapshot"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
-        # Validate target version exists/published
+        # R1-08: full target version/snapshot validation
         ver = self._versions.get_version(version_id)
         if ver is None or not ver.published:
             record.last_error = f"target version {version_id} not published"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        if ver.snapshot_id != snapshot_id:
+            record.last_error = "target version.snapshot_id != commit result snapshot_id"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        snap = self._versions.get_snapshot(snapshot_id)
+        if snap is None:
+            record.last_error = f"target snapshot {snapshot_id} not found"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        # Snapshot manifest agrees with new source identity
+        if snap.manifest.ref_id != new.ref_id or snap.manifest.source_fingerprint != new.source_fingerprint:
+            record.last_error = "target snapshot manifest ref/fingerprint mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
@@ -511,16 +650,14 @@ class RevisionPublicationCoordinator:
         record: RevisionPublicationRecord,
         prior: Any,
         approval: Optional[RevisionApproval],
+        draft: Any,
     ) -> Optional[RevisionPublicationResult]:
-        from knowledge_curator.core.version_delta import package_to_revision_draft
-
-        draft = package_to_revision_draft(package)
-        # Authorized draft: manual adjudication completed via explicit approval.
+        # Authorized draft
         draft = copy.deepcopy(draft)
         draft.base_version_id = record.target_version_id
         if approval is not None:
-            draft.manual_adjudication_required = False  # approval validated
-            # KEEP risk_decision = MANUAL_ADJUDICATION_REQUIRED (do not fake auto-eligible)
+            draft.manual_adjudication_required = False
+            # KEEP risk_decision = MANUAL_ADJUDICATION_REQUIRED
             draft.evidence_refs = list(draft.evidence_refs) + [
                 f"approval:{approval.approval_id}",
                 f"approval_scope:{approval.scope_hash}",
@@ -536,33 +673,30 @@ class RevisionPublicationCoordinator:
         except ValueError as exc:
             msg = str(exc)
             if "not the current version" in msg or "base_version" in msg:
-                record.last_error = f"stale base / interleaving: {msg}"
+                record.last_error = f"stale base: {msg}"
                 self._journal.update(record)
                 return RevisionPublicationResult(
-                    status=PublicationStatus.CONFLICT,
-                    publication_id=record.publication_id,
+                    status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
                     last_error=record.last_error,
                 )
             record.last_error = f"lifecycle error: {msg}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.LIFECYCLE_PENDING,
-                publication_id=record.publication_id,
+                status=PublicationStatus.LIFECYCLE_PENDING, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
         except Exception as exc:
             record.last_error = f"lifecycle error: {exc}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.LIFECYCLE_PENDING,
-                publication_id=record.publication_id,
+                status=PublicationStatus.LIFECYCLE_PENDING, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
         final_version_id = getattr(life_result, "version_id", None)
         final_snapshot_id = getattr(life_result, "snapshot_id", None)
 
-        # R3 plan §21: recover snapshot if missing on idempotent replay
+        # Recover snapshot if missing (R1 plan §13)
         if final_version_id is not None and final_snapshot_id is None:
             ver = self._versions.get_version(final_version_id)
             if ver is not None:
@@ -572,31 +706,70 @@ class RevisionPublicationCoordinator:
             record.last_error = "lifecycle produced no version"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
-        # Validate final chain
         final_ver = self._versions.get_version(final_version_id)
         if final_ver is None or not final_ver.published:
             record.last_error = f"final version {final_version_id} not published"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
         if final_ver.prior_version_id != record.target_version_id:
             record.last_error = (
-                f"final version prior {final_ver.prior_version_id} != target {record.target_version_id}"
+                f"final prior {final_ver.prior_version_id} != target {record.target_version_id}"
             )
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.CONFLICT,
-                publication_id=record.publication_id,
+                status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
+
+        # R1-09: final snapshot content preservation
+        if final_snapshot_id is None:
+            final_snapshot_id = final_ver.snapshot_id
+        if final_ver.snapshot_id != final_snapshot_id:
+            record.last_error = "final version.snapshot_id mismatch"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        final_snap = self._versions.get_snapshot(final_snapshot_id)
+        target_snap = self._versions.get_snapshot(record.target_snapshot_id)
+        if final_snap is None or target_snap is None:
+            record.last_error = "final or target snapshot not found"
+            self._journal.update(record)
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
+        tm, fm = target_snap.manifest, final_snap.manifest
+        for field_name in (
+            "ref_id", "source_fingerprint", "structural_stage_id",
+            "metadata_hash",
+        ):
+            if getattr(tm, field_name) != getattr(fm, field_name):
+                record.last_error = f"final snapshot lost target content: {field_name}"
+                self._journal.update(record)
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                    last_error=record.last_error,
+                )
+        for list_field in (
+            "assertion_hashes", "usdo_hashes", "usdo_record_ids",
+            "vector_ids", "decision_hashes",
+        ):
+            if sorted(getattr(tm, list_field) or []) != sorted(getattr(fm, list_field) or []):
+                record.last_error = f"final snapshot lost target content: {list_field}"
+                self._journal.update(record)
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                    last_error=record.last_error,
+                )
 
         record.lifecycle_id = getattr(life_result, "lifecycle_id", None)
         record.final_version_id = final_version_id
@@ -612,14 +785,13 @@ class RevisionPublicationCoordinator:
         new: Any,
     ) -> Optional[RevisionPublicationResult]:
         try:
-            bound = self._registry.bind_source_version(
+            self._registry.bind_source_version(
                 package.new_source_version_id,
                 record.final_version_id,
                 record.final_snapshot_id or "",
             )
         except ValueError as exc:
             msg = str(exc)
-            # Idempotent exact rebind
             if "already bound" in msg:
                 current = self._registry.get_source_version(package.new_source_version_id)
                 if (
@@ -633,18 +805,27 @@ class RevisionPublicationCoordinator:
                 record.last_error = msg
                 self._journal.update(record)
                 return RevisionPublicationResult(
-                    status=PublicationStatus.CONFLICT,
-                    publication_id=record.publication_id,
+                    status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
                     last_error=record.last_error,
                 )
             record.last_error = f"bind error: {msg}"
             self._journal.update(record)
             return RevisionPublicationResult(
-                status=PublicationStatus.FAILED,
-                publication_id=record.publication_id,
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
 
         record.phase = PublicationPhase.FINALIZED
-        self._journal.update(record)
+        try:
+            self._journal.update(record)
+        except Exception as exc:
+            record.last_error = f"journal finalize error: {exc}"
+            try:
+                self._journal.update(record)
+            except Exception:
+                pass
+            return RevisionPublicationResult(
+                status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                last_error=record.last_error,
+            )
         return None
