@@ -35,3 +35,6 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 
 
 | CG-019 | 03 §7.1 / source work identity | §7.1 requires DOI/title deduplication, version comparison, and preprint→journal versions[] merging, but no frozen cross-team WorkIdentity/SourceVersion lineage schema or upstream relation contract exists. | Phase 5.1 uses INTERNAL temporary SourceVersionRegistry models. Automatic matching is limited to deterministic exact identifiers; title-only matches are review-required, and preprint→journal cross-identifier linkage requires an explicit caller-supplied relation. No fuzzy author/title heuristic is promoted to a public contract. | 否 | 02/08/lit_researcher |
+
+
+| CG-020 | 03 §7.1 / changed-content delta | §7.1 requires preprint→journal to re-extract only changed paragraphs, but no frozen cross-team contract defines stable cross-version paragraph/table/chart identities, content hashes, or explicit old→new unit alignment from the parser/lit_researcher. Without that, knowledge_curator cannot safely infer changed paragraphs. | Phase 5.2 uses INTERNAL temporary VersionContentManifest/ContentUnit models. Delta matching is exact only: stable unit_id or caller-supplied prior_unit_id plus content hash. No embedding/edit-distance/fuzzy alignment. If safe alignment is insufficient, return FULL_REEXTRACT_REQUIRED rather than guessing. | 否 | parser/lit_researcher/02/08 |
