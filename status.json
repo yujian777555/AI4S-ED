@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.2-R2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.2-R3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,17 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-2-r2-executor-report.md",
+  "result_expected": "results/phase-05-2-r3-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
     "Phase 5.0 lifecycle core remains frozen",
     "Phase 5.1 source identity/version lineage remains frozen",
-    "Phase 5.2-R2 only closes FULL_REEXTRACT transitions and final package/deep-copy material identity",
-    "no PDF/XML parsing, crawling, fuzzy/embedding/LLM alignment",
+    "Phase 5.2-R3 only corrects lifecycle subject direction for upgrade drafts",
+    "P2J lifecycle subject is prior ref; new journal remains active",
+    "no synthetic low-risk metadata to bypass revision review",
     "no lifecycle publication or Phase 5.3",
-    "no public cross-team schema changes; CG-019/CG-020 remain compatibility boundaries"
+    "CG-021 records the manual revision approval contract gap"
   ],
   "latest_commit": "ea03c1365a2f54bc2acc21174de8b95c8932bb0e",
-  "planner_review": "planner/phase-05-2-r1-review.md",
-  "live_smoke": "PHASE52_R2_FULL_REEXTRACT_MATERIAL_PASS"
+  "planner_review": "planner/phase-05-2-r2-review.md",
+  "live_smoke": "PHASE52_R2_MOSTLY_PASS_R3_P2J_SUBJECT_DIRECTION"
 }
