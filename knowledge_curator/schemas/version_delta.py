@@ -122,6 +122,9 @@ class DeltaAssertionBatch:
     ref_id: str
     assertions: list[Assertion] = field(default_factory=list)
     assertion_unit_map: dict[str, str] = field(default_factory=dict)
+    # CG-020 internal: which units the extractor actually processed.
+    # Distinguishes "processed, 0 assertions" from "never processed".
+    processed_unit_ids: list[str] = field(default_factory=list)
 
 
 @dataclass

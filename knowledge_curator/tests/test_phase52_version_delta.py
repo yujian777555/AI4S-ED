@@ -194,8 +194,9 @@ def test_delta_batch_unchanged_unit_reject():
         source_version_id="N", ref_id="R-N",
         assertions=[_assertion("A1", "R-N", locator="p.1")],
         assertion_unit_map={"A1": "U1"},  # U1 is UNCHANGED -> must reject
+        processed_unit_ids=["U2"],
     )
-    with pytest.raises(ValueError, match="unchanged|out-of-scope"):
+    with pytest.raises(ValueError, match="unchanged|out-of-scope|unprocessed"):
         validate_delta_batch(batch, plan, new)
 
 
@@ -243,7 +244,7 @@ def test_transition_unchanged_supersede_removed_archive():
         prior_inventory=inv, plan=plan, new_manifest=new_m,
         new_ref_id="R-N", new_source_version_id="N",
     )
-    batch = DeltaAssertionBatch(source_version_id="N", ref_id="R-N", assertions=[], assertion_unit_map={})
+    batch = DeltaAssertionBatch(source_version_id="N", ref_id="R-N", assertions=[], assertion_unit_map={}, processed_unit_ids=[])
     transitions, review = compute_transitions(
         prior_inventory=inv, delta_batch=batch, plan=plan,
         carried_records=records, new_manifest=new_m,
@@ -267,6 +268,7 @@ def test_transition_modified_slot_supersede():
         source_version_id="N", ref_id="R-N",
         assertions=[_assertion("A1N", "R-N", value=2.0, locator="p.1")],  # same slot, different value
         assertion_unit_map={"A1N": "U1"},
+        processed_unit_ids=["U1"],
     )
     transitions, review = compute_transitions(
         prior_inventory=inv, delta_batch=batch, plan=plan,
@@ -290,7 +292,7 @@ def test_transition_duplicate_slot_review_required():
         assertions=[_assertion("A1", "R-P", value=1.0), _assertion("A2", "R-P", value=2.0)],
         assertion_unit_map={"A1": "U1", "A2": "U1"},
     )
-    batch = DeltaAssertionBatch(source_version_id="N", ref_id="R-N", assertions=[], assertion_unit_map={})
+    batch = DeltaAssertionBatch(source_version_id="N", ref_id="R-N", assertions=[], assertion_unit_map={}, processed_unit_ids=[])
     transitions, review = compute_transitions(
         prior_inventory=inv, delta_batch=batch, plan=plan,
         carried_records=[], new_manifest=new_m,
@@ -321,6 +323,8 @@ def _setup_registry():
     )
     dj = svc.prepare(cj)
     j1 = svc.proceed(cj, dj)
+    # Bind prior to a published KB version (required for RevisionPackage)
+    reg.bind_source_version(p1.source_version_id, "kbv-1", "snap-1")
     return reg, svc, p1, j1, dp.work_id
 
 
@@ -382,6 +386,7 @@ def test_revision_package_determinism():
         source_version_id=j1.source_version_id, ref_id="J-1",
         assertions=[_assertion("A1N", "J-1")],
         assertion_unit_map={"A1N": "U1"},
+        processed_unit_ids=["U1"],
     )
     pkg1 = builder.build(intent=intent, prior_manifest=prior_m, new_manifest=new_m, prior_inventory=inv, delta_batch=batch)
     pkg2 = builder.build(intent=intent, prior_manifest=prior_m, new_manifest=new_m, prior_inventory=inv, delta_batch=batch)
@@ -414,6 +419,7 @@ def test_revision_draft_actions_exact():
         source_version_id=j1.source_version_id, ref_id="J-1",
         assertions=[_assertion("A3", "J-1", entity="E3", locator="p.3")],
         assertion_unit_map={"A3": "U3"},
+        processed_unit_ids=["U3"],
     )
     pkg = builder.build(intent=intent, prior_manifest=prior_m, new_manifest=new_m, prior_inventory=inv, delta_batch=batch)
     draft = package_to_revision_draft(pkg)

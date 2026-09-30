@@ -12,7 +12,15 @@ import json
 from typing import Any, Optional
 
 from knowledge_curator.ports.source_version_registry import SourceVersionRegistry
-from knowledge_curator.schemas.assertions import Assertion, Confidence, ValueType
+from knowledge_curator.schemas.assertions import (
+    Assertion,
+    Confidence,
+    Condition,
+    ObjectValue,
+    Provenance,
+    Subject,
+    ValueType,
+)
 from knowledge_curator.schemas.source_versions import (
     SourceKind,
     VersionRelation,
@@ -275,10 +283,15 @@ def validate_delta_batch(
     plan: ContentDeltaPlan,
     new_manifest: VersionContentManifest,
 ) -> None:
-    """Delta batch may only contain assertions for extraction-scope units."""
+    """Validate delta batch structural invariants in ALL modes (R1).
+
+    Also validates extraction completion coverage via processed_unit_ids.
+    """
     new_units = set(new_manifest.unit_map().keys())
-    extraction = set(plan.extraction_unit_ids)
+    processed = set(batch.processed_unit_ids)
     seen: set[str] = set()
+
+    # Structural invariants (all modes)
     for a in batch.assertions:
         if a.id in seen:
             raise ValueError(f"duplicate assertion id in delta batch: {a.id}")
@@ -290,10 +303,105 @@ def validate_delta_batch(
             raise ValueError(f"assertion {a.id} has no unit binding")
         if uid not in new_units:
             raise ValueError(f"assertion {a.id} maps to unknown unit {uid}")
-        if plan.mode == DeltaMode.DELTA_SAFE and uid not in extraction:
+        if uid not in processed:
+            raise ValueError(f"assertion {a.id} maps to unprocessed unit {uid}")
+
+    # Dangling map entries
+    for aid in batch.assertion_unit_map:
+        if aid not in seen:
+            raise ValueError(f"dangling assertion_unit_map entry: {aid}")
+
+    # Mode-specific processed scope (R1-04/05)
+    if plan.mode == DeltaMode.DELTA_SAFE:
+        required = set(plan.extraction_unit_ids)
+        if processed != required:
             raise ValueError(
-                f"delta batch assertion {a.id} maps to unchanged/out-of-scope unit {uid}"
+                f"DELTA_SAFE processed_unit_ids {sorted(processed)} != "
+                f"extraction_unit_ids {sorted(required)}"
             )
+        # Processed units must not include unchanged/out-of-scope
+        for uid in processed:
+            if uid not in new_units:
+                raise ValueError(f"processed unit {uid} not in new manifest")
+    elif plan.mode == DeltaMode.FULL_REEXTRACT_REQUIRED:
+        required = new_units
+        if processed != required:
+            raise ValueError(
+                f"FULL_REEXTRACT processed_unit_ids {sorted(processed)} != "
+                f"all new units {sorted(required)}"
+            )
+    # REVIEW_REQUIRED: structural checks already done above
+
+
+def validate_prior_inventory(
+    inventory: VersionAssertionInventory,
+    prior_manifest: VersionContentManifest,
+    *,
+    allow_unresolvable_units: bool = False,
+) -> None:
+    """Validate prior inventory completeness (R1-04).
+
+    Structural invalidity always fails. Unresolvable unit mappings may be
+    allowed when the caller will fall back to FULL_REEXTRACT_REQUIRED.
+    """
+    prior_units = set(prior_manifest.unit_map().keys())
+    seen: set[str] = set()
+    for a in inventory.assertions:
+        if a.id in seen:
+            raise ValueError(f"duplicate assertion id in prior inventory: {a.id}")
+        seen.add(a.id)
+        if a.ref_id != inventory.ref_id:
+            raise ValueError(f"assertion {a.id} ref_id mismatch with inventory ref_id")
+        uid = inventory.assertion_unit_map.get(a.id)
+        if uid is None:
+            raise ValueError(f"assertion {a.id} has no unit binding in prior inventory")
+        if uid not in prior_units and not allow_unresolvable_units:
+            raise ValueError(f"assertion {a.id} maps to unknown prior unit {uid}")
+    for aid in inventory.assertion_unit_map:
+        if aid not in seen:
+            raise ValueError(f"dangling prior assertion_unit_map entry: {aid}")
+
+
+def _validate_manifest_identity(
+    manifest: VersionContentManifest,
+    *,
+    expected_version_id: str,
+    expected_ref_id: str,
+    expected_fingerprint: str,
+    label: str,
+) -> None:
+    if manifest.source_version_id != expected_version_id:
+        raise ValueError(
+            f"{label} manifest source_version_id {manifest.source_version_id!r} != "
+            f"expected {expected_version_id!r}"
+        )
+    if manifest.ref_id != expected_ref_id:
+        raise ValueError(
+            f"{label} manifest ref_id {manifest.ref_id!r} != expected {expected_ref_id!r}"
+        )
+    if manifest.source_fingerprint != expected_fingerprint:
+        raise ValueError(
+            f"{label} manifest source_fingerprint {manifest.source_fingerprint!r} != "
+            f"expected {expected_fingerprint!r}"
+        )
+
+
+def _validate_inventory_identity(
+    inventory: VersionAssertionInventory,
+    *,
+    expected_version_id: str,
+    expected_ref_id: str,
+    label: str,
+) -> None:
+    if inventory.source_version_id != expected_version_id:
+        raise ValueError(
+            f"{label} inventory source_version_id {inventory.source_version_id!r} != "
+            f"expected {expected_version_id!r}"
+        )
+    if inventory.ref_id != expected_ref_id:
+        raise ValueError(
+            f"{label} inventory ref_id {inventory.ref_id!r} != expected {expected_ref_id!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +421,27 @@ def _deterministic_carried_id(
     )[:16]
 
 
+def _deep_copy_subject(s: Subject) -> Subject:
+    return Subject(
+        eddo_class=s.eddo_class,
+        resolved_entity=s.resolved_entity,
+        original_mention=s.original_mention,
+    )
+
+
+def _deep_copy_object(o: ObjectValue) -> ObjectValue:
+    return ObjectValue(
+        value=o.value,
+        unit=o.unit,
+        value_type=o.value_type,
+        uncertainty=o.uncertainty,
+    )
+
+
+def _deep_copy_condition(c: Condition) -> Condition:
+    return Condition(eddo_class=c.eddo_class, value=c.value, unit=c.unit)
+
+
 def carry_forward_unchanged(
     *,
     prior_inventory: VersionAssertionInventory,
@@ -321,7 +450,11 @@ def carry_forward_unchanged(
     new_ref_id: str,
     new_source_version_id: str,
 ) -> tuple[list[Assertion], list[CarriedAssertionRecord]]:
-    """Clone prior assertions for unchanged units into new-version assertions."""
+    """Clone prior assertions for unchanged units into new-version assertions.
+
+    R1: deep-copies all nested scientific material so the new Assertion graph
+    is fully independent of the prior Assertion.
+    """
     new_map = new_manifest.unit_map()
     unchanged_by_prior = {p.prior_unit_id: p.new_unit_id for p in plan.unchanged_pairs}
     carried: list[Assertion] = []
@@ -335,14 +468,14 @@ def carry_forward_unchanged(
         new_unit = new_map[new_uid]
         new_id = _deterministic_carried_id(prior_a.id, new_source_version_id, new_uid)
 
-        # Clone semantics; do NOT mutate prior assertion.
+        # Deep-copy nested scientific material (R1-01).
         new_a = Assertion(
             id=new_id,
             ref_id=new_ref_id,
-            subject=prior_a.subject,
+            subject=_deep_copy_subject(prior_a.subject),
             property=prior_a.property,
-            object=prior_a.object,
-            conditions=list(prior_a.conditions),
+            object=_deep_copy_object(prior_a.object),
+            conditions=[_deep_copy_condition(c) for c in (prior_a.conditions or [])],
             provenance=None,
             claim_type=prior_a.claim_type,
             source_claim_origin=prior_a.source_claim_origin,
@@ -352,7 +485,7 @@ def carry_forward_unchanged(
             speculative_wording=prior_a.speculative_wording,
             chart_quality_low=prior_a.chart_quality_low,
         )
-        # provenance: sentence may be preserved; locator MUST be new unit locator
+        # Provenance rebuilt: locator = new unit locator; sentence copied by value.
         from knowledge_curator.schemas.assertions import Provenance
 
         sentence = prior_a.provenance.sentence if prior_a.provenance else None
@@ -531,6 +664,16 @@ class RevisionPackageBuilder:
             raise ValueError("source versions do not belong to intent work")
         if new.prior_source_version_id != prior.source_version_id:
             raise ValueError("new.prior_source_version_id does not match prior")
+        # R1-03: intent relation must equal new record relation
+        if new.relation != intent.relation:
+            raise ValueError(
+                f"intent relation {intent.relation.value} != new.relation {new.relation.value}"
+            )
+        # R1-03: prior must be bound to a published KB version
+        if not prior.kb_version_id or not prior.snapshot_id:
+            raise ValueError(
+                "prior source version is not bound to a published KB version"
+            )
         if intent.relation == VersionRelation.PREPRINT_TO_JOURNAL:
             if prior.source_kind != SourceKind.PREPRINT:
                 raise ValueError("P2J prior must be PREPRINT")
@@ -554,6 +697,39 @@ class RevisionPackageBuilder:
         prior = ctx["prior"]
         new = ctx["new"]
 
+        # R1-02: validate manifest/inventory/batch identity against registry lineage.
+        _validate_manifest_identity(
+            prior_manifest,
+            expected_version_id=prior.source_version_id,
+            expected_ref_id=prior.ref_id,
+            expected_fingerprint=prior.source_fingerprint,
+            label="prior",
+        )
+        _validate_manifest_identity(
+            new_manifest,
+            expected_version_id=new.source_version_id,
+            expected_ref_id=new.ref_id,
+            expected_fingerprint=new.source_fingerprint,
+            label="new",
+        )
+        _validate_inventory_identity(
+            prior_inventory,
+            expected_version_id=prior.source_version_id,
+            expected_ref_id=prior.ref_id,
+            label="prior",
+        )
+        _validate_inventory_identity(
+            delta_batch,
+            expected_version_id=new.source_version_id,
+            expected_ref_id=new.ref_id,
+            label="delta",
+        )
+        # R1-04: prior inventory structural integrity (unresolvable units
+        # are allowed here because they trigger FULL_REEXTRACT fallback).
+        validate_prior_inventory(
+            prior_inventory, prior_manifest, allow_unresolvable_units=True
+        )
+
         plan = compute_content_delta(
             prior_manifest,
             new_manifest,
@@ -561,25 +737,25 @@ class RevisionPackageBuilder:
             segmentation_reset=segmentation_reset,
         )
 
-        # Validate delta batch scope
-        if plan.mode == DeltaMode.DELTA_SAFE:
-            validate_delta_batch(delta_batch, plan, new_manifest)
+        # R1-05: validate batch in ALL modes
+        validate_delta_batch(delta_batch, plan, new_manifest)
 
-        # Carry-forward unchanged
-        carried, carried_records = carry_forward_unchanged(
-            prior_inventory=prior_inventory,
-            plan=plan,
-            new_manifest=new_manifest,
-            new_ref_id=new_manifest.ref_id,
-            new_source_version_id=new.source_version_id,
-        )
+        # R1-12: FULL_REEXTRACT has no carry-forward
+        if plan.mode == DeltaMode.FULL_REEXTRACT_REQUIRED:
+            carried, carried_records = [], []
+        else:
+            carried, carried_records = carry_forward_unchanged(
+                prior_inventory=prior_inventory,
+                plan=plan,
+                new_manifest=new_manifest,
+                new_ref_id=new_manifest.ref_id,
+                new_source_version_id=new.source_version_id,
+            )
 
         # Target assertion set
         if plan.mode == DeltaMode.DELTA_SAFE:
             target = carried + list(delta_batch.assertions)
         else:
-            # FULL_REEXTRACT: all assertions come from full batch
-            validate_delta_batch(delta_batch, plan, new_manifest) if plan.mode == DeltaMode.DELTA_SAFE else None
             target = list(delta_batch.assertions)
 
         # Transitions
@@ -612,15 +788,41 @@ class RevisionPackageBuilder:
         if plan.mode == DeltaMode.REVIEW_REQUIRED:
             requires_review = True
 
+        # R1-06: package_id must include scientific material
         package_id = _hash_json(
             {
                 "work_id": intent.work_id,
-                "prior": intent.prior_source_version_id,
-                "new": intent.new_source_version_id,
+                "prior_sv": intent.prior_source_version_id,
+                "new_sv": intent.new_source_version_id,
                 "relation": intent.relation.value,
+                "prior_ref": prior_manifest.ref_id,
+                "new_ref": new_manifest.ref_id,
+                "prior_fp": prior_manifest.source_fingerprint,
+                "new_fp": new_manifest.source_fingerprint,
+                "prior_kb": prior.kb_version_id,
+                "prior_snap": prior.snapshot_id,
                 "plan_mode": plan.mode.value,
-                "extraction": sorted(plan.extraction_unit_ids),
-                "carried": sorted(r.carried_assertion_id for r in carried_records),
+                "units": sorted(
+                    [
+                        {"id": u.unit_id, "hash": u.content_hash}
+                        for u in prior_manifest.units + new_manifest.units
+                    ],
+                    key=lambda x: x["id"],
+                ),
+                "processed": sorted(delta_batch.processed_unit_ids),
+                "target": sorted(
+                    [
+                        {
+                            "id": a.id,
+                            "ref": a.ref_id,
+                            "sem": semantic_payload_hash(a),
+                            "loc": a.provenance.locator if a.provenance else "",
+                            "sent": a.provenance.sentence if a.provenance else "",
+                        }
+                        for a in target
+                    ],
+                    key=lambda x: x["id"],
+                ),
                 "supersede": sorted(supersede.items()),
                 "archive": sorted(archive),
                 "added": sorted(added),
@@ -686,6 +888,11 @@ def package_to_revision_draft(package: RevisionPackage):
         | set(package.added_assertion_ids)
     )
 
+    # R1-07: replacement ids = supersede targets + added ids (deduped, sorted).
+    replacement = sorted(
+        set(package.supersede_actions.values()) | set(package.added_assertion_ids)
+    )
+
     # base_version_id left None: publication-time bind (see plan §13).
     return build_revision_draft(
         revision_id=package.package_id,
@@ -695,7 +902,7 @@ def package_to_revision_draft(package: RevisionPackage):
         affected_assertion_ids=affected,
         archive_actions=list(package.archive_actions),
         supersede_actions=dict(package.supersede_actions),
-        replacement_assertion_ids=list(package.added_assertion_ids),
+        replacement_assertion_ids=replacement,
         evidence_refs=[package.prior_source_version_id, package.new_source_version_id],
         rationale=f"delta {package.content_delta.mode.value}",
         trace_id=package.trace_id,
