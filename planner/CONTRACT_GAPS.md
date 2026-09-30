@@ -32,3 +32,6 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 
 
 | CG-018 | 03 §7.3 event broadcast | §7.3 requires invalidation/update events for QA evidence cache, 04 training/constraint consumers, and 07 audit/metrics, but AI4S-ED currently has no frozen cross-team event-bus/topic/schema contract for these consumers. | Implement an internal append-only LifecycleEvent/Outbox Port with trace_id/provenance_id and deterministic event ids. Do not choose Kafka/Redis/HTTP or consumer topic names. External adapters wait for 04/07/08 contract. | 否 | 04/07/08 |
+
+
+| CG-019 | 03 §7.1 / source work identity | §7.1 requires DOI/title deduplication, version comparison, and preprint→journal versions[] merging, but no frozen cross-team WorkIdentity/SourceVersion lineage schema or upstream relation contract exists. | Phase 5.1 uses INTERNAL temporary SourceVersionRegistry models. Automatic matching is limited to deterministic exact identifiers; title-only matches are review-required, and preprint→journal cross-identifier linkage requires an explicit caller-supplied relation. No fuzzy author/title heuristic is promoted to a public contract. | 否 | 02/08/lit_researcher |
