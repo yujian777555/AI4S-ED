@@ -1,220 +1,184 @@
-# Phase 5.0-R1 Plan — Lifecycle Recovery + Retrieval Correctness Hardening
+# Phase 5.0-R2 Plan — Exhaustive Eligibility + True Historical View + Assertion-Level Filtering
 
-Planner: ChatGPT  
-Executor: Kimi/Codex  
+Planner: ChatGPT
+Executor: Kimi/Codex
 State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Repair the five blocking Phase 5.0 defects identified in:
-`planner/phase-05-0-review.md`
+Close the final three Phase 5.0 lifecycle correctness gaps from:
+planner/phase-05-0-r1-review.md
 
-Do **not** start Phase 5.1.
-
-The target remains docs/03 §7 lifecycle core only.
+Do not start Phase 5.1.
 
 ## 1. Scope freeze
 
-Do not:
-- change frozen §6 ranking/RRF/reranker/Abstain semantics;
-- add Crossref/RetractionWatch or publisher polling;
-- add external Kafka/Redis/HTTP event transport;
-- add public lifecycle mutation MCP tools;
-- add preprint fuzzy matching;
-- change CG-018;
-- add unrelated abstractions.
+Do not modify:
+- §6 ranking/RRF/reranker/guard semantics;
+- lifecycle crash-recovery logic accepted in R1 unless required by a failing regression;
+- event transport boundary / CG-018;
+- public MCP contract;
+- Crossref/RetractionWatch/publisher polling;
+- preprint fuzzy matching.
 
-## 2. R1-A — crash-safe idempotent lifecycle finalization
+## 2. R2-A — progressive lifecycle filtering until enough eligible or exhaustion
 
-Fix `LifecycleRevisionCoordinator.apply_retraction()` and `apply_revision()`.
+Replace fixed:
+max(top_k * 10, 50)
 
-A deterministic existing lifecycle ID is not automatically “done”.
+with a deterministic progressive strategy.
 
-Classify existing state:
+Required semantics for one backend search:
+- requested output target = original query.top_k;
+- fetch an initial backend depth;
+- filter candidates by lifecycle eligibility;
+- if eligible count < target and backend may contain more:
+  - request a larger depth;
+  - re-filter deterministically;
+- stop only when:
+  A. target eligible count is available; or
+  B. backend proves exhaustion, e.g. returned_count < requested_depth; or
+  C. returned candidate identities stop growing between expanded calls.
 
-### FINALIZED
-- lifecycle record bound to a published version;
-- deterministic snapshot/version exists;
-- required lifecycle records are bound;
-- required outbox events exist with matching material payload.
+Preserve backend order and raw scores exactly for surviving candidates.
+Return enough candidates for the frozen hybrid layer to apply its own cutoff.
 
-Result:
-- return idempotently;
-- do not duplicate snapshot/version/events.
+Do not invent new ranking.
 
-### STAGED / PARTIAL
-- lifecycle record exists but effective_version_id is missing; or
-- snapshot/version exists but binding is incomplete; or
-- binding exists but one or more required events are missing.
+## 3. Large-depth regression
 
-Result:
-- resume deterministic finalization;
-- never create a second semantic revision;
-- converge to the same final state.
+Mandatory:
+- >= 60 same-level candidates;
+- first 55 belong to lifecycle-ineligible refs;
+- candidate #56 is eligible;
+- query top_k=1;
+- final EvidenceRetrievalService bundle returns #56.
 
-### CONFLICT
-Same deterministic lifecycle/revision/event identity but material content differs.
+Test vector path.
+If keyword path is active in the same composition, cover it too or use a shared wrapper test proving the behavior for arbitrary SearchPort.
 
-Result:
-- fail closed.
+Also test backend exhaustion:
+- all candidates ineligible;
+- wrapper terminates and returns [] without infinite expansion.
 
-Use existing deterministic manifest hash and VersionStore lookup APIs.
-Only add the smallest internal helper/Port extension if absolutely required.
+## 4. R2-B — same-history historical retrieval E2E
 
-## 3. Failure matrix
+Use ONE VersionStore + ONE LifecycleStore containing:
+- V1 active REF-A;
+- V2 retraction of REF-A.
 
-Add deterministic retry tests for both retraction and generic revision where applicable.
+Use the SAME InMemoryLifecycleVisibility instance (or same underlying store) for both requests.
 
-At minimum test:
+Through EvidenceRetrievalService.retrieve():
 
-1. fail before `version.create_snapshot`;
-2. fail after `version.create_snapshot`;
-3. fail before `version.publish`;
-4. fail after `version.publish`;
-5. fail after lifecycle bind but before all required outbox events are complete.
+Current request:
+- at_version_id=None;
+- REF-A absent.
 
-For every case:
-- first attempt raises;
-- no half-applied lifecycle state is visible incorrectly;
-- retry succeeds;
-- exactly one semantic snapshot/version is published;
-- lifecycle records bind to the published version;
-- all required events exist exactly once;
-- current visibility matches the final revision;
-- historical version remains resolvable.
+Historical request:
+- at_version_id=V1;
+- REF-A present when ranking selects it.
 
-Critical regression:
-`fail_after("version.publish")` must not leave current version advanced with an unbound lifecycle revision after recovery.
+Assert the store still contains the retraction record during both requests.
+Do not construct an empty replacement LifecycleStore.
 
-## 4. R1-B — base-version validation
+## 5. R2-C — assertion-level retrieval eligibility
 
-An explicit `draft.base_version_id` must resolve to a published VersionRecord.
+Update lifecycle candidate eligibility helper:
 
-Missing base -> fail before staging/publish.
+eligible(chunk, at_version_id):
+1. document_eligibility(chunk.ref_id, at_version_id) must be visible;
+2. if chunk.assertion_id is not None:
+   assertion_eligibility(chunk.assertion_id, chunk.ref_id, at_version_id) must also be visible;
+3. only then include candidate.
 
-For Phase 5.0 keep branch semantics simple:
-- if `base_version_id` is supplied, require it to equal `VersionStore.current_version().version_id` at publication time;
-- after rollback, the rolled-back version is current and can therefore be the base of a new revision.
+Coarse summary chunks without assertion_id use document eligibility only.
 
-Do not silently publish from a nonexistent or stale base.
+Do not derive assertion ids from chunk text or chunk_id conventions.
 
-Add tests:
-- nonexistent base -> rejected;
-- stale non-current base -> rejected;
-- rollback then revise from new current base -> allowed.
+## 6. Corrigendum retrieval regression
 
-## 5. R1-C — strict material idempotency
+Create:
+- one active document REF-A;
+- fine chunk F1 assertion_id=A1;
+- fine chunk F2 assertion_id=A2;
+- V2 corrigendum supersedes A1 only.
 
-Define material equality for:
-- DocumentLifecycleRecord;
-- AssertionLifecycleRecord;
-- LifecycleEvent.
+Required:
+- current retrieval never returns F1/A1;
+- current retrieval can return F2/A2;
+- explicit V1 historical retrieval can return F1/A1;
+- document coarse summary remains eligible because the document is not retracted.
 
-Same deterministic ID is idempotent only when material content matches.
+Use actual EvidenceRetrievalService retrieval, not direct visibility calls only.
 
-At minimum include:
-- ref/status/reason;
-- revision/lifecycle identity;
-- source fingerprint;
-- affected assertion IDs;
-- supersede target;
-- evidence refs/rationale;
-- trace/provenance IDs;
-- old/new version IDs;
-- event payload/schema version.
+## 7. Assertion training eligibility
 
-Ignore only explicitly non-material transport/staging fields such as created sequence or delivered flag, and document why.
+If Phase 5.0 exposes training eligibility by document/assertion, prove:
+- A1 superseded => false;
+- A2 unchanged => true;
+- V1 historical assertion eligibility for A1 remains true where applicable.
 
-Add regressions:
-- same event_id + altered payload -> conflict;
-- same lifecycle_id + altered evidence/rationale/source fingerprint -> conflict;
-- same assertion identity + altered ref/revision/supersede target -> conflict.
+Do not create a separate training-export system.
 
-## 6. R1-D — lifecycle eligibility before effective retrieval cutoff
+## 8. Progressive search safety
 
-Current wrapper may filter only after backend top-k.
+Prevent infinite loops.
 
-Repair so an ineligible top hit cannot hide an eligible lower-ranked hit.
+Track stable candidate identities or returned length.
+If increasing depth produces no additional candidates, treat backend as exhausted.
 
-For Phase 5.0 deterministic/in-memory integration, an implementation may:
-- pass an exact eligible ref-id restriction into the backend when a finite candidate universe is available; or
-- deterministically expand backend retrieval until enough eligible candidates are obtained or backend exhaustion is established.
+Do not assume every backend honors arbitrarily large top_k perfectly.
 
-Do not change hybrid ranking formulas.
+Add a regression with a backend that caps output and repeats the same candidate list.
 
-Required regression:
-- requested top_k = 1;
-- backend rank #1 = retracted REF-A;
-- backend rank #2 = eligible REF-B;
-- final EvidenceBundle contains REF-B.
+## 9. Preserve filters
 
-Add equivalent coverage for vector + keyword composition if both are active.
+Progressive wrapper must preserve:
+- query.text;
+- query.level;
+- allowed_ref_ids;
+- subquestion_id.
 
-## 7. R1-E — real historical retrieval integration
+If allowed_ref_ids is already finite and lifecycle visibility can filter it before backend search, keep the existing exact pre-filter path.
 
-Add an INTERNAL explicit version selector for lifecycle retrieval.
+## 10. Tests
 
-Preferred:
-- optional `at_version_id` on `EvidenceRequest` if that model is internal; or
-- equivalent service-scoped internal parameter.
+Maintain:
+- knowledge_curator >= 344 passed / 0 failed;
+- integration/dsh >= 90 passed / 0 failed.
 
-Propagate it into lifecycle eligibility filtering.
+Add tests for all R2 cases.
 
-Required end-to-end regression:
+No skipped core lifecycle tests.
 
-1. V1 active REF-A;
-2. V2 retracts REF-A;
-3. current retrieval excludes REF-A;
-4. retrieval explicitly at V1 returns REF-A when ranking selects it.
+## 11. Deliverables
 
-Do not satisfy this by directly calling `document_eligibility()`; the assertion must go through `EvidenceRetrievalService.retrieve()`.
+Create:
+results/phase-05-0-r2-executor-report.md
 
-## 8. Append-only clarification
-
-Staged `effective_version_id` binding may remain an internal finalization mutation only if:
-- staged records are invisible;
-- status/reason/evidence content never changes after append;
-- once bound, the binding cannot be changed to another version.
-
-No physical deletion or historical rewrite.
-
-## 9. Tests / acceptance
-
-Keep existing baselines green:
-- integration/dsh >= 90 passed / 0 failed;
-- knowledge_curator >= 329 passed / 0 failed.
-
-R1 must add tests for every blocker above.
-
-Acceptance requires:
-- retry recovery works after post-side-effect failures;
-- no current version/lifecycle visibility split-brain remains;
-- backend top-k lifecycle under-fill regression is closed;
-- actual historical retrieval works end-to-end;
-- material ID conflicts fail closed;
-- invalid/stale base versions fail closed;
-- public contracts changed = NO unless Planner explicitly approves otherwise.
-
-## 10. Deliverables
-
-Update:
-- implementation/tests;
-- `results/phase-05-0-r1-executor-report.md`;
-- `status.json`.
-
-Completion report:
+Report:
+- progressive pre-cutoff lifecycle filtering: PASS/FAILED;
+- deep-rank eligible recovery (>50): PASS/FAILED;
+- backend exhaustion termination: PASS/FAILED;
+- same-history historical retrieval E2E: PASS/FAILED;
+- assertion-level retrieval filtering: PASS/FAILED;
+- corrigendum current/historical retrieval: PASS/FAILED;
+- assertion training eligibility: PASS/FAILED;
+- exact tests;
+- public contracts changed: NO;
 - implementation CODE SHA;
 - origin/main SHA;
-- failure-recovery matrix PASS/FAILED;
-- post-publish retry PASS/FAILED;
-- retrieval pre-cutoff regression PASS/FAILED;
-- historical retrieval E2E PASS/FAILED;
-- strict material idempotency PASS/FAILED;
-- base-version validation PASS/FAILED;
-- exact test counts;
-- public contracts changed YES/NO;
-- CONTRACT_GAPS added/changed.
+- CONTRACT_GAPS changes.
+
+## 12. Completion
+
+Update status.json:
+- phase = 5.0-R2
+- actor = executor
+- state = executor_complete
+- latest_commit = actual CODE SHA
+- result_expected = results/phase-05-0-r2-executor-report.md
 
 Push main and STOP.
-
 Do not start Phase 5.1.
