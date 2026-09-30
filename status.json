@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.0-R1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -24,7 +24,7 @@
     "no final QA generator, L2 graph DB internals, or EDDO production expansion",
     "do not start Phase 5.1 until Planner review"
   ],
-  "latest_commit": "3449a410bf4103ee0aeb37c2f582f288518aef9e",
+  "latest_commit": "b7793b60d22dc327879e7ca169e95a286d15a0a9",
   "planner_review": "planner/phase-05-0-review.md",
-  "live_smoke": "PHASE50_REVISE_REQUIRED_R1"
+  "live_smoke": "PHASE50_R1_ALL_BLOCKERS_PASS"
 }
