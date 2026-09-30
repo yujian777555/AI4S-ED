@@ -1,4 +1,4 @@
-# Phase 5.0-R2 Plan — Exhaustive Eligibility + True Historical View + Assertion-Level Filtering
+# Phase 5.0-R3 Plan — Correct Exhaustion Detection + allowed_ref Assertion Filtering
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,165 +6,146 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close the final three Phase 5.0 lifecycle correctness gaps from:
-planner/phase-05-0-r1-review.md
+Close the last two lifecycle retrieval correctness defects from:
+planner/phase-05-0-r2-review.md
 
 Do not start Phase 5.1.
 
-## 1. Scope freeze
+## 1. Scope
 
-Do not modify:
+Only modify lifecycle retrieval eligibility composition/tests unless a directly related bug is exposed.
+
+Do not change:
 - §6 ranking/RRF/reranker/guard semantics;
-- lifecycle crash-recovery logic accepted in R1 unless required by a failing regression;
-- event transport boundary / CG-018;
-- public MCP contract;
-- Crossref/RetractionWatch/publisher polling;
-- preprint fuzzy matching.
+- R1 lifecycle recovery/idempotency/base validation;
+- lifecycle version model;
+- event outbox/CG-018;
+- public MCP contracts.
 
-## 2. R2-A — progressive lifecycle filtering until enough eligible or exhaustion
+## 2. R3-A — backend exhaustion based on candidate growth
 
-Replace fixed:
-max(top_k * 10, 50)
+In _EligibilityFilteredPort.search():
 
-with a deterministic progressive strategy.
+Track identities for ALL candidates returned by the backend, not only eligible candidates.
 
-Required semantics for one backend search:
-- requested output target = original query.top_k;
-- fetch an initial backend depth;
-- filter candidates by lifecycle eligibility;
-- if eligible count < target and backend may contain more:
-  - request a larger depth;
-  - re-filter deterministically;
-- stop only when:
-  A. target eligible count is available; or
-  B. backend proves exhaustion, e.g. returned_count < requested_depth; or
-  C. returned candidate identities stop growing between expanded calls.
+At each expanded depth:
+- call backend;
+- preserve backend ordering/scores;
+- filter eligible candidates;
+- if enough eligible -> return;
+- if len(cands) < requested_depth -> exhausted;
+- otherwise compare the complete returned candidate identity set/list against the previous expanded call;
+- if no new backend candidate identity appears -> exhausted;
+- if backend candidates grew, continue expanding even if eligible count remains zero.
 
-Preserve backend order and raw scores exactly for surviving candidates.
-Return enough candidates for the frozen hybrid layer to apply its own cutoff.
+Do not stop merely because eligible IDs did not grow.
 
-Do not invent new ranking.
-
-## 3. Large-depth regression
+## 3. Deep regression beyond 100
 
 Mandatory:
-- >= 60 same-level candidates;
-- first 55 belong to lifecycle-ineligible refs;
-- candidate #56 is eligible;
-- query top_k=1;
-- final EvidenceRetrievalService bundle returns #56.
+- >= 110 candidates;
+- #1..#100 lifecycle-ineligible;
+- #101 eligible;
+- top_k=1;
+- final result returns #101.
 
-Test vector path.
-If keyword path is active in the same composition, cover it too or use a shared wrapper test proving the behavior for arbitrary SearchPort.
+Assert requested backend depth advances beyond 100.
 
-Also test backend exhaustion:
-- all candidates ineligible;
-- wrapper terminates and returns [] without infinite expansion.
+## 4. Safety bound semantics
 
-## 4. R2-B — same-history historical retrieval E2E
+The existing _MAX_STEPS may remain only as a resource safety guard.
 
-Use ONE VersionStore + ONE LifecycleStore containing:
-- V1 active REF-A;
-- V2 retraction of REF-A.
+If the guard is reached while backend candidate identities are still growing and target eligible count has not been met:
+- do not label it exhausted;
+- fail closed with an explicit retrieval eligibility exhaustion/limit diagnostic or exception.
 
-Use the SAME InMemoryLifecycleVisibility instance (or same underlying store) for both requests.
+Do not silently return an incomplete result as if search were exhaustive.
 
-Through EvidenceRetrievalService.retrieve():
+Prefer a configurable internal max depth/steps if needed, but do not create a public contract.
 
-Current request:
-- at_version_id=None;
-- REF-A absent.
+## 5. Capped/repeating backend
 
-Historical request:
-- at_version_id=V1;
-- REF-A present when ranking selects it.
+Keep/add regression:
+- backend always returns the same capped candidate identities for larger top_k;
+- wrapper detects no candidate growth and terminates;
+- no infinite loop.
 
-Assert the store still contains the retraction record during both requests.
-Do not construct an empty replacement LifecycleStore.
+## 6. R3-B — allowed_ref_ids must not bypass assertion eligibility
 
-## 5. R2-C — assertion-level retrieval eligibility
+When request.allowed_ref_ids is supplied:
 
-Update lifecycle candidate eligibility helper:
+1. prefilter those refs using lifecycle document eligibility at at_version_id;
+2. pass the filtered finite set into RetrievalQuery.allowed_ref_ids;
+3. still apply lifecycle candidate filtering to vector/keyword ports so chunk.assertion_id is checked;
+4. progressive fill must continue within the allowed ref universe when early chunks are superseded/archived.
 
-eligible(chunk, at_version_id):
-1. document_eligibility(chunk.ref_id, at_version_id) must be visible;
-2. if chunk.assertion_id is not None:
-   assertion_eligibility(chunk.assertion_id, chunk.ref_id, at_version_id) must also be visible;
-3. only then include candidate.
+Document-level filtering and assertion-level filtering are both required.
 
-Coarse summary chunks without assertion_id use document eligibility only.
+## 7. allowed_ref corrigendum regression
 
-Do not derive assertion ids from chunk text or chunk_id conventions.
+Use the same lifecycle history:
 
-## 6. Corrigendum retrieval regression
+- REF-A document ACTIVE;
+- V1: A1 and A2 active;
+- V2 corrigendum: A1 SUPERSEDED, A2 active.
 
-Create:
-- one active document REF-A;
-- fine chunk F1 assertion_id=A1;
-- fine chunk F2 assertion_id=A2;
-- V2 corrigendum supersedes A1 only.
+Backend order:
+- F1/A1 first;
+- F2/A2 second.
 
-Required:
-- current retrieval never returns F1/A1;
-- current retrieval can return F2/A2;
-- explicit V1 historical retrieval can return F1/A1;
-- document coarse summary remains eligible because the document is not retracted.
+Current:
+EvidenceRequest(query=..., top_k=1, allowed_ref_ids=["REF-A"])
+must return F2/A2, never F1/A1.
 
-Use actual EvidenceRetrievalService retrieval, not direct visibility calls only.
+Historical V1:
+same request with at_version_id=V1
+may return F1/A1.
 
-## 7. Assertion training eligibility
+## 8. Empty finite allowed-ref set
 
-If Phase 5.0 exposes training eligibility by document/assertion, prove:
-- A1 superseded => false;
-- A2 unchanged => true;
-- V1 historical assertion eligibility for A1 remains true where applicable.
+If document prefilter turns allowed_ref_ids into an empty set:
+- backend must not accidentally interpret empty set as “no restriction”;
+- result must contain no lifecycle-ineligible refs.
 
-Do not create a separate training-export system.
+Add regression if current backend/query semantics make this ambiguous.
 
-## 8. Progressive search safety
+## 9. Preserve query fields
 
-Prevent infinite loops.
-
-Track stable candidate identities or returned length.
-If increasing depth produces no additional candidates, treat backend as exhausted.
-
-Do not assume every backend honors arbitrarily large top_k perfectly.
-
-Add a regression with a backend that caps output and repeats the same candidate list.
-
-## 9. Preserve filters
-
-Progressive wrapper must preserve:
-- query.text;
-- query.level;
+Progressive wrapper continues preserving:
+- text;
+- level;
 - allowed_ref_ids;
 - subquestion_id.
 
-If allowed_ref_ids is already finite and lifecycle visibility can filter it before backend search, keep the existing exact pre-filter path.
+No score/rank reinterpretation.
 
 ## 10. Tests
 
 Maintain:
-- knowledge_curator >= 344 passed / 0 failed;
+- knowledge_curator >= 351 passed / 0 failed;
 - integration/dsh >= 90 passed / 0 failed.
 
-Add tests for all R2 cases.
+Add tests for:
+- #101 eligible recovery;
+- candidate-growth exhaustion semantics;
+- max-step/resource-guard fail-closed if applicable;
+- allowed_ref assertion supersede filtering;
+- historical allowed_ref retrieval;
+- empty allowed-ref prefilter safety.
 
-No skipped core lifecycle tests.
-
-## 11. Deliverables
+## 11. Deliverable
 
 Create:
-results/phase-05-0-r2-executor-report.md
+results/phase-05-0-r3-executor-report.md
 
 Report:
-- progressive pre-cutoff lifecycle filtering: PASS/FAILED;
-- deep-rank eligible recovery (>50): PASS/FAILED;
-- backend exhaustion termination: PASS/FAILED;
-- same-history historical retrieval E2E: PASS/FAILED;
-- assertion-level retrieval filtering: PASS/FAILED;
-- corrigendum current/historical retrieval: PASS/FAILED;
-- assertion training eligibility: PASS/FAILED;
+- all-candidate exhaustion detection: PASS/FAILED;
+- #101 eligible recovery: PASS/FAILED;
+- capped backend termination: PASS/FAILED;
+- resource guard fail-closed: PASS/FAILED;
+- allowed_ref assertion filtering: PASS/FAILED;
+- historical allowed_ref retrieval: PASS/FAILED;
+- empty allowed-ref safety: PASS/FAILED;
 - exact tests;
 - public contracts changed: NO;
 - implementation CODE SHA;
@@ -174,11 +155,11 @@ Report:
 ## 12. Completion
 
 Update status.json:
-- phase = 5.0-R2
+- phase = 5.0-R3
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-0-r2-executor-report.md
+- result_expected = results/phase-05-0-r3-executor-report.md
 
 Push main and STOP.
 Do not start Phase 5.1.
