@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.0",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.0-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,17 +12,19 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-0-executor-report.md",
+  "result_expected": "results/phase-05-0-r1-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "docs/03 §6 knowledge_curator core is frozen; strict live DSH validation remains externally blocked and may be rerun later without changing core",
-    "Phase 5.0 implements §7 lifecycle core: revision/retraction soft archive, versioned visibility, rollback, and internal event outbox",
+    "docs/03 §6 knowledge_curator ranking/guard semantics remain frozen",
+    "Phase 5.0-R1 only repairs lifecycle crash recovery, material idempotency, base-version validation, and retrieval lifecycle correctness",
     "no physical deletion of published structural/USDO/vector history",
     "no Crossref/RetractionWatch crawler or automated publisher polling",
     "no external event-bus technology/topic choices; CG-018 remains open",
-    "no final QA generator, L2 graph DB internals, or EDDO production expansion"
+    "no public lifecycle mutation MCP tool",
+    "no final QA generator, L2 graph DB internals, or EDDO production expansion",
+    "do not start Phase 5.1 until Planner review"
   ],
   "latest_commit": "3449a410bf4103ee0aeb37c2f582f288518aef9e",
-  "planner_review": "planner/phase-04-3-2-review.md",
-  "live_smoke": "PHASE50_LIFECYCLE_CORE_PASS"
+  "planner_review": "planner/phase-05-0-review.md",
+  "live_smoke": "PHASE50_REVISE_REQUIRED_R1"
 }
