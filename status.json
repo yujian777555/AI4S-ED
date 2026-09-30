@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no changed-paragraph extraction or preprint assertion supersede yet",
     "no public cross-team schema; CG-019 remains internal compatibility boundary"
   ],
-  "latest_commit": "91e3d31cd9c7dd49db8396707b183167419f8efc",
+  "latest_commit": "773c84dc5fa657a3f70182027382371db8b2f9e5",
   "planner_review": "planner/phase-05-0-r3-review.md",
-  "live_smoke": "PHASE50_LIFECYCLE_CORE_PASS_FROZEN_PHASE51_INCREMENTAL_IDENTITY"
+  "live_smoke": "PHASE51_SOURCE_IDENTITY_PASS"
 }
