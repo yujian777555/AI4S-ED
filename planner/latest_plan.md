@@ -1,4 +1,4 @@
-# Phase 5.2-R1 Plan — Delta Input Integrity + Extraction Completion + Material Idempotency
+# Phase 5.2-R2 Plan — FULL_REEXTRACT Transition + Final Material Identity Closure
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,282 +6,232 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close the seven correctness blockers in:
-planner/phase-05-2-review.md
+Close only the final five Phase 5.2 correctness gaps from:
+planner/phase-05-2-r1-review.md
 
 Do not start Phase 5.3.
 
-## 1. Scope freeze
+## 1. Freeze accepted R1 behavior
 
 Do not redesign:
-- exact-only content alignment;
-- UNCHANGED/MODIFIED/ADDED/REMOVED semantics;
-- semantic slot matching;
-- FULL_REEXTRACT fallback decision;
+- exact-only unit alignment;
+- DELTA_SAFE classification;
+- processed_unit_ids coverage;
+- manifest/source identity validation;
+- intent relation/prior KB binding;
+- semantic-slot matching;
+- RevisionDraft replacement-id logic;
 - Phase 5.0 lifecycle core;
-- Phase 5.1 source lineage;
-- public MCP contracts.
+- Phase 5.1 source lineage.
 
-## 2. Deep-copy carried assertions
+## 2. FULL_REEXTRACT transition semantics
 
-carry_forward_unchanged must create a fully independent Assertion graph.
+When:
+plan.mode == FULL_REEXTRACT_REQUIRED
 
-Deep-copy:
+and the target batch has passed full extraction validation:
+
+Required transitions:
+- every prior_inventory assertion => ARCHIVE;
+- every target/delta_batch assertion => ADDED;
+- no automatic SUPERSEDE.
+
+Reason strings should be explicit, e.g.:
+- full_reextract_prior_archived;
+- full_reextract_new_added.
+
+No fuzzy matching.
+
+This path must work for segmentation_reset=True.
+
+The resulting RevisionPackage must therefore contain:
+- archive_actions = all prior assertion ids;
+- added_assertion_ids = all new assertion ids;
+- supersede_actions = {}.
+
+package_to_revision_draft must then expose all new assertion ids in replacement_assertion_ids.
+
+## 3. FULL_REEXTRACT regression
+
+Build:
+- prior assertions A1, A2;
+- segmentation_reset=True;
+- new full extraction A1N, A3;
+- processed_unit_ids covers ALL new units.
+
+Required:
+- A1/A2 archive;
+- A1N/A3 added;
+- no supersede;
+- no carry-forward;
+- target only new full extraction;
+- RevisionDraft archive_actions={A1,A2};
+- replacement_assertion_ids={A1N,A3}.
+
+## 4. Recursive scientific deep-copy
+
+Use copy.deepcopy or an equivalent recursive method for mutable scientific payload.
+
+At minimum:
 - Subject;
-- ObjectValue;
-- each Condition;
-- any mutable value/metadata nested inside scientific payload where applicable.
+- ObjectValue, including ObjectValue.value;
+- Condition, including Condition.value;
+- nested list/dict/tuple-like scientific values where Python deepcopy applies.
 
-Rebuild Provenance:
-- locator = new unit locator;
-- sentence may be copied by value.
+Enums/strings/scalars may remain value-copied.
 
-Never reuse mutable nested objects from prior Assertion.
+Provenance remains rebuilt:
+- new locator;
+- sentence copied.
 
 Mandatory regression:
-- carry old -> new;
-- mutate new.subject.original_mention;
-- mutate new.object.value;
-- mutate new.conditions[0].value;
-- old assertion remains byte/material unchanged.
+- old object.value=[1.0,2.0];
+- old condition.value={"x":[1,2]};
+- carry forward;
+- mutate carried list/dict deeply;
+- old remains unchanged.
 
-Replace the vacuous:
-... == ... or True
-with a real semantic equality assertion.
+Keep real semantic_payload_hash equality before mutation.
 
-## 3. Validate source-version/material identity before delta
+## 5. Strict prior inventory in RevisionPackageBuilder
 
-Add pure validators called at the beginning of RevisionPackageBuilder.build.
+Builder must call strict validation:
+mapped unit must exist in prior_manifest.
 
-### prior manifest
-Require:
-- prior_manifest.source_version_id == prior.source_version_id;
-- prior_manifest.ref_id == prior.ref_id;
-- prior_manifest.source_fingerprint == prior.source_fingerprint.
+Do NOT use allow_unresolvable_units=True for publication-bound package construction.
 
-### new manifest
-Require:
-- new_manifest.source_version_id == new.source_version_id;
-- new_manifest.ref_id == new.ref_id;
-- new_manifest.source_fingerprint == new.source_fingerprint.
+Malformed prior inventory:
+- unknown unit id;
+- missing map;
+- dangling map;
+=> fail closed.
 
-### prior inventory
-Require:
-- source_version_id == prior.source_version_id;
-- ref_id == prior.ref_id.
+If compute_content_delta helper still supports FULL_REEXTRACT fallback for a standalone unsafe inventory test, that is acceptable, but RevisionPackageBuilder must reject malformed input first.
 
-### delta batch
-Require:
-- source_version_id == new.source_version_id;
-- ref_id == new.ref_id.
+FULL_REEXTRACT for real package construction should come from an explicit safe condition such as segmentation_reset=True.
 
-Any mismatch => fail closed before carry-forward/transition/package id generation.
+## 6. Canonical package material payload
 
-## 4. Validate intent relation + prior KB binding
+Refactor package_id input into a clear helper if useful.
 
-In validate_intent/build context require:
-- new.relation == intent.relation;
-- new.prior_source_version_id == prior.source_version_id;
-- prior.kb_version_id is non-empty;
-- prior.snapshot_id is non-empty.
+Include side-labelled prior/new manifest material separately.
 
-This phase prepares lifecycle upgrade from an already published prior source version.
+### prior_units
+For every prior unit:
+- unit_id;
+- locator;
+- kind.value;
+- content_hash;
+- prior_unit_id.
 
-Do NOT require new.kb_version_id; target content is not published yet.
+### new_units
+Same.
 
-Add tests:
-- intent relation differs from new.relation -> reject;
-- prior unbound -> reject;
-- prior bound -> proceed.
+Do NOT merge both sides into an unlabeled multiset.
 
-Update fixtures to bind prior version explicitly using SourceVersionRegistry.bind_source_version.
+### delta alignment
+Include deterministic:
+- mode;
+- unchanged pair old/new;
+- modified pair old/new;
+- added unit ids;
+- removed unit ids;
+- extraction unit ids.
 
-## 5. Prior inventory validation
+### extraction completion
+Include:
+- sorted processed_unit_ids.
 
-Add validator:
-validate_prior_inventory(inventory, prior_manifest).
-
-Require:
-- unique assertion ids;
-- every assertion.ref_id == inventory.ref_id;
-- every assertion id has one unit-map entry;
-- every mapped unit exists in prior manifest;
-- assertion_unit_map contains no unknown assertion ids.
-
-No silent skip for missing mapping.
-
-If unsafe mapping prevents delta carry-forward, choose:
-- structural invalidity -> fail closed;
-- explicitly declared upstream identity reset -> FULL_REEXTRACT_REQUIRED.
-
-Do not silently drop assertions.
-
-## 6. Extraction completion evidence
-
-Extend INTERNAL DeltaAssertionBatch with:
-processed_unit_ids: list[str] = field(default_factory=list)
-
-This is CG-020 internal compatibility only.
-
-Validation:
-
-### DELTA_SAFE
-required processed scope =
-set(plan.extraction_unit_ids)
-
-Require:
-- every required unit is processed;
-- processed units are all in new manifest;
-- processed units do not include unchanged/out-of-scope units unless an explicit future mode says full extraction.
-
-Prefer exact equality for Phase 5.2-R1.
-
-### FULL_REEXTRACT_REQUIRED
-required processed scope =
-all new manifest unit ids.
-
-Require exact coverage.
-
-Why:
-zero extracted assertions from a processed unit is valid;
-an unprocessed unit is not equivalent to zero assertions.
-
-## 7. Delta batch structural validation in ALL modes
-
-Always validate:
-- unique assertion ids;
-- assertion.ref_id == batch.ref_id;
-- every assertion id has a unit mapping;
-- no dangling map entry;
-- mapped unit exists in new manifest;
-- mapped unit is in processed_unit_ids.
-
-Then apply mode-specific processed scope rules.
-
-FULL_REEXTRACT_REQUIRED must no longer bypass validate_delta_batch.
-
-## 8. FULL_REEXTRACT behavior
-
-When mode == FULL_REEXTRACT_REQUIRED:
-- carried assertions = [];
-- carried_records = [];
-- target assertions = validated full extraction batch only;
-- transitions must be computed against the complete new extraction.
-
-Because content-unit alignment may be unavailable in a segmentation reset, do NOT use modified_pairs that do not exist to infer old->new automatically.
-
-Safe default:
-- prior assertions are ARCHIVE candidates;
-- new assertions are ADDED candidates;
-- if upstream supplies no exact old->new unit alignment, do not invent supersede pairs.
-
-If an exact alignment still exists in a non-segmentation fallback, deterministic transition matching may be used only where alignment is explicitly present.
-
-Never fuzzy match.
-
-## 9. Material package identity
-
-Introduce canonical package material payload.
-
-package_id must change when any materially relevant input/output changes.
-
-Include at least:
-- work_id;
-- prior/new source version ids;
-- relation;
-- prior/new ref/fingerprint;
-- prior bound KB version/snapshot;
-- content delta categories and pair identities;
-- content hashes for involved units;
-- processed_unit_ids;
-- target assertion canonical material;
-- supersede/archive/added transitions;
-- trace/provenance only if current project identity policy treats them as semantic.
-
-For target assertion material include a deterministic canonical structure containing:
+### target assertion material
+For each target assertion include:
 - assertion id;
 - ref_id;
 - semantic_payload_hash;
-- provenance locator/sentence where evidence identity matters;
-- bound unit id.
+- provenance locator;
+- provenance sentence;
+- bound new unit id from delta_batch map or carried_records.
 
-Do not rely only on assertion IDs.
+For carried assertions, derive binding from CarriedAssertionRecord.unit_id.
+
+### actions
+Include:
+- supersede;
+- archive;
+- added.
+
+### lineage/binding
+Include:
+- work id;
+- prior/new source version ids;
+- relation;
+- prior/new ref/fingerprint;
+- prior KB version + snapshot.
+
+## 7. Package id side-identity regressions
+
+Add:
+1. same unit id U1, prior hash h1/new h2 => package P1;
+2. swap prior h2/new h1 with otherwise equivalent fixture => package id differs.
+
+Also:
+1. same target assertion id/semantic/provenance;
+2. bind to U1 vs U2;
+=> package id differs.
+
+The fixture must remain valid with processed scopes.
+
+## 8. trace/provenance identity
+
+Include:
+- RevisionPackage trace_id;
+- RevisionPackage provenance_id
+
+in deterministic package material, because current SourceVersion/Lifecycle material policy treats these as semantic for idempotency/conflict detection.
 
 Regression:
-same IDs/actions but value 2.0 vs 3.0 -> different package_id.
+same scientific material but different trace_id => different package_id.
+same exact material + same trace/provenance => same package_id.
 
-Same exact material -> same package_id.
+## 9. Determinism
 
-## 10. RevisionDraft replacement ids
+No random UUID.
 
-package_to_revision_draft:
+Canonical sort all set/map/list-like material before hashing.
 
-replacement_assertion_ids =
-sorted(unique(
-  list(package.supersede_actions.values())
-  + package.added_assertion_ids
-))
+Same complete material => same package_id across repeated builds.
 
-No old assertion id belongs in replacement_assertion_ids.
-
-Add regression with:
-- one carried/modified supersede;
-- one added assertion;
-- both NEW ids appear exactly once.
-
-## 11. Ambiguity/manual review
-
-Keep current duplicate-slot review gate.
-
-If package.requires_manual_review:
-- package_to_revision_draft may produce a MANUAL_ADJUDICATION_REQUIRED draft;
-- it must not fabricate risk metadata to make it auto-rule eligible.
-
-Do not call apply_revision.
-
-## 12. Tests
+## 10. Tests
 
 Maintain:
-- knowledge_curator >= 442 passed / 0 failed;
+- knowledge_curator >= 461 passed / 0 failed;
 - integration/dsh >= 90 passed / 0 failed.
 
 Add at least:
-1. carried assertion nested mutation does not mutate prior;
-2. real semantic payload equality after carry;
-3. prior manifest version/ref/fingerprint mismatch -> reject;
-4. new manifest version/ref/fingerprint mismatch -> reject;
-5. prior inventory identity mismatch -> reject;
-6. delta batch identity mismatch -> reject;
-7. intent relation mismatch -> reject;
-8. prior unbound KB -> reject;
-9. prior bound KB -> pass;
-10. prior inventory duplicate id -> reject;
-11. prior inventory missing unit map -> reject;
-12. prior inventory dangling map -> reject;
-13. DELTA_SAFE processed scope incomplete -> reject;
-14. DELTA_SAFE processed out-of-scope -> reject;
-15. FULL_REEXTRACT incomplete processed scope -> reject;
-16. FULL_REEXTRACT wrong ref/unknown unit/duplicate id -> reject;
-17. processed unit with zero assertions is valid;
-18. FULL_REEXTRACT has no carry-forward;
-19. package scientific value change changes package_id;
-20. identical material preserves package_id;
-21. replacement_assertion_ids includes supersede targets + added ids.
+1. segmentation-reset FULL_REEXTRACT archives all prior;
+2. segmentation-reset FULL_REEXTRACT adds all new;
+3. FULL_REEXTRACT no supersede;
+4. FULL_REEXTRACT draft replacement ids = all new ids;
+5. nested ObjectValue.value deepcopy;
+6. nested Condition.value deepcopy;
+7. builder unknown prior unit -> reject;
+8. prior/new same-id hash direction changes package id;
+9. target assertion unit binding changes package id;
+10. trace_id change changes package id;
+11. identical full material remains deterministic.
 
-## 13. Deliverable
+## 11. Deliverable
 
 Create:
-results/phase-05-2-r1-executor-report.md
+results/phase-05-2-r2-executor-report.md
 
 Report:
-- deep-copy carry-forward: PASS/FAILED;
-- manifest/inventory/batch identity validation: PASS/FAILED;
-- intent relation/prior binding validation: PASS/FAILED;
-- prior inventory integrity: PASS/FAILED;
-- extraction completion coverage: PASS/FAILED;
-- FULL_REEXTRACT validation: PASS/FAILED;
-- material package identity: PASS/FAILED;
-- complete draft replacement ids: PASS/FAILED;
+- FULL_REEXTRACT transition semantics: PASS/FAILED;
+- recursive scientific deep-copy: PASS/FAILED;
+- strict prior inventory: PASS/FAILED;
+- side-labelled package material identity: PASS/FAILED;
+- assertion-unit binding in package identity: PASS/FAILED;
+- trace/provenance package identity: PASS/FAILED;
+- RevisionDraft FULL_REEXTRACT actions: PASS/FAILED;
 - lifecycle publication performed: NO;
 - integration tests;
 - knowledge_curator tests;
@@ -290,14 +240,14 @@ Report:
 - origin/main SHA;
 - CONTRACT_GAPS changes.
 
-## 14. Completion
+## 12. Completion
 
 Update status.json:
-- phase = 5.2-R1
+- phase = 5.2-R2
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-2-r1-executor-report.md
+- result_expected = results/phase-05-2-r2-executor-report.md
 
 Push main and STOP.
 Do not start Phase 5.3.
