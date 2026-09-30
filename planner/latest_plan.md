@@ -1,231 +1,388 @@
-# Phase 4.3.2 Plan — Strict Mounted-DSH Live Evidence Acceptance
+# Phase 5.0 Plan — §7 Lifecycle Core: Revision, Retraction, Soft Archive, Versioned Visibility
 
 Planner: ChatGPT
 Executor: MiMo
 State: READY_FOR_EXECUTOR
 
-## 0. Scope
+## 0. Goal
 
-Fix ONLY the mounted-DSH live validation harness and obtain trustworthy evidence.
+Implement the curator-owned core of docs/03 §7:
+- revision drafts;
+- retraction/corrigendum lifecycle state;
+- soft archive / supersede without physical deletion;
+- publish a new immutable KB version for lifecycle changes;
+- rollback-safe current visibility;
+- retrieval/training eligibility decisions;
+- append-only lifecycle event outbox.
 
-Do not change:
-- EvidenceRetrievalService business semantics;
-- guard semantics;
-- Phase 4.1/4.2 retrieval;
-- MCP business tools except if a live test exposes a real bug;
-- Agent identity/preset id;
-- public contracts.
+This is NOT the Crossref/RetractionWatch crawler and NOT downstream consumer implementation.
 
-Do not start §7.
+## 1. Boundaries
 
-## 1. Make lane325 fail on live failure
+Do NOT:
+- build Crossref / RetractionWatch / publisher polling;
+- create 04 training refresh jobs;
+- create 05/07 consumers;
+- choose Kafka/Redis/RabbitMQ/topic names;
+- physically delete published structural/USDO/vector history;
+- mutate historical snapshots;
+- change frozen §6 ranking/guard semantics;
+- start final QA generation.
 
-When live credentials/model/runtime prerequisites are available:
-- retrieve_evidence must produce >=1 exact matching tool/call;
-- a linked tool/result must exist;
-- structured result parsing must succeed.
+External event transport remains CG-018.
 
-If any of those fail:
-- dump diagnostic event types/text safely;
-- FAIL the Vitest test.
+## 2. Internal lifecycle models
 
-Do not return successfully after LANE325_LIVE_NO_TOOLCALL.
+Create INTERNAL temporary models, recommended module:
+knowledge_curator/schemas/lifecycle.py
 
-When credentials/model route are absent before the run:
-- discovery-only may be reported separately as NOT_RUN_ENV for live.
+At minimum model:
 
-## 2. Separate success markers
+### DocumentLifecycleStatus
+- ACTIVE
+- RETRACTED
+- SUPERSEDED
+- ARCHIVED (if needed as document-level state; avoid redundant states if semantics can remain simpler)
 
-Emit distinct markers only after assertions pass:
+### AssertionLifecycleStatus
+- ACTIVE
+- ARCHIVED
+- SUPERSEDED
 
-- LANE325_DISCOVERY_OK=1
-- LANE325_RETRIEVE_TOOLCALL_OK=1
-- LANE325_RETRIEVE_RESULT_OK=1
-- LANE325_RETRIEVE_IDENTITY_MATCH=1
-- LANE325_VALIDATE_TOOLCALL_OK=1
-- LANE325_VALIDATE_RESULT_OK=1
-- LANE325_VALIDATE_POLICY_MATCH=1
-- LANE325_LIVE_COMPLETE=1
+Do not extend the project Confidence enum.
 
-Do not use one generic marker to infer multiple statuses.
+### LifecycleReason / event kind
+At minimum represent:
+- RETRACTION
+- CORRIGENDUM
+- MANUAL_CORRECTION
+- CONFLICT_RESOLUTION
+- CASE_FEEDBACK
+- STRONGER_EVIDENCE
+- PREPRINT_TO_JOURNAL
+- ROLLBACK / RESTORE if needed for audit events.
 
-## 3. Compute direct reference for retrieve_evidence
+Use explicit string enums; do not encode reasons in free-form status text only.
 
-Inside lane325, compute a direct deterministic reference result for the SAME integration fixture query.
+## 3. Lifecycle record must be append-only
+
+Add records keyed by immutable event/revision identity, not mutable fields on historical Assertion objects.
 
 Recommended:
-- invoke Python via execFileSync using the same KC integration fixture runtime/service factory;
-- call EvidenceRetrievalService.retrieve(EvidenceRequest(...));
-- serialize the same stable identities used by the MCP tool.
+DocumentLifecycleRecord:
+- lifecycle_id;
+- ref_id;
+- source_version/fingerprint when known;
+- status;
+- reason;
+- effective_version_id;
+- prior_lifecycle_id;
+- affected_assertion_ids;
+- evidence refs / rationale summary;
+- trace_id;
+- provenance_id;
+- created_at or deterministic sequence metadata as appropriate.
 
-Compare direct vs mounted-DSH tool result:
-- evidence chunk_id sequence (or clearly defined stable identity set if ordering is not contractually required);
-- bundle/query coverage key identities;
-- Abstain boolean/reasons;
-- integration_fixture flag.
+AssertionLifecycleRecord:
+- assertion_id;
+- ref_id;
+- status;
+- lifecycle_id / revision_id;
+- superseded_by_assertion_id optional.
 
-Do not compare prose.
+Do not rewrite historical Assertion payloads to simulate archive.
 
-Emit LANE325_RETRIEVE_IDENTITY_MATCH=1 only after actual equality assertions.
+## 4. LifecycleStore Port
 
-## 4. Compute direct reference for validate_retrieved_claims
+Create a minimal internal Port, e.g. LifecycleStore:
+- append_document_record(record);
+- append_assertion_records(records);
+- latest_document_state(ref_id, at_version_id=None);
+- latest_assertion_state(assertion_id, at_version_id=None);
+- list_records_for_ref(ref_id);
+- list_active_ref_ids(...) only if semantics are clear;
+- idempotent lookup by deterministic lifecycle/revision key.
 
-For the same query and claim payload:
-- compute direct fresh retrieval;
-- run ClaimGuardService on the same proposed claims;
-- compare to mounted DSH tool result.
+In-memory adapter required.
 
-At minimum compare:
-- C1 policy;
-- C1 Abstain;
-- C2 unresolved anchor ids;
-- C2 policy;
-- C2 Abstain;
-- C2 H1 finding presence/type.
+Append must be idempotent.
+Conflicting reuse of the same event id with different content must fail.
 
-Emit LANE325_VALIDATE_POLICY_MATCH=1 only after equality assertions.
+## 5. RevisionDraft
 
-## 5. Strict result linking
+Model curator's §7.3 draft before publication.
 
-For both tools:
-- identify exact tool/call events by tool name;
-- link tool/result by sourceEventSeq/callId as lane324 already does;
-- require at least one linked result;
-- parse structured result;
-- never infer result success from keyword presence.
+RevisionDraft should capture:
+- revision_id;
+- ref_id;
+- trigger/reason;
+- base_version_id;
+- affected assertion ids;
+- proposed archive/supersede actions;
+- replacement/new assertions if supplied;
+- evidence chain;
+- risk classification;
+- review requirement;
+- trace_id/provenance_id.
 
-## 6. Add a control baseline probe
+Do NOT invent a global human-review UI.
+Represent whether manual adjudication is required.
 
-In the same runner window, run or invoke the already accepted lane324 curate_assertion_set live baseline, or an equivalent mounted knowledge-curator control turn.
+## 6. Deterministic risk gate
 
-Purpose: distinguish external DeepSeek/runtime failure from evidence-tool regression.
+Implement only the §7.3 rule-level distinction supported by docs:
+- low-risk may be rule-approved when high confidence + multi-source + no unresolved controversy;
+- high-risk requires L0/manual adjudication.
 
-Record:
-- baseline_live_status;
-- evidence_live_status.
+Do not invent a numeric global risk score.
 
-Classification:
+Recommended output:
+- AUTO_RULE_REVIEW_ELIGIBLE;
+- MANUAL_ADJUDICATION_REQUIRED.
 
-### A. baseline PASS + evidence PASS
-Full Phase 4.3.2 PASS.
+Retraction should be treated as high-impact lifecycle action even when the source signal is trusted; its publication may be deterministic only if the triggering event has already been externally verified/authorized by caller context.
+Do not make network trust decisions inside curator.
 
-### B. baseline PASS + evidence FAIL
-FAILED — evidence integration regression.
+## 7. Retraction semantics
 
-### C. baseline EMPTY_RESPONSE/zero-tool + evidence EMPTY_RESPONSE/zero-tool
-EXTERNAL_RUNTIME_UNAVAILABLE for the validation attempt.
-Do not modify core code merely to chase it.
-Do not call the evidence lane PASS.
+Implement a RetractionRevision builder/coordinator.
 
-### D. baseline FAIL for another deterministic reason
-FAILED / investigate baseline environment.
+Given a verified retraction trigger for ref_id:
+- new document state = RETRACTED;
+- every assertion belonging to the affected committed document version becomes ARCHIVED in the new lifecycle view;
+- no historical structural/USDO/vector object is physically deleted;
+- current retrieval/training eligibility = false;
+- historical version resolution remains possible.
 
-Use exact markers/log evidence, not intuition.
+A replay of the same verified retraction must be idempotent.
 
-## 7. Runner status mapping must be strict
+## 8. Corrigendum / generic revision semantics
 
-Update run_lane325.py so statuses are derived independently:
+For a corrigendum or manual correction:
+- identify affected assertion ids explicitly;
+- old assertions become SUPERSEDED or ARCHIVED according to the revision action;
+- replacement assertions are new immutable assertion identities when content changes;
+- unchanged assertions remain active;
+- new version is published;
+- old version remains resolvable.
 
-mounted_dsh_tool_discovery:
-- PASS only from discovery marker/assertion.
+Do not mutate the original assertion object's value in place.
 
-mounted_dsh_retrieve_evidence_live:
-- PASS only if retrieve toolcall + linked result markers pass.
-- NOT_RUN_ENV only if prerequisite absent before execution or control/evidence both hit confirmed external EMPTY_RESPONSE classification.
-- FAILED otherwise.
+## 9. Backward-compatible version manifest extension
 
-mounted_dsh_validate_retrieved_claims_live:
-- PASS only if validate toolcall + linked result markers pass.
-- same NOT_RUN_ENV/FAILED rules.
+Current SnapshotManifest has no lifecycle state.
 
-direct_vs_dsh_evidence_identity_match:
-- PASS only from actual identity comparison marker.
-- never inferred from retrieve tool call alone.
+Extend INTERNAL SnapshotManifest only as needed, e.g.:
+- lifecycle_hashes: list[str] = [];
+- lifecycle_record_ids: list[str] = [].
 
-direct_vs_dsh_policy_match:
-- PASS only from actual policy comparison marker.
-- never inferred from retrieve success.
+CRITICAL backward compatibility:
+- old manifests with no lifecycle data must retain their previous deterministic stable_payload/content hash semantics;
+- do NOT make recomputation of an old Phase 2 snapshot hash change merely because new empty fields exist.
 
-## 8. Do not treat Vitest green as live PASS by itself
+Recommended:
+include lifecycle fields in stable_payload only when non-empty, or equivalent versioned hashing behavior.
 
-The runner must require semantic markers.
-A test process return code 0 without live markers is NOT live PASS.
+Add regression proving an old-style manifest hash remains unchanged.
 
-Conversely, if the test is intentionally discovery-only because no credential exists, report:
-- discovery PASS;
-- live NOT_RUN_ENV.
+## 10. Publish lifecycle revision as a NEW version
 
-## 9. Optional retry policy
+Implement a LifecycleRevisionCoordinator (name may vary) that composes:
+- existing VersionStore;
+- existing immutable snapshot/version behavior;
+- LifecycleStore;
+- existing structural/USDO/vector identities.
 
-Because EMPTY_RESPONSE has been observed:
-- at most 3 live attempts for a turn is acceptable;
-- retries must create a fresh turn or fresh Agent session as needed;
-- record attempt count and event-type summary;
-- do not hide failed attempts.
+Do not physically rewrite underlying published objects.
 
-No infinite retry loop.
+For a lifecycle-only retraction revision, the new snapshot may reference the same immutable structural/USDO/vector ids plus new lifecycle records.
 
-## 10. Preserve secret hygiene
+Required:
+- base version exists/published;
+- create deterministic new snapshot manifest;
+- publish new VersionRecord whose prior_version_id points to the current/base version according to existing VersionStore semantics;
+- lifecycle records reference the published version;
+- retry after side-effect must be idempotent.
 
-Never print:
-- API key;
-- credential file content;
-- authorization headers.
+If the current VersionStore API is insufficient for safe atomic lifecycle publication, add the smallest internal Port extension and document why.
 
-Keep current redaction behavior.
+## 11. Failure atomicity
 
-## 11. Tests
+Use failure-injection tests analogous to Phase 2.
+
+A lifecycle revision must never leave:
+- current version pointer advanced without corresponding lifecycle records;
+- lifecycle records claiming an unpublished version as active;
+- half-applied assertion archive state visible to current consumers.
+
+If full transaction across LifecycleStore + VersionStore is not possible with current Ports, use a staged lifecycle record / publish / finalize sequence and explicit recovery semantics.
+
+Do not delete historical records as compensation after publication.
+
+## 12. Rollback semantics
+
+Existing VersionStore.rollback_to must remain non-destructive.
+
+Required scenario:
+V1 active document
+-> V2 retraction archives it
+-> current retrieval eligibility excludes ref
+-> rollback_to(V1)
+-> current lifecycle view treats ref/assertions as visible exactly as V1;
+-> V2 remains historically resolvable and still records the retraction.
+
+This requires lifecycle lookup to be version-scoped, not merely “latest record globally”.
+
+Add explicit tests.
+
+## 13. Current visibility / eligibility service
+
+Add a small lifecycle visibility service/Port that answers for a given current or explicit version:
+- document visible for retrieval?
+- assertion visible for retrieval?
+- eligible for training export?
+- lifecycle status/reason.
+
+Rules:
+- RETRACTED document: no current retrieval/QA evidence; no training export;
+- ARCHIVED assertion: no current retrieval/training;
+- SUPERSEDED assertion: no current retrieval/training, but historical provenance remains;
+- historical explicit version before the lifecycle event can still see the historical assertion.
+
+Do not conflate “not currently eligible” with physical absence.
+
+## 14. Compose visibility with §6 without changing ranking
+
+Add lifecycle filtering as a composition layer BEFORE/AT query eligibility, not a new ranking algorithm.
+
+Preferred approach:
+- EvidenceRetrievalService optionally accepts a LifecycleVisibilityPort;
+- derive/intersect allowed_ref_ids for the selected current version before calling frozen hybrid_retrieve;
+- or use an exact eligibility wrapper that guarantees retracted refs cannot enter candidate results.
+
+Do NOT:
+- retrieve top-k first and then simply drop retracted hits if that could under-fill/miss eligible results;
+- mutate FAISS/BM25 persisted history;
+- change RRF/reranker scoring.
+
+Tests must prove retracted ref never appears in current EvidenceBundle but can appear in historical-version retrieval when explicitly configured.
+
+For Phase 5.0, deterministic/in-memory retrieval integration is sufficient; do not require rebuilding the real BGE indexes just to validate lifecycle semantics.
+
+## 15. Event outbox (CG-018)
+
+Create INTERNAL append-only lifecycle events/outbox.
+
+Event examples:
+- KB_DOCUMENT_RETRACTED;
+- KB_ASSERTIONS_ARCHIVED;
+- KB_REVISION_PUBLISHED;
+- KB_VERSION_ROLLED_BACK;
+- KB_CORRIGENDUM_PUBLISHED.
+
+Each event:
+- deterministic event_id;
+- event type;
+- ref_id;
+- affected assertion ids;
+- old/new version ids;
+- trace_id;
+- provenance_id;
+- lifecycle/revision id;
+- payload schema version;
+- created sequence/time metadata.
+
+EventSink/Outbox Port:
+- append;
+- list pending/all;
+- mark delivered only if useful internally.
+
+Do not implement external delivery transport in Phase 5.0.
+
+## 16. Training/retrieval invalidation semantics
+
+At minimum, emitted retraction/revision event payload must contain enough information for future consumers to invalidate:
+- QA evidence cache;
+- 04 training/constraint exports;
+- 07 audit/metrics.
+
+Do not call those systems directly.
+
+## 17. Preprint -> journal
+
+Phase 5.0 only lays the lifecycle/version foundation.
+
+Do NOT yet implement fuzzy arXiv/journal identity matching.
+If an upstream caller explicitly supplies that ref/version B supersedes version A, the internal revision model may represent PREPRINT_TO_JOURNAL.
+
+Automated DOI/title/version matching belongs to a later §7 increment.
+
+## 18. MCP boundary
+
+Do not expose destructive/authoritative lifecycle publication as an unrestricted public MCP tool in this first phase.
+
+If any MCP addition is made, limit it to read-only lifecycle status/preview unless Planner explicitly approves mutation semantics later.
+
+Core lifecycle tests first.
+
+## 19. Tests
 
 Maintain:
 - knowledge_curator >= 311 passed / 0 failed;
-- integration/dsh >= 83 passed / 0 failed.
+- integration/dsh >= 90 passed / 0 failed.
 
-Add keyless tests for runner classification/marker parsing if practical, covering:
-- generic retrieve marker cannot imply validate PASS;
-- missing identity marker => identity NOT PASS;
-- zero toolcall with live prerequisites => failed attempt;
-- no credential => NOT_RUN_ENV;
-- baseline+evidence simultaneous EMPTY_RESPONSE => external runtime unavailable classification.
+Add tests for at least:
+- append-only lifecycle store;
+- idempotent same-event replay;
+- conflicting event-id payload rejected;
+- retraction archives all affected assertions;
+- no physical delete of structural/USDO/vector historical records;
+- current visibility excludes retracted/archived;
+- historical explicit version still resolves old data;
+- V1 -> V2 retraction -> rollback V1 restores current visibility;
+- corrigendum supersedes only affected assertions;
+- unchanged assertions remain active;
+- backward manifest hash compatibility;
+- lifecycle new snapshot/version deterministic;
+- failure before/after lifecycle/version side effects recovers safely;
+- outbox deterministic/idempotent;
+- retrieval composition excludes retracted refs without post-top-k under-retrieval;
+- training eligibility excludes retracted/archived.
 
-## 12. Live acceptance artifact
+## 20. Deliverables
 
-Create/update:
-- results/phase-04-3-2-executor-report.md
-- results/phase-04-3-2-dsh-evidence-smoke.json
+Create:
+- results/phase-05-0-executor-report.md;
+- lifecycle transition/snapshot smoke JSON if helpful.
 
-The smoke JSON must include:
-- baseline control status;
-- discovery status;
-- retrieve toolcall/result status;
-- retrieve identity-match status;
-- validate toolcall/result status;
-- validate policy-match status;
-- live attempt count;
-- external-runtime-unavailable classification if applicable;
-- no secrets.
+Report:
+- lifecycle models/store: PASS/FAILED;
+- revision draft/risk gate: PASS/FAILED;
+- retraction soft archive: PASS/FAILED;
+- corrigendum/supersede: PASS/FAILED;
+- version publication: PASS/FAILED;
+- rollback visibility: PASS/FAILED;
+- historical preservation: PASS/FAILED;
+- retrieval eligibility integration: PASS/FAILED;
+- training eligibility: PASS/FAILED;
+- event outbox: PASS/FAILED;
+- backward manifest hash compatibility: PASS/FAILED;
+- failure atomicity: PASS/FAILED;
+- exact test counts;
+- public contracts changed: NO;
+- implementation CODE SHA;
+- origin/main SHA;
+- new CONTRACT_GAPS.
 
-## 13. Final acceptance rules
-
-Phase 4.3.2 PASS requires:
-- mounted discovery PASS;
-- retrieve live PASS;
-- validate live PASS;
-- direct-vs-DSH evidence identity PASS;
-- direct-vs-DSH policy PASS.
-
-If both baseline and evidence lanes are externally EMPTY_RESPONSE after bounded retries:
-- report LIVE_VALIDATION_BLOCKED_EXTERNAL;
-- do not alter accepted §6 core code;
-- Planner will decide whether to freeze code with an external validation note.
-
-## 14. Completion
+## 21. Completion
 
 Update status.json:
-- phase = 4.3.2
+- phase = 5.0
 - actor = executor
 - state = executor_complete
-- latest_commit = actual CODE/harness implementation SHA
-- result_expected = results/phase-04-3-2-executor-report.md
+- latest_commit = actual CODE implementation SHA
+- result_expected = results/phase-05-0-executor-report.md
 
 Push main and STOP.
-Do not start §7.
+
+Do not start automated Crossref/RetractionWatch polling, preprint identity matching, external event transport, or Phase 5.1 until Planner review.
