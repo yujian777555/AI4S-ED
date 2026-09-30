@@ -1,388 +1,220 @@
-# Phase 5.0 Plan — §7 Lifecycle Core: Revision, Retraction, Soft Archive, Versioned Visibility
+# Phase 5.0-R1 Plan — Lifecycle Recovery + Retrieval Correctness Hardening
 
-Planner: ChatGPT
-Executor: MiMo
+Planner: ChatGPT  
+Executor: Kimi/Codex  
 State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Implement the curator-owned core of docs/03 §7:
-- revision drafts;
-- retraction/corrigendum lifecycle state;
-- soft archive / supersede without physical deletion;
-- publish a new immutable KB version for lifecycle changes;
-- rollback-safe current visibility;
-- retrieval/training eligibility decisions;
-- append-only lifecycle event outbox.
-
-This is NOT the Crossref/RetractionWatch crawler and NOT downstream consumer implementation.
-
-## 1. Boundaries
-
-Do NOT:
-- build Crossref / RetractionWatch / publisher polling;
-- create 04 training refresh jobs;
-- create 05/07 consumers;
-- choose Kafka/Redis/RabbitMQ/topic names;
-- physically delete published structural/USDO/vector history;
-- mutate historical snapshots;
-- change frozen §6 ranking/guard semantics;
-- start final QA generation.
-
-External event transport remains CG-018.
-
-## 2. Internal lifecycle models
-
-Create INTERNAL temporary models, recommended module:
-knowledge_curator/schemas/lifecycle.py
-
-At minimum model:
-
-### DocumentLifecycleStatus
-- ACTIVE
-- RETRACTED
-- SUPERSEDED
-- ARCHIVED (if needed as document-level state; avoid redundant states if semantics can remain simpler)
-
-### AssertionLifecycleStatus
-- ACTIVE
-- ARCHIVED
-- SUPERSEDED
-
-Do not extend the project Confidence enum.
-
-### LifecycleReason / event kind
-At minimum represent:
-- RETRACTION
-- CORRIGENDUM
-- MANUAL_CORRECTION
-- CONFLICT_RESOLUTION
-- CASE_FEEDBACK
-- STRONGER_EVIDENCE
-- PREPRINT_TO_JOURNAL
-- ROLLBACK / RESTORE if needed for audit events.
-
-Use explicit string enums; do not encode reasons in free-form status text only.
-
-## 3. Lifecycle record must be append-only
-
-Add records keyed by immutable event/revision identity, not mutable fields on historical Assertion objects.
-
-Recommended:
-DocumentLifecycleRecord:
-- lifecycle_id;
-- ref_id;
-- source_version/fingerprint when known;
-- status;
-- reason;
-- effective_version_id;
-- prior_lifecycle_id;
-- affected_assertion_ids;
-- evidence refs / rationale summary;
-- trace_id;
-- provenance_id;
-- created_at or deterministic sequence metadata as appropriate.
-
-AssertionLifecycleRecord:
-- assertion_id;
-- ref_id;
-- status;
-- lifecycle_id / revision_id;
-- superseded_by_assertion_id optional.
-
-Do not rewrite historical Assertion payloads to simulate archive.
-
-## 4. LifecycleStore Port
-
-Create a minimal internal Port, e.g. LifecycleStore:
-- append_document_record(record);
-- append_assertion_records(records);
-- latest_document_state(ref_id, at_version_id=None);
-- latest_assertion_state(assertion_id, at_version_id=None);
-- list_records_for_ref(ref_id);
-- list_active_ref_ids(...) only if semantics are clear;
-- idempotent lookup by deterministic lifecycle/revision key.
-
-In-memory adapter required.
-
-Append must be idempotent.
-Conflicting reuse of the same event id with different content must fail.
+Repair the five blocking Phase 5.0 defects identified in:
+`planner/phase-05-0-review.md`
 
-## 5. RevisionDraft
+Do **not** start Phase 5.1.
 
-Model curator's §7.3 draft before publication.
+The target remains docs/03 §7 lifecycle core only.
 
-RevisionDraft should capture:
-- revision_id;
-- ref_id;
-- trigger/reason;
-- base_version_id;
-- affected assertion ids;
-- proposed archive/supersede actions;
-- replacement/new assertions if supplied;
-- evidence chain;
-- risk classification;
-- review requirement;
-- trace_id/provenance_id.
+## 1. Scope freeze
 
-Do NOT invent a global human-review UI.
-Represent whether manual adjudication is required.
+Do not:
+- change frozen §6 ranking/RRF/reranker/Abstain semantics;
+- add Crossref/RetractionWatch or publisher polling;
+- add external Kafka/Redis/HTTP event transport;
+- add public lifecycle mutation MCP tools;
+- add preprint fuzzy matching;
+- change CG-018;
+- add unrelated abstractions.
 
-## 6. Deterministic risk gate
+## 2. R1-A — crash-safe idempotent lifecycle finalization
 
-Implement only the §7.3 rule-level distinction supported by docs:
-- low-risk may be rule-approved when high confidence + multi-source + no unresolved controversy;
-- high-risk requires L0/manual adjudication.
+Fix `LifecycleRevisionCoordinator.apply_retraction()` and `apply_revision()`.
 
-Do not invent a numeric global risk score.
+A deterministic existing lifecycle ID is not automatically “done”.
 
-Recommended output:
-- AUTO_RULE_REVIEW_ELIGIBLE;
-- MANUAL_ADJUDICATION_REQUIRED.
+Classify existing state:
 
-Retraction should be treated as high-impact lifecycle action even when the source signal is trusted; its publication may be deterministic only if the triggering event has already been externally verified/authorized by caller context.
-Do not make network trust decisions inside curator.
+### FINALIZED
+- lifecycle record bound to a published version;
+- deterministic snapshot/version exists;
+- required lifecycle records are bound;
+- required outbox events exist with matching material payload.
 
-## 7. Retraction semantics
+Result:
+- return idempotently;
+- do not duplicate snapshot/version/events.
 
-Implement a RetractionRevision builder/coordinator.
+### STAGED / PARTIAL
+- lifecycle record exists but effective_version_id is missing; or
+- snapshot/version exists but binding is incomplete; or
+- binding exists but one or more required events are missing.
 
-Given a verified retraction trigger for ref_id:
-- new document state = RETRACTED;
-- every assertion belonging to the affected committed document version becomes ARCHIVED in the new lifecycle view;
-- no historical structural/USDO/vector object is physically deleted;
-- current retrieval/training eligibility = false;
-- historical version resolution remains possible.
+Result:
+- resume deterministic finalization;
+- never create a second semantic revision;
+- converge to the same final state.
 
-A replay of the same verified retraction must be idempotent.
+### CONFLICT
+Same deterministic lifecycle/revision/event identity but material content differs.
 
-## 8. Corrigendum / generic revision semantics
+Result:
+- fail closed.
 
-For a corrigendum or manual correction:
-- identify affected assertion ids explicitly;
-- old assertions become SUPERSEDED or ARCHIVED according to the revision action;
-- replacement assertions are new immutable assertion identities when content changes;
-- unchanged assertions remain active;
-- new version is published;
-- old version remains resolvable.
+Use existing deterministic manifest hash and VersionStore lookup APIs.
+Only add the smallest internal helper/Port extension if absolutely required.
 
-Do not mutate the original assertion object's value in place.
+## 3. Failure matrix
 
-## 9. Backward-compatible version manifest extension
+Add deterministic retry tests for both retraction and generic revision where applicable.
 
-Current SnapshotManifest has no lifecycle state.
+At minimum test:
 
-Extend INTERNAL SnapshotManifest only as needed, e.g.:
-- lifecycle_hashes: list[str] = [];
-- lifecycle_record_ids: list[str] = [].
+1. fail before `version.create_snapshot`;
+2. fail after `version.create_snapshot`;
+3. fail before `version.publish`;
+4. fail after `version.publish`;
+5. fail after lifecycle bind but before all required outbox events are complete.
 
-CRITICAL backward compatibility:
-- old manifests with no lifecycle data must retain their previous deterministic stable_payload/content hash semantics;
-- do NOT make recomputation of an old Phase 2 snapshot hash change merely because new empty fields exist.
+For every case:
+- first attempt raises;
+- no half-applied lifecycle state is visible incorrectly;
+- retry succeeds;
+- exactly one semantic snapshot/version is published;
+- lifecycle records bind to the published version;
+- all required events exist exactly once;
+- current visibility matches the final revision;
+- historical version remains resolvable.
 
-Recommended:
-include lifecycle fields in stable_payload only when non-empty, or equivalent versioned hashing behavior.
+Critical regression:
+`fail_after("version.publish")` must not leave current version advanced with an unbound lifecycle revision after recovery.
 
-Add regression proving an old-style manifest hash remains unchanged.
+## 4. R1-B — base-version validation
 
-## 10. Publish lifecycle revision as a NEW version
+An explicit `draft.base_version_id` must resolve to a published VersionRecord.
 
-Implement a LifecycleRevisionCoordinator (name may vary) that composes:
-- existing VersionStore;
-- existing immutable snapshot/version behavior;
-- LifecycleStore;
-- existing structural/USDO/vector identities.
+Missing base -> fail before staging/publish.
 
-Do not physically rewrite underlying published objects.
+For Phase 5.0 keep branch semantics simple:
+- if `base_version_id` is supplied, require it to equal `VersionStore.current_version().version_id` at publication time;
+- after rollback, the rolled-back version is current and can therefore be the base of a new revision.
 
-For a lifecycle-only retraction revision, the new snapshot may reference the same immutable structural/USDO/vector ids plus new lifecycle records.
+Do not silently publish from a nonexistent or stale base.
 
-Required:
-- base version exists/published;
-- create deterministic new snapshot manifest;
-- publish new VersionRecord whose prior_version_id points to the current/base version according to existing VersionStore semantics;
-- lifecycle records reference the published version;
-- retry after side-effect must be idempotent.
+Add tests:
+- nonexistent base -> rejected;
+- stale non-current base -> rejected;
+- rollback then revise from new current base -> allowed.
 
-If the current VersionStore API is insufficient for safe atomic lifecycle publication, add the smallest internal Port extension and document why.
+## 5. R1-C — strict material idempotency
 
-## 11. Failure atomicity
+Define material equality for:
+- DocumentLifecycleRecord;
+- AssertionLifecycleRecord;
+- LifecycleEvent.
 
-Use failure-injection tests analogous to Phase 2.
+Same deterministic ID is idempotent only when material content matches.
 
-A lifecycle revision must never leave:
-- current version pointer advanced without corresponding lifecycle records;
-- lifecycle records claiming an unpublished version as active;
-- half-applied assertion archive state visible to current consumers.
+At minimum include:
+- ref/status/reason;
+- revision/lifecycle identity;
+- source fingerprint;
+- affected assertion IDs;
+- supersede target;
+- evidence refs/rationale;
+- trace/provenance IDs;
+- old/new version IDs;
+- event payload/schema version.
 
-If full transaction across LifecycleStore + VersionStore is not possible with current Ports, use a staged lifecycle record / publish / finalize sequence and explicit recovery semantics.
+Ignore only explicitly non-material transport/staging fields such as created sequence or delivered flag, and document why.
 
-Do not delete historical records as compensation after publication.
+Add regressions:
+- same event_id + altered payload -> conflict;
+- same lifecycle_id + altered evidence/rationale/source fingerprint -> conflict;
+- same assertion identity + altered ref/revision/supersede target -> conflict.
 
-## 12. Rollback semantics
+## 6. R1-D — lifecycle eligibility before effective retrieval cutoff
 
-Existing VersionStore.rollback_to must remain non-destructive.
+Current wrapper may filter only after backend top-k.
 
-Required scenario:
-V1 active document
--> V2 retraction archives it
--> current retrieval eligibility excludes ref
--> rollback_to(V1)
--> current lifecycle view treats ref/assertions as visible exactly as V1;
--> V2 remains historically resolvable and still records the retraction.
+Repair so an ineligible top hit cannot hide an eligible lower-ranked hit.
 
-This requires lifecycle lookup to be version-scoped, not merely “latest record globally”.
+For Phase 5.0 deterministic/in-memory integration, an implementation may:
+- pass an exact eligible ref-id restriction into the backend when a finite candidate universe is available; or
+- deterministically expand backend retrieval until enough eligible candidates are obtained or backend exhaustion is established.
 
-Add explicit tests.
+Do not change hybrid ranking formulas.
 
-## 13. Current visibility / eligibility service
+Required regression:
+- requested top_k = 1;
+- backend rank #1 = retracted REF-A;
+- backend rank #2 = eligible REF-B;
+- final EvidenceBundle contains REF-B.
 
-Add a small lifecycle visibility service/Port that answers for a given current or explicit version:
-- document visible for retrieval?
-- assertion visible for retrieval?
-- eligible for training export?
-- lifecycle status/reason.
+Add equivalent coverage for vector + keyword composition if both are active.
 
-Rules:
-- RETRACTED document: no current retrieval/QA evidence; no training export;
-- ARCHIVED assertion: no current retrieval/training;
-- SUPERSEDED assertion: no current retrieval/training, but historical provenance remains;
-- historical explicit version before the lifecycle event can still see the historical assertion.
+## 7. R1-E — real historical retrieval integration
 
-Do not conflate “not currently eligible” with physical absence.
+Add an INTERNAL explicit version selector for lifecycle retrieval.
 
-## 14. Compose visibility with §6 without changing ranking
+Preferred:
+- optional `at_version_id` on `EvidenceRequest` if that model is internal; or
+- equivalent service-scoped internal parameter.
 
-Add lifecycle filtering as a composition layer BEFORE/AT query eligibility, not a new ranking algorithm.
+Propagate it into lifecycle eligibility filtering.
 
-Preferred approach:
-- EvidenceRetrievalService optionally accepts a LifecycleVisibilityPort;
-- derive/intersect allowed_ref_ids for the selected current version before calling frozen hybrid_retrieve;
-- or use an exact eligibility wrapper that guarantees retracted refs cannot enter candidate results.
+Required end-to-end regression:
 
-Do NOT:
-- retrieve top-k first and then simply drop retracted hits if that could under-fill/miss eligible results;
-- mutate FAISS/BM25 persisted history;
-- change RRF/reranker scoring.
+1. V1 active REF-A;
+2. V2 retracts REF-A;
+3. current retrieval excludes REF-A;
+4. retrieval explicitly at V1 returns REF-A when ranking selects it.
 
-Tests must prove retracted ref never appears in current EvidenceBundle but can appear in historical-version retrieval when explicitly configured.
+Do not satisfy this by directly calling `document_eligibility()`; the assertion must go through `EvidenceRetrievalService.retrieve()`.
 
-For Phase 5.0, deterministic/in-memory retrieval integration is sufficient; do not require rebuilding the real BGE indexes just to validate lifecycle semantics.
+## 8. Append-only clarification
 
-## 15. Event outbox (CG-018)
+Staged `effective_version_id` binding may remain an internal finalization mutation only if:
+- staged records are invisible;
+- status/reason/evidence content never changes after append;
+- once bound, the binding cannot be changed to another version.
 
-Create INTERNAL append-only lifecycle events/outbox.
+No physical deletion or historical rewrite.
 
-Event examples:
-- KB_DOCUMENT_RETRACTED;
-- KB_ASSERTIONS_ARCHIVED;
-- KB_REVISION_PUBLISHED;
-- KB_VERSION_ROLLED_BACK;
-- KB_CORRIGENDUM_PUBLISHED.
+## 9. Tests / acceptance
 
-Each event:
-- deterministic event_id;
-- event type;
-- ref_id;
-- affected assertion ids;
-- old/new version ids;
-- trace_id;
-- provenance_id;
-- lifecycle/revision id;
-- payload schema version;
-- created sequence/time metadata.
+Keep existing baselines green:
+- integration/dsh >= 90 passed / 0 failed;
+- knowledge_curator >= 329 passed / 0 failed.
 
-EventSink/Outbox Port:
-- append;
-- list pending/all;
-- mark delivered only if useful internally.
+R1 must add tests for every blocker above.
 
-Do not implement external delivery transport in Phase 5.0.
+Acceptance requires:
+- retry recovery works after post-side-effect failures;
+- no current version/lifecycle visibility split-brain remains;
+- backend top-k lifecycle under-fill regression is closed;
+- actual historical retrieval works end-to-end;
+- material ID conflicts fail closed;
+- invalid/stale base versions fail closed;
+- public contracts changed = NO unless Planner explicitly approves otherwise.
 
-## 16. Training/retrieval invalidation semantics
+## 10. Deliverables
 
-At minimum, emitted retraction/revision event payload must contain enough information for future consumers to invalidate:
-- QA evidence cache;
-- 04 training/constraint exports;
-- 07 audit/metrics.
+Update:
+- implementation/tests;
+- `results/phase-05-0-r1-executor-report.md`;
+- `status.json`.
 
-Do not call those systems directly.
-
-## 17. Preprint -> journal
-
-Phase 5.0 only lays the lifecycle/version foundation.
-
-Do NOT yet implement fuzzy arXiv/journal identity matching.
-If an upstream caller explicitly supplies that ref/version B supersedes version A, the internal revision model may represent PREPRINT_TO_JOURNAL.
-
-Automated DOI/title/version matching belongs to a later §7 increment.
-
-## 18. MCP boundary
-
-Do not expose destructive/authoritative lifecycle publication as an unrestricted public MCP tool in this first phase.
-
-If any MCP addition is made, limit it to read-only lifecycle status/preview unless Planner explicitly approves mutation semantics later.
-
-Core lifecycle tests first.
-
-## 19. Tests
-
-Maintain:
-- knowledge_curator >= 311 passed / 0 failed;
-- integration/dsh >= 90 passed / 0 failed.
-
-Add tests for at least:
-- append-only lifecycle store;
-- idempotent same-event replay;
-- conflicting event-id payload rejected;
-- retraction archives all affected assertions;
-- no physical delete of structural/USDO/vector historical records;
-- current visibility excludes retracted/archived;
-- historical explicit version still resolves old data;
-- V1 -> V2 retraction -> rollback V1 restores current visibility;
-- corrigendum supersedes only affected assertions;
-- unchanged assertions remain active;
-- backward manifest hash compatibility;
-- lifecycle new snapshot/version deterministic;
-- failure before/after lifecycle/version side effects recovers safely;
-- outbox deterministic/idempotent;
-- retrieval composition excludes retracted refs without post-top-k under-retrieval;
-- training eligibility excludes retracted/archived.
-
-## 20. Deliverables
-
-Create:
-- results/phase-05-0-executor-report.md;
-- lifecycle transition/snapshot smoke JSON if helpful.
-
-Report:
-- lifecycle models/store: PASS/FAILED;
-- revision draft/risk gate: PASS/FAILED;
-- retraction soft archive: PASS/FAILED;
-- corrigendum/supersede: PASS/FAILED;
-- version publication: PASS/FAILED;
-- rollback visibility: PASS/FAILED;
-- historical preservation: PASS/FAILED;
-- retrieval eligibility integration: PASS/FAILED;
-- training eligibility: PASS/FAILED;
-- event outbox: PASS/FAILED;
-- backward manifest hash compatibility: PASS/FAILED;
-- failure atomicity: PASS/FAILED;
-- exact test counts;
-- public contracts changed: NO;
+Completion report:
 - implementation CODE SHA;
 - origin/main SHA;
-- new CONTRACT_GAPS.
-
-## 21. Completion
-
-Update status.json:
-- phase = 5.0
-- actor = executor
-- state = executor_complete
-- latest_commit = actual CODE implementation SHA
-- result_expected = results/phase-05-0-executor-report.md
+- failure-recovery matrix PASS/FAILED;
+- post-publish retry PASS/FAILED;
+- retrieval pre-cutoff regression PASS/FAILED;
+- historical retrieval E2E PASS/FAILED;
+- strict material idempotency PASS/FAILED;
+- base-version validation PASS/FAILED;
+- exact test counts;
+- public contracts changed YES/NO;
+- CONTRACT_GAPS added/changed.
 
 Push main and STOP.
 
-Do not start automated Crossref/RetractionWatch polling, preprint identity matching, external event transport, or Phase 5.1 until Planner review.
+Do not start Phase 5.1.
