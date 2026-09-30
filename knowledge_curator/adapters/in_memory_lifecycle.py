@@ -10,6 +10,9 @@ from knowledge_curator.schemas.lifecycle import (
     DocumentLifecycleRecord,
     LifecycleEligibility,
     LifecycleEvent,
+    assertion_material_equal,
+    document_material_equal,
+    event_material_equal,
 )
 
 # Resolve whether effective_version_id is visible at query version.
@@ -39,8 +42,8 @@ class InMemoryLifecycleStore:
     def append_document_record(self, record: DocumentLifecycleRecord) -> DocumentLifecycleRecord:
         existing = self._doc_by_id.get(record.lifecycle_id)
         if existing is not None:
-            # Idempotent replay: same id + same material content -> return existing.
-            if self._doc_compatible(existing, record):
+            # Idempotent replay only when ALL material fields match (R1-C).
+            if document_material_equal(existing, record):
                 return copy.deepcopy(existing)
             raise ValueError(
                 f"conflicting document lifecycle id reuse: {record.lifecycle_id}"
@@ -52,15 +55,6 @@ class InMemoryLifecycleStore:
         self._doc_order.append(stored.lifecycle_id)
         return copy.deepcopy(stored)
 
-    @staticmethod
-    def _doc_compatible(a: DocumentLifecycleRecord, b: DocumentLifecycleRecord) -> bool:
-        return (
-            a.ref_id == b.ref_id
-            and a.status == b.status
-            and a.reason == b.reason
-            and a.affected_assertion_ids == b.affected_assertion_ids
-        )
-
     def append_assertion_records(
         self, records: list[AssertionLifecycleRecord]
     ) -> list[AssertionLifecycleRecord]:
@@ -69,10 +63,7 @@ class InMemoryLifecycleStore:
             key = rec.identity_key()
             existing = self._assert_by_key.get(key)
             if existing is not None:
-                if (
-                    existing.status == rec.status
-                    and existing.superseded_by_assertion_id == rec.superseded_by_assertion_id
-                ):
+                if assertion_material_equal(existing, rec):
                     out.append(copy.deepcopy(existing))
                     continue
                 raise ValueError(f"conflicting assertion lifecycle id reuse: {key}")
@@ -176,7 +167,8 @@ class InMemoryEventOutbox:
     def append(self, event: LifecycleEvent) -> LifecycleEvent:
         existing = self._events.get(event.event_id)
         if existing is not None:
-            if existing.event_type == event.event_type and existing.ref_id == event.ref_id:
+            # Idempotent only when ALL material fields match (R1-C).
+            if event_material_equal(existing, event):
                 return copy.deepcopy(existing)
             raise ValueError(f"conflicting event id reuse: {event.event_id}")
         stored = copy.deepcopy(event)

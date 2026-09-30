@@ -141,3 +141,58 @@ class LifecycleEligibility:
     status: str
     reason: str = ""
     at_version_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Material equality (Phase 5.0-R1)
+#
+# Same deterministic identity is idempotent ONLY when material content matches.
+# Non-material fields (created_seq, delivered) are ignored because they are
+# transport/staging bookkeeping, not semantic content.
+# ---------------------------------------------------------------------------
+
+
+def document_material_equal(a: "DocumentLifecycleRecord", b: "DocumentLifecycleRecord") -> bool:
+    return (
+        a.lifecycle_id == b.lifecycle_id
+        and a.ref_id == b.ref_id
+        and a.status == b.status
+        and a.reason == b.reason
+        and a.source_fingerprint == b.source_fingerprint
+        and list(a.affected_assertion_ids) == list(b.affected_assertion_ids)
+        and list(a.evidence_refs) == list(b.evidence_refs)
+        and a.rationale == b.rationale
+        and a.revision_id == b.revision_id
+        and a.trace_id == b.trace_id
+        and a.provenance_id == b.provenance_id
+    )
+
+
+def assertion_material_equal(
+    a: "AssertionLifecycleRecord", b: "AssertionLifecycleRecord"
+) -> bool:
+    return (
+        a.assertion_id == b.assertion_id
+        and a.ref_id == b.ref_id
+        and a.status == b.status
+        and a.lifecycle_id == b.lifecycle_id
+        and a.revision_id == b.revision_id
+        and a.superseded_by_assertion_id == b.superseded_by_assertion_id
+    )
+
+
+def event_material_equal(a: "LifecycleEvent", b: "LifecycleEvent") -> bool:
+    return (
+        a.event_id == b.event_id
+        and a.event_type == b.event_type
+        and a.ref_id == b.ref_id
+        and list(a.affected_assertion_ids) == list(b.affected_assertion_ids)
+        and a.old_version_id == b.old_version_id
+        and a.new_version_id == b.new_version_id
+        and a.lifecycle_id == b.lifecycle_id
+        and a.revision_id == b.revision_id
+        and a.trace_id == b.trace_id
+        and a.provenance_id == b.provenance_id
+        and a.payload_schema_version == b.payload_schema_version
+        and a.payload == b.payload
+    )

@@ -55,10 +55,17 @@ class EvidenceRequest:
     # CG-017: only used when explicitly calibrated. Never feed raw retrieval scores.
     calibrated_support: Optional[float] = None
     integration_fixture: bool = False
+    # Phase 5.0-R1: INTERNAL explicit historical version selector.
+    at_version_id: Optional[str] = None
 
 
 class _EligibilityFilteredPort:
-    """Pre-ranking filter: drop candidates whose ref is not lifecycle-eligible."""
+    """Pre-cutoff lifecycle filter (R1-D).
+
+    Expands backend retrieval beyond the requested top_k so that dropping
+    ineligible refs cannot hide eligible lower-ranked hits. Returns eligible
+    candidates in backend rank order.
+    """
 
     def __init__(self, inner: Any, visibility: Any, at_version_id: Optional[str] = None) -> None:
         self._inner = inner
@@ -66,7 +73,16 @@ class _EligibilityFilteredPort:
         self._at_version_id = at_version_id
 
     def search(self, query: RetrievalQuery) -> list[Any]:
-        cands = self._inner.search(query)
+        # Expand the backend cutoff so post-filter cannot under-fill top_k.
+        expanded = max(int(query.top_k or 1) * 10, 50)
+        expanded_query = RetrievalQuery(
+            text=query.text,
+            level=query.level,
+            top_k=expanded,
+            allowed_ref_ids=query.allowed_ref_ids,
+            subquestion_id=query.subquestion_id,
+        )
+        cands = self._inner.search(expanded_query)
         out = []
         for c in cands:
             elig = self._visibility.document_eligibility(
@@ -74,6 +90,8 @@ class _EligibilityFilteredPort:
             )
             if elig.visible_for_retrieval:
                 out.append(c)
+            if len(out) >= expanded:
+                break
         return out
 
 
@@ -125,22 +143,29 @@ class EvidenceRetrievalService:
         allowed = set(request.allowed_ref_ids) if request.allowed_ref_ids else None
         # Lifecycle composition (Phase 5.0): restrict allowed refs BEFORE frozen
         # hybrid_retrieve so retracted refs cannot enter candidates at all.
+        at_version = request.at_version_id
         vector_port = self._vector_port
         keyword_port = self._keyword_port
         if self._lifecycle_visibility is not None:
             if allowed is not None:
                 eligible = set(
-                    self._lifecycle_visibility.eligible_ref_ids(list(allowed))
+                    self._lifecycle_visibility.eligible_ref_ids(
+                        list(allowed), at_version_id=at_version
+                    )
                 )
                 allowed = eligible if eligible else set()
             else:
                 vector_port = (
-                    _EligibilityFilteredPort(self._vector_port, self._lifecycle_visibility)
+                    _EligibilityFilteredPort(
+                        self._vector_port, self._lifecycle_visibility, at_version_id=at_version
+                    )
                     if self._vector_port is not None
                     else None
                 )
                 keyword_port = (
-                    _EligibilityFilteredPort(self._keyword_port, self._lifecycle_visibility)
+                    _EligibilityFilteredPort(
+                        self._keyword_port, self._lifecycle_visibility, at_version_id=at_version
+                    )
                     if self._keyword_port is not None
                     else None
                 )
