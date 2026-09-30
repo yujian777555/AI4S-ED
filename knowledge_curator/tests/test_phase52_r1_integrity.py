@@ -347,7 +347,7 @@ def test_full_reextract_no_carry_forward():
     inv = VersionAssertionInventory(
         source_version_id=p1.source_version_id, ref_id="ARXIV-1",
         assertions=[_assertion("A1", "ARXIV-1")],
-        assertion_unit_map={"A1": "GHOST"},  # triggers FULL_REEXTRACT
+        assertion_unit_map={"A1": "U1"},
     )
     batch = DeltaAssertionBatch(
         source_version_id=j1.source_version_id, ref_id="J-1",
@@ -355,7 +355,10 @@ def test_full_reextract_no_carry_forward():
         assertion_unit_map={"N1": "U1"},
         processed_unit_ids=["U1", "U2"],
     )
-    pkg = builder.build(intent=intent, prior_manifest=prior_m, new_manifest=new_m, prior_inventory=inv, delta_batch=batch)
+    pkg = builder.build(
+        intent=intent, prior_manifest=prior_m, new_manifest=new_m,
+        prior_inventory=inv, delta_batch=batch, segmentation_reset=True,
+    )
     assert pkg.content_delta.mode == DeltaMode.FULL_REEXTRACT_REQUIRED
     assert pkg.carried_records == []
     assert all(a.id.startswith("N") for a in pkg.target_assertions)

@@ -430,8 +430,11 @@ def _deep_copy_subject(s: Subject) -> Subject:
 
 
 def _deep_copy_object(o: ObjectValue) -> ObjectValue:
+    # R2-02: recursive deep-copy of mutable value payload.
+    import copy as _copy
+
     return ObjectValue(
-        value=o.value,
+        value=_copy.deepcopy(o.value),
         unit=o.unit,
         value_type=o.value_type,
         uncertainty=o.uncertainty,
@@ -439,7 +442,9 @@ def _deep_copy_object(o: ObjectValue) -> ObjectValue:
 
 
 def _deep_copy_condition(c: Condition) -> Condition:
-    return Condition(eddo_class=c.eddo_class, value=c.value, unit=c.unit)
+    import copy as _copy
+
+    return Condition(eddo_class=c.eddo_class, value=_copy.deepcopy(c.value), unit=c.unit)
 
 
 def carry_forward_unchanged(
@@ -518,6 +523,28 @@ def compute_transitions(
     """Deterministic transition diff. Returns (transitions, requires_manual_review)."""
     transitions: list[AssertionTransition] = []
     requires_review = False
+
+    # R2-01: FULL_REEXTRACT safe semantics — archive all prior, add all new.
+    if plan.mode == DeltaMode.FULL_REEXTRACT_REQUIRED:
+        for prior_a in prior_inventory.assertions:
+            transitions.append(
+                AssertionTransition(
+                    action=TransitionAction.ARCHIVE,
+                    old_assertion_id=prior_a.id,
+                    slot_key=semantic_slot_key(prior_a),
+                    reason="full_reextract_prior_archived",
+                )
+            )
+        for new_a in delta_batch.assertions:
+            transitions.append(
+                AssertionTransition(
+                    action=TransitionAction.ADDED,
+                    new_assertion_id=new_a.id,
+                    slot_key=semantic_slot_key(new_a),
+                    reason="full_reextract_new_added",
+                )
+            )
+        return transitions, requires_review
 
     carried_by_old = {r.old_assertion_id: r.carried_assertion_id for r in carried_records}
     new_by_id = {a.id: a for a in delta_batch.assertions}
@@ -724,11 +751,9 @@ class RevisionPackageBuilder:
             expected_ref_id=new.ref_id,
             label="delta",
         )
-        # R1-04: prior inventory structural integrity (unresolvable units
-        # are allowed here because they trigger FULL_REEXTRACT fallback).
-        validate_prior_inventory(
-            prior_inventory, prior_manifest, allow_unresolvable_units=True
-        )
+        # R2-03: strict prior inventory validation for publication-bound builder.
+        # Malformed prior material must fail closed, not trigger FULL_REEXTRACT.
+        validate_prior_inventory(prior_inventory, prior_manifest)
 
         plan = compute_content_delta(
             prior_manifest,
@@ -788,7 +813,22 @@ class RevisionPackageBuilder:
         if plan.mode == DeltaMode.REVIEW_REQUIRED:
             requires_review = True
 
-        # R1-06: package_id must include scientific material
+        # R2-04/05: side-labelled package material with unit binding + trace/provenance.
+        def _unit_mat(u: ContentUnit) -> dict:
+            return {
+                "id": u.unit_id,
+                "loc": u.locator,
+                "kind": u.kind.value,
+                "hash": u.content_hash,
+                "prior_id": u.prior_unit_id,
+            }
+
+        # Build target assertion -> unit binding map
+        binding: dict[str, str] = {}
+        binding.update(delta_batch.assertion_unit_map)
+        for r in carried_records:
+            binding[r.carried_assertion_id] = r.unit_id
+
         package_id = _hash_json(
             {
                 "work_id": intent.work_id,
@@ -802,13 +842,21 @@ class RevisionPackageBuilder:
                 "prior_kb": prior.kb_version_id,
                 "prior_snap": prior.snapshot_id,
                 "plan_mode": plan.mode.value,
-                "units": sorted(
-                    [
-                        {"id": u.unit_id, "hash": u.content_hash}
-                        for u in prior_manifest.units + new_manifest.units
-                    ],
-                    key=lambda x: x["id"],
+                "prior_units": sorted(
+                    [_unit_mat(u) for u in prior_manifest.units], key=lambda x: x["id"]
                 ),
+                "new_units": sorted(
+                    [_unit_mat(u) for u in new_manifest.units], key=lambda x: x["id"]
+                ),
+                "unchanged_pairs": sorted(
+                    [[p.prior_unit_id, p.new_unit_id] for p in plan.unchanged_pairs]
+                ),
+                "modified_pairs": sorted(
+                    [[p.prior_unit_id, p.new_unit_id] for p in plan.modified_pairs]
+                ),
+                "added_units": sorted(plan.added_unit_ids),
+                "removed_units": sorted(plan.removed_unit_ids),
+                "extraction": sorted(plan.extraction_unit_ids),
                 "processed": sorted(delta_batch.processed_unit_ids),
                 "target": sorted(
                     [
@@ -818,6 +866,7 @@ class RevisionPackageBuilder:
                             "sem": semantic_payload_hash(a),
                             "loc": a.provenance.locator if a.provenance else "",
                             "sent": a.provenance.sentence if a.provenance else "",
+                            "unit": binding.get(a.id, ""),
                         }
                         for a in target
                     ],
@@ -826,6 +875,8 @@ class RevisionPackageBuilder:
                 "supersede": sorted(supersede.items()),
                 "archive": sorted(archive),
                 "added": sorted(added),
+                "trace_id": trace_id,
+                "provenance_id": provenance_id,
             }
         )[:16]
 
