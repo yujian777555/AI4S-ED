@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.1-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-1-executor-report.md",
+  "result_expected": "results/phase-05-1-r1-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0 / docs03 §7 lifecycle core is frozen",
-    "Phase 5.1 implements incremental source identity/version-family classification only",
-    "no literature crawling, Crossref/arXiv/TOC polling, or fuzzy semantic matching",
-    "title-only match is review-required; no automatic merge",
-    "preprint-to-journal cross-identifier linkage requires explicit caller-supplied relation",
-    "no changed-paragraph extraction or preprint assertion supersede yet",
-    "no public cross-team schema; CG-019 remains internal compatibility boundary"
+    "Phase 5.0 lifecycle core remains frozen",
+    "Phase 5.1-R1 only fixes identity precedence, explicit prior lineage, preprint relation compatibility, and registry uniqueness",
+    "no crawling or fuzzy semantic matching",
+    "title-only remains REVIEW_REQUIRED",
+    "no changed-content extraction or lifecycle supersede in this phase",
+    "no public cross-team schema changes; CG-019 remains open",
+    "do not start Phase 5.2 until Planner review"
   ],
   "latest_commit": "773c84dc5fa657a3f70182027382371db8b2f9e5",
-  "planner_review": "planner/phase-05-0-r3-review.md",
-  "live_smoke": "PHASE51_SOURCE_IDENTITY_PASS"
+  "planner_review": "planner/phase-05-1-review.md",
+  "live_smoke": "PHASE51_MOSTLY_PASS_R1_IDENTITY_PRECEDENCE"
 }
