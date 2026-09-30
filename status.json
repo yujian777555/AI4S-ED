@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.0-R2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.0-R3",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,17 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-0-r2-executor-report.md",
+  "result_expected": "results/phase-05-0-r3-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0-R1 crash recovery, strict material idempotency, and base-version validation are accepted",
-    "Phase 5.0-R2 only closes progressive lifecycle filtering, same-history historical retrieval, and assertion-level retrieval/training eligibility",
+    "Phase 5.0 R1/R2 accepted areas remain frozen",
+    "R3 only fixes backend exhaustion detection and allowed_ref assertion-level lifecycle filtering",
     "docs/03 §6 ranking/guard semantics remain frozen",
-    "no physical deletion of published structural/USDO/vector history",
-    "no Crossref/RetractionWatch crawler or external event transport",
-    "no public lifecycle mutation MCP tool",
+    "no physical deletion of historical knowledge",
+    "no crawler/external event transport/public mutation MCP",
     "do not start Phase 5.1 until Planner review"
   ],
   "latest_commit": "175cc643dacc5e887baab746c9a212bb7b37e579",
-  "planner_review": "planner/phase-05-0-r1-review.md",
-  "live_smoke": "PHASE50_R2_ALL_GAPS_PASS"
+  "planner_review": "planner/phase-05-0-r2-review.md",
+  "live_smoke": "PHASE50_R2_MOSTLY_PASS_R3_FINAL_ELIGIBILITY_CORRECTNESS"
 }
