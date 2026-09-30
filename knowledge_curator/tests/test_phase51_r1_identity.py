@@ -301,6 +301,7 @@ def test_same_doi_same_work_allowed():
 def test_failed_append_leaves_registry_unchanged():
     reg = InMemorySourceVersionRegistry()
     reg.append_work(WorkRecord(work_id="W-A", created_evidence="a"))
+    reg.append_work(WorkRecord(work_id="W-B", created_evidence="b"))
     reg.append_source_version(
         SourceVersionRecord(
             source_version_id="SV-1", work_id="W-A", ref_id="R-1", source_fingerprint="f1",

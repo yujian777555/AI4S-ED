@@ -79,7 +79,24 @@ class InMemorySourceVersionRegistry:
                 f"conflicting source_version_id material: {record.source_version_id}"
             )
 
-        # --- Conflict checks BEFORE any mutation (R1 atomicity) ---
+        # --- Conflict checks BEFORE any mutation (R1/R2 atomicity) ---
+
+        # R2-C: work must already exist (no auto-create in adapter).
+        if record.work_id not in self._works:
+            raise ValueError(f"unknown work_id: {record.work_id}")
+
+        # R2-C: prior referential integrity.
+        if record.prior_source_version_id is not None:
+            prior = self._versions.get(record.prior_source_version_id)
+            if prior is None:
+                raise ValueError(
+                    f"missing prior_source_version_id: {record.prior_source_version_id}"
+                )
+            if prior.work_id != record.work_id:
+                raise ValueError(
+                    f"cross-work prior: prior work {prior.work_id} != "
+                    f"record work {record.work_id}"
+                )
 
         # (ref_id, fingerprint) uniqueness: same key must not map to a different version.
         ref_fp_key = (record.ref_id, record.source_fingerprint)

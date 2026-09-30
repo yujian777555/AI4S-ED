@@ -120,6 +120,21 @@ class IncrementalIntakeService:
             candidate.ref_id, candidate.source_fingerprint
         )
         if existing is not None:
+            # R2-A: validate supplied explicit lineage against existing record.
+            lineage_conflict = self._replay_lineage_conflict(existing, candidate)
+            if lineage_conflict is not None:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    work_id=existing.work_id,
+                    existing_source_version_id=existing.source_version_id,
+                    match_evidence=["exact_ref_fingerprint", "explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": lineage_conflict,
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
             if self._replay_material_conflict(existing, candidate, norm_doi, norm_title, norm_stable):
                 return IntakeDecision(
                     disposition=IntakeDisposition.IDENTITY_CONFLICT,
@@ -191,11 +206,16 @@ class IncrementalIntakeService:
                 provenance_id=candidate.provenance_id,
             )
 
-        # B. explicit lineage — enter when EITHER work_id or prior_version_id is set
-        if (
+        # B. explicit lineage — enter when work_id, prior_version_id, or non-NONE relation
+        has_explicit_lineage = (
             candidate.explicit_work_id is not None
             or candidate.explicit_prior_version_id is not None
-        ):
+            or (
+                candidate.explicit_relation is not None
+                and candidate.explicit_relation != VersionRelation.NONE
+            )
+        )
+        if has_explicit_lineage:
             decision = self._classify_explicit_lineage(
                 candidate,
                 norm_doi=norm_doi,
@@ -265,6 +285,58 @@ class IncrementalIntakeService:
             provenance_id=candidate.provenance_id,
         )
 
+    def _replay_lineage_conflict(
+        self,
+        existing: SourceVersionRecord,
+        candidate: SourceCandidate,
+    ) -> Optional[str]:
+        """R2-A: return conflict reason if explicit lineage contradicts existing record."""
+        # explicit_work_id must match existing work
+        if candidate.explicit_work_id is not None:
+            work = self._registry.get_work(candidate.explicit_work_id)
+            if work is None:
+                return "explicit_work_id not found on replay"
+            if candidate.explicit_work_id != existing.work_id:
+                return (
+                    f"explicit_work_id {candidate.explicit_work_id} contradicts "
+                    f"existing work {existing.work_id}"
+                )
+
+        # explicit_prior must belong to existing work
+        if candidate.explicit_prior_version_id is not None:
+            prior = self._registry.get_source_version(candidate.explicit_prior_version_id)
+            if prior is None:
+                return "explicit_prior_version_id not found on replay"
+            if prior.work_id != existing.work_id:
+                return (
+                    f"explicit prior work {prior.work_id} contradicts "
+                    f"existing work {existing.work_id}"
+                )
+
+        # explicit_relation must not contradict existing material
+        rel = candidate.explicit_relation
+        if rel is not None and rel != VersionRelation.NONE:
+            if rel == VersionRelation.PREPRINT_TO_JOURNAL:
+                if existing.source_kind != SourceKind.PREPRINT:
+                    return (
+                        f"PREPRINT_TO_JOURNAL replay but existing source_kind "
+                        f"is {existing.source_kind.value}"
+                    )
+                if candidate.source_kind != SourceKind.JOURNAL:
+                    return (
+                        f"PREPRINT_TO_JOURNAL replay but candidate source_kind "
+                        f"is {candidate.source_kind.value}"
+                    )
+            # REVISION_OF / CORRECTED_VERSION / EXPLICIT_SAME_WORK on replay:
+            # prior must be in same work (already checked above if supplied).
+            # No additional contradiction for a true replay.
+        elif rel is VersionRelation.NONE and (
+            candidate.explicit_work_id is not None
+            or candidate.explicit_prior_version_id is not None
+        ):
+            return "explicit_relation=NONE contradicts supplied explicit lineage"
+        return None
+
     def _replay_material_conflict(
         self,
         existing: SourceVersionRecord,
@@ -304,10 +376,40 @@ class IncrementalIntakeService:
         evidence: list[str],
         diagnostics: dict[str, Any],
     ) -> Optional[IntakeDecision]:
-        """Handle explicit_work_id / explicit_prior_version_id. None -> fall through."""
+        """Handle explicit_work_id / explicit_prior_version_id / explicit_relation."""
         work_id = candidate.explicit_work_id
         prior_id = candidate.explicit_prior_version_id
+        rel = candidate.explicit_relation  # None = omitted; NONE = explicitly set
         prior = None
+
+        # R2-B: explicit NONE + explicit lineage fields => conflict
+        if rel is VersionRelation.NONE and (work_id is not None or prior_id is not None):
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["explicit_lineage"],
+                diagnostics={
+                    **diagnostics,
+                    "conflict_reason": "explicit_relation=NONE contradicts supplied explicit lineage",
+                },
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
+
+        # Relation-only requests (non-NONE relation, no work/prior)
+        if rel is not None and rel != VersionRelation.NONE:
+            if work_id is None and prior_id is None:
+                # EXPLICIT_SAME_WORK requires at least work or prior
+                # P2J / REVISION_OF / CORRECTED_VERSION require prior
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": f"relation {rel.value} requires explicit lineage target",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
 
         # Validate explicit_work_id existence
         if work_id is not None:
@@ -321,7 +423,7 @@ class IncrementalIntakeService:
                     provenance_id=candidate.provenance_id,
                 )
 
-        # Validate prior-only or prior+work
+        # Validate prior
         if prior_id is not None:
             prior = self._registry.get_source_version(prior_id)
             if prior is None:
@@ -350,7 +452,17 @@ class IncrementalIntakeService:
             work_id = work_id or prior.work_id
 
         if work_id is None:
-            return None  # neither work_id nor prior supplied -> fall through
+            # No work resolved (should not happen when has_explicit_lineage)
+            return IntakeDecision(
+                disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                match_evidence=["explicit_lineage"],
+                diagnostics={
+                    **diagnostics,
+                    "conflict_reason": "explicit lineage could not resolve work",
+                },
+                trace_id=candidate.trace_id,
+                provenance_id=candidate.provenance_id,
+            )
 
         # DOI/stable disagreement vs resolved work
         if doi_works and work_id not in doi_works:
@@ -378,15 +490,20 @@ class IncrementalIntakeService:
                 provenance_id=candidate.provenance_id,
             )
 
-        relation = candidate.explicit_relation or (
-            VersionRelation.EXPLICIT_SAME_WORK
-            if prior_id is None
-            else VersionRelation.REVISION_OF
-        )
+        # Relation state machine
+        if rel is None:
+            # Omitted relation: deterministic defaults
+            relation = (
+                VersionRelation.REVISION_OF
+                if prior_id is not None
+                else VersionRelation.EXPLICIT_SAME_WORK
+            )
+        else:
+            relation = rel
 
-        # PREPRINT_TO_JOURNAL compatibility enforcement (R1-04)
+        # Enforce relation requirements
         if relation == VersionRelation.PREPRINT_TO_JOURNAL:
-            if prior_id is None:
+            if prior_id is None or prior is None:
                 return IntakeDecision(
                     disposition=IntakeDisposition.IDENTITY_CONFLICT,
                     match_evidence=["explicit_lineage"],
@@ -397,7 +514,6 @@ class IncrementalIntakeService:
                     trace_id=candidate.trace_id,
                     provenance_id=candidate.provenance_id,
                 )
-            assert prior is not None
             if prior.work_id != work_id:
                 return IntakeDecision(
                     disposition=IntakeDisposition.IDENTITY_CONFLICT,
@@ -427,6 +543,41 @@ class IncrementalIntakeService:
                     diagnostics={
                         **diagnostics,
                         "conflict_reason": f"PREPRINT_TO_JOURNAL candidate source_kind is {candidate.source_kind.value}, expected journal",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+        elif relation in (VersionRelation.REVISION_OF, VersionRelation.CORRECTED_VERSION):
+            if prior_id is None or prior is None:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": f"{relation.value} requires explicit_prior_version_id",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+            if prior.work_id != work_id:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": f"{relation.value} prior does not belong to resolved work",
+                    },
+                    trace_id=candidate.trace_id,
+                    provenance_id=candidate.provenance_id,
+                )
+        elif relation == VersionRelation.EXPLICIT_SAME_WORK:
+            if work_id is None and prior_id is None:
+                return IntakeDecision(
+                    disposition=IntakeDisposition.IDENTITY_CONFLICT,
+                    match_evidence=["explicit_lineage"],
+                    diagnostics={
+                        **diagnostics,
+                        "conflict_reason": "EXPLICIT_SAME_WORK requires work or prior",
                     },
                     trace_id=candidate.trace_id,
                     provenance_id=candidate.provenance_id,
