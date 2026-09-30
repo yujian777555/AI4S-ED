@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.3-R2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "FINAL",
+  "actor": "planner",
+  "state": "deliverable",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,18 +12,25 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-3-r2-executor-report.md",
+  "result_expected": null,
   "constraints": [
     "GitHub origin/main is the source of truth",
-    "Phase 5.0/5.1/5.2 remain frozen",
-    "Phase 5.3-R2 is final publication material-lock correction only",
-    "existing idempotent target commits must match assertion + decision + metadata material exactly",
-    "canonical scientific values must preserve primitive/nested type information",
-    "post-target commit result/store/snapshot agreement is fail-closed",
-    "no new public MCP contract",
-    "do not create Phase 5.4; Planner freezes immediately after R2"
+    "knowledge_curator core is ACCEPTED / FROZEN / DELIVERABLE",
+    "no Phase 5.4",
+    "future changes require a confirmed bug, a newly frozen external integration contract, or an explicitly approved new requirement",
+    "CG-016/017/018/019/020/021 remain non-blocking cross-team/public-contract boundaries"
   ],
   "latest_commit": "4881288d3259582e559c8c301121e066b6a25f40",
-  "planner_review": "planner/phase-05-3-r1-review.md",
-  "live_smoke": "PHASE53_R2_FINAL_MATERIAL_LOCK_PASS"
+  "planner_review": "planner/phase-05-3-r2-review.md",
+  "live_smoke": "KNOWLEDGE_CURATOR_ACCEPTED_FROZEN_DELIVERABLE",
+  "final_acceptance": "planner/KNOWLEDGE_CURATOR_FINAL_ACCEPTANCE.md",
+  "acceptance": {
+    "verdict": "ACCEPTED",
+    "frozen": true,
+    "deliverable": true,
+    "implementation_code_sha": "4881288d3259582e559c8c301121e066b6a25f40",
+    "knowledge_curator_tests": "499 passed / 0 skipped / 0 failed",
+    "integration_dsh_tests": "90 passed / 0 failed",
+    "public_contracts_changed": false
+  }
 }
