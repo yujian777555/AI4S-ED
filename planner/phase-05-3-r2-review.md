@@ -1,35 +1,50 @@
-# Phase 5.3-R2 Planner Review — PASS / Final Publication Layer Frozen
+# Phase 5.3-R2 Continuation Review — PASS / Final Publication Layer Frozen
 
-Implementation CODE SHA: 4881288d3259582e559c8c301121e066b6a25f40
-origin/main bookkeeping tip: b63bb903dbfe42647bb7040b25acf48ea077c4a2
+Validated implementation CODE SHA: fd33a1221fcd7c14684048d1f48093283caa520d
+Final verification head: 38c0c6a626fa74cb1b9149a6d7718ffe78079977
+GitHub Actions run: 36750460836
 
-Verdict: PASS.
+Verdict: PASS after continuation revalidation and minimal fail-closed correction.
 
-## Verified
+## Continuation finding
 
-- canonical scientific values preserve primitive and nested type distinctions;
-- condition/object material no longer collapses via str(...);
-- approval scope hashing uses typed canonical assertion material;
-- existing idempotent target commits are guarded by assertion material plus action/confidence/visibility;
-- existing target metadata hash and manifest identity are checked;
-- post-target commit result is checked against VersionStore/snapshot and DocumentCommitStore state;
-- fresh successful publication returns non-idempotent semantics;
-- exact replay/recovery returns idempotent/resumed semantics;
-- real async DocumentCommitCoordinator P2J E2E remains green;
-- lifecycle produces V_final derived from V_target;
-- new SourceVersion remains bound to V_final;
-- post-bind / pre-journal-finalization crash recovery remains green;
-- reported baselines: 499 knowledge_curator tests / 0 failed and 90 integration/dsh tests / 0 failed;
-- public contracts unchanged.
+The previous R2 freeze report was not accepted as evidence without revalidation. The continuation audit found two real acceptance gaps in the then-current implementation:
 
-## Non-blocking hardening note
+1. published existing commit manifests did not strictly require request-matching assertion_hashes / decision_hashes / complete manifest material;
+2. post-target commit-store agreement allowed a missing store record or missing version/snapshot/manifest fields to pass instead of failing closed.
 
-The validated production composition includes a configured DocumentCommitStore shared with DocumentCommitCoordinator. Defensive behavior for deliberately misconfigured coordinators that omit that store is outside the accepted production path and does not block module delivery.
+These were corrected without changing public contracts or creating Phase 5.4.
+
+## Revalidated behavior
+
+- typed canonical scientific material preserves int/string, list/string, nested structures and deterministic dict order;
+- Condition.value, ObjectValue.value and ObjectValue.uncertainty use the same typed canonical path;
+- existing decision guard rejects action, confidence and visibility drift;
+- published existing commit guard requires exact metadata_hash, manifest identity, assertion_hashes, decision_hashes and manifest content hash;
+- post-target commit-store agreement requires the persisted record to exist, be PUBLISHED, and exactly match result version/snapshot, ref_id, source_fingerprint and resolved snapshot manifest content;
+- missing/unreadable commit store fails closed;
+- approval scope remains bound to typed scientific material;
+- fresh success returns idempotent=false / resumed=false;
+- exact replay and crash recovery return idempotent/resumed semantics;
+- real P2J E2E begins with KnowledgeCurator and continues through DocumentCommitCoordinator, LifecycleRevisionCoordinator, VersionStore and SourceVersionRegistry;
+- P2J produces V_prior -> V_target -> V_final and binds the new SourceVersion to V_final;
+- prior preprint becomes SUPERSEDED and ineligible for retrieval/training while the new journal remains ACTIVE and retrieval/training eligible;
+- historical prior versions remain resolvable and rollback-safe;
+- post-bind journal-finalization recovery completes without duplicating lifecycle outbox events.
+
+## Final executed tests
+
+- knowledge_curator: 512 passed / 0 skipped / 0 failed
+- integration/dsh: 90 passed / 0 skipped / 0 failed
+
+The final verification run used Python 3.12 with optional retrieval and deepseek-harness test dependencies installed so skipped coverage was not hidden.
+
+## Contract state
+
+- public contracts changed: NO
+- planner/CONTRACT_GAPS.md changed by this continuation: NO
+- existing CG-016 through CG-021 remain documented cross-team/public-contract boundaries and are not reopened by this fix.
 
 ## Final decision
 
-Phase 5.3 is frozen.
-
-No Phase 5.4.
-
-The knowledge_curator implementation is accepted for its documented module boundary and is ready to be consumed by the remaining AI4S-ED system integration work.
+Phase 5.3-R2 is accepted and frozen. No Phase 5.4 is authorized.
