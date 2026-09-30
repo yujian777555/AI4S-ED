@@ -1,4 +1,4 @@
-# Phase 5.1-R1 Plan — Identity Precedence, Explicit Lineage, Registry Invariants
+# Phase 5.1-R2 Plan — Replay Lineage Consistency + Explicit Relation State Machine + Registry Referential Integrity
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,143 +6,130 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close the five identity correctness blockers in:
-planner/phase-05-1-review.md
+Close the final Phase 5.1 identity/lineage integrity gaps from:
+planner/phase-05-1-r1-review.md
 
 Do not start Phase 5.2.
 
-## 1. Freeze accepted behavior
+## 1. Scope freeze
 
 Do not change:
-- safe DOI/title/stable-id normalization rules;
-- title-only REVIEW_REQUIRED behavior;
-- no-fuzzy matching policy;
-- Phase 5.0 lifecycle semantics;
-- public schemas/contracts;
-- bind-only-after-published behavior except for direct bug fixes.
+- normalization rules;
+- DOI/stable precedence already fixed;
+- title-only REVIEW_REQUIRED;
+- no-fuzzy policy;
+- Phase 5.0 lifecycle core;
+- bind-after-publish semantics;
+- public contracts / CG-019 boundary.
 
-## 2. Cross-identifier checks before positive returns
+## 2. R2-A — exact replay must validate explicit lineage
 
-In prepare(), compute:
-- doi_works;
-- stable_works;
-- title_works.
+Before returning EXACT_REPLAY for existing (ref_id, fingerprint), validate supplied explicit fields.
 
-Before returning SAME_WORK_NEW_VERSION from DOI or stable_id:
+### explicit_work_id
+If supplied:
+- work must exist;
+- it must equal existing.work_id.
+Otherwise IDENTITY_CONFLICT.
 
-### DOI invariant
-If len(doi_works) > 1:
-- IDENTITY_CONFLICT.
+### explicit_prior_version_id
+If supplied:
+- prior must exist;
+- prior.work_id must equal existing.work_id.
+Otherwise IDENTITY_CONFLICT.
 
-### stable-id invariant
-If len(stable_works) > 1:
-- IDENTITY_CONFLICT.
+### explicit_relation
+If supplied and non-NONE:
+- validate relation requirements from section 3;
+- it must not contradict the existing record's material lineage.
 
-### DOI/stable disagreement
-If len(doi_works)==1 and len(stable_works)==1 and the work ids differ:
-- IDENTITY_CONFLICT;
-- match_evidence includes exact_doi + exact_stable_id;
-- ambiguity_candidates includes both works.
+For a pure replay with no explicit lineage fields, existing behavior remains.
 
-Only after these checks may DOI/stable positive classification occur.
+## 3. R2-B — explicit relation state machine
 
-## 3. Regression for currently unreachable mismatch
+Treat any non-NONE explicit_relation as explicit lineage intent even if work/prior are absent.
 
-Create Work A with DOI X.
-Create Work B with stable_id Y.
-Candidate contains DOI X + stable_id Y.
+Required minimum:
 
-Required:
-IDENTITY_CONFLICT.
-
-It must never return Work A merely because DOI precedence comes first.
-
-## 4. Prior-only explicit lineage
-
-Call explicit-lineage classification when:
-
-candidate.explicit_work_id is not None
-OR
-candidate.explicit_prior_version_id is not None
-
-Rules:
-- valid prior, no explicit work -> inherit prior.work_id;
-- invalid prior -> IDENTITY_CONFLICT;
-- prior/work mismatch -> IDENTITY_CONFLICT;
-- exact DOI/stable mapping contradicting inherited work -> IDENTITY_CONFLICT.
-
-Add regression:
-- valid prior-only lineage -> SAME_WORK_NEW_VERSION in prior work.
-
-## 5. PREPRINT_TO_JOURNAL compatibility
-
-If explicit_relation == PREPRINT_TO_JOURNAL:
-
-Require:
-- explicit_prior_version_id is present;
-- prior exists;
-- resolved work exists;
-- prior.work_id == resolved work;
+### PREPRINT_TO_JOURNAL
+- prior required;
 - prior.source_kind == PREPRINT;
-- candidate.source_kind == JOURNAL.
+- candidate.source_kind == JOURNAL;
+- resolved work == prior.work.
 
-If any condition fails:
-IDENTITY_CONFLICT with explicit diagnostic.
+### REVISION_OF
+- prior required;
+- resolved work == prior.work.
 
-Valid case:
-- produces SAME_WORK_NEW_VERSION;
-- VersionUpgradeIntent exists;
-- prior/new versions preserved in same work.
+### CORRECTED_VERSION
+- prior required;
+- resolved work == prior.work.
 
-Invalid cases:
-- no prior;
-- prior JOURNAL;
-- candidate PREPRINT;
-- prior from another work.
+### EXPLICIT_SAME_WORK
+- explicit_work_id OR explicit_prior_version_id required;
+- if prior only, inherit work.
 
-No fuzzy fallback.
+### NONE
+If explicit_work_id or explicit_prior_version_id is supplied together with explicit_relation=NONE:
+- IDENTITY_CONFLICT.
+Do not persist SAME_WORK_NEW_VERSION with relation NONE.
 
-## 6. Other explicit relations
+If no explicit lineage fields exist and relation is omitted (None), normal identifier classification proceeds.
 
-For REVISION_OF / CORRECTED_VERSION:
-- if explicit_prior_version_id is supplied, validate it belongs to resolved work.
-- do not invent a prior when absent.
+## 4. Omitted relation defaults
 
-EXPLICIT_SAME_WORK may resolve with explicit_work_id alone.
+Keep deterministic defaults only when explicit_relation is truly omitted:
 
-VersionRelation.NONE must not override a meaningful explicit lineage relation accidentally.
+- prior present, relation omitted -> REVISION_OF;
+- work only, relation omitted -> EXPLICIT_SAME_WORK.
 
-Keep semantics deterministic and minimal.
+Add tests distinguishing Python None from VersionRelation.NONE.
 
-## 7. Registry uniqueness: ref+fingerprint
+## 5. Replay compatibility details
+
+For exact replay:
+
+Compatible:
+- explicit_work_id == existing.work_id;
+- prior (if supplied) is in existing.work_id;
+- no relation/material contradiction.
+
+Contradictory:
+- explicit work points elsewhere;
+- prior points elsewhere;
+- P2J claims a replay that is not compatible with PREPRINT->JOURNAL source kinds/lineage.
+
+Return:
+IDENTITY_CONFLICT with diagnostic explaining the conflicting explicit field.
+
+Do not mutate registry on replay.
+
+## 6. R2-C — registry work referential integrity
 
 In append_source_version():
 
-Before inserting, check _by_ref_fp[(ref_id,fingerprint)].
+Before all mutations:
+- get_work(record.work_id) / internal lookup must exist;
+- otherwise raise ValueError("unknown work_id" or equivalent).
 
-If an existing version id is present:
-- identical material -> return idempotently if it is truly the same source-version record;
-- different source_version_id/work/material -> raise ValueError.
+Do not auto-create work inside the adapter.
 
-Do not overwrite the index silently.
+IncrementalIntakeService.proceed remains responsible for creating a new WorkRecord first.
 
-## 8. Registry uniqueness: DOI across works
+## 7. Registry prior referential integrity
 
-If normalized_doi is non-empty:
-- existing versions with that DOI may all belong to the SAME work;
-- if any belong to a different work_id than the incoming record -> reject.
+If record.prior_source_version_id is non-null:
+- prior must exist;
+- prior.work_id == record.work_id.
 
-Multiple versions in one work sharing the DOI are valid.
+Otherwise reject before mutation.
 
-## 9. Registry uniqueness: stable_id across works
+Do not require prior for VersionRelation.NONE records with no prior.
+Relation-state semantics are primarily service-level; registry enforces references it is given.
 
-Same rule:
-- repeated stable_id within one work is valid;
-- same stable_id across different works -> reject.
+## 8. Atomicity
 
-## 10. Append atomicity
-
-Perform all conflict checks BEFORE mutating:
+All new work/prior/replay conflict checks must occur before mutating:
 - _versions;
 - _version_order;
 - _by_ref_fp;
@@ -150,54 +137,42 @@ Perform all conflict checks BEFORE mutating:
 - _by_stable;
 - _by_title.
 
-A rejected append must leave registry state unchanged.
+Failed append leaves all indexes and list_versions unchanged.
 
-Add test proving failed append does not partially mutate indexes.
-
-## 11. WorkRecord idempotency
-
-If practical, harden append_work:
-- same work_id + same material -> idempotent;
-- same work_id + contradictory created_evidence/trace/provenance -> fail closed.
-
-This is recommended but secondary to source-version invariants.
-
-Do not make created_seq material.
-
-## 12. Tests
+## 9. Tests
 
 Maintain:
-- knowledge_curator >= 379 passed / 0 failed;
+- knowledge_curator >= 392 passed / 0 failed;
 - integration/dsh >= 90 passed / 0 failed.
 
 Add at least:
-1. DOI Work A + stable Work B -> conflict;
-2. stable_id mapped to multiple works -> conflict/fail closed;
-3. valid prior-only explicit lineage;
-4. invalid prior-only lineage;
-5. prior-only lineage contradicted by DOI -> conflict;
-6. PREPRINT_TO_JOURNAL without prior -> conflict;
-7. PREPRINT_TO_JOURNAL prior JOURNAL -> conflict;
-8. PREPRINT_TO_JOURNAL candidate PREPRINT -> conflict;
-9. valid PREPRINT_TO_JOURNAL remains PASS;
-10. duplicate ref+fingerprint across work -> adapter reject;
-11. DOI reused across different work -> adapter reject;
-12. stable_id reused across different work -> adapter reject;
-13. same DOI across versions of same work -> allowed;
-14. failed append leaves indexes unchanged.
+1. exact replay + explicit different work -> conflict;
+2. exact replay + prior from different work -> conflict;
+3. exact replay + compatible work/prior -> replay;
+4. relation-only PREPRINT_TO_JOURNAL -> conflict;
+5. relation-only REVISION_OF -> conflict;
+6. relation-only CORRECTED_VERSION -> conflict;
+7. explicit NONE + prior -> conflict;
+8. explicit NONE + work -> conflict;
+9. omitted relation + prior -> REVISION_OF;
+10. omitted relation + work -> EXPLICIT_SAME_WORK;
+11. append source version with unknown work -> reject;
+12. append source version with missing prior -> reject;
+13. append source version with cross-work prior -> reject;
+14. failed orphan/prior append leaves indexes unchanged.
 
-## 13. Deliverable
+## 10. Deliverable
 
 Create:
-results/phase-05-1-r1-executor-report.md
+results/phase-05-1-r2-executor-report.md
 
 Report:
-- DOI/stable precedence conflict: PASS/FAILED;
-- stable multi-work invariant: PASS/FAILED;
-- prior-only explicit lineage: PASS/FAILED;
-- preprint->journal compatibility: PASS/FAILED;
-- ref+fingerprint uniqueness: PASS/FAILED;
-- DOI/stable registry uniqueness: PASS/FAILED;
+- replay explicit-lineage consistency: PASS/FAILED;
+- relation-only validation: PASS/FAILED;
+- explicit NONE fail-closed: PASS/FAILED;
+- omitted-relation defaults: PASS/FAILED;
+- registry work integrity: PASS/FAILED;
+- registry prior integrity: PASS/FAILED;
 - append atomicity: PASS/FAILED;
 - exact tests;
 - public contracts changed: NO;
@@ -205,14 +180,14 @@ Report:
 - origin/main SHA;
 - CONTRACT_GAPS changes.
 
-## 14. Completion
+## 11. Completion
 
 Update status.json:
-- phase = 5.1-R1
+- phase = 5.1-R2
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-1-r1-executor-report.md
+- result_expected = results/phase-05-1-r2-executor-report.md
 
 Push main and STOP.
 Do not start Phase 5.2.
