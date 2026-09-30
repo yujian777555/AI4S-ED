@@ -945,9 +945,11 @@ def package_to_revision_draft(package: RevisionPackage):
     )
 
     # base_version_id left None: publication-time bind (see plan §13).
+    # R3: lifecycle subject is PRIOR ref — transition actions archive/supersede
+    # prior-version assertions. New journal ref stays active.
     return build_revision_draft(
         revision_id=package.package_id,
-        ref_id=package.new_ref_id,
+        ref_id=package.prior_ref_id,
         trigger=trigger,
         base_version_id=None,
         affected_assertion_ids=affected,
