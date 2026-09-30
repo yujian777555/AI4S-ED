@@ -1,4 +1,4 @@
-# Phase 5.3 Plan — Recoverable Revision Publication Orchestration
+# Phase 5.3-R1 Plan — Real Frozen-Component Integration + Final Recovery Closure
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,570 +6,412 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Implement the final publication layer for docs/03 §7.1/§7.3:
+Close the real-integration blockers in:
+planner/phase-05-3-review.md
 
-RevisionPackage
-+ already-curated target CommitRequest
-+ explicit RevisionApproval when required
-→ publish target new-source content
-→ publish lifecycle transition against the target KB version
-→ bind new SourceVersion to the FINAL lifecycle KB version
-→ recover safely across retries/crashes.
+This is the final implementation correction.
 
-This is the final implementation phase before Planner final acceptance/freeze.
+Do not create Phase 5.4.
 
-## 1. Freeze existing layers
+## 1. Preserve architecture
 
-Do NOT redesign:
-- Phase 2 DocumentCommitCoordinator;
-- Phase 5.0 LifecycleRevisionCoordinator;
-- Phase 5.1 SourceVersionRegistry identity semantics;
-- Phase 5.2 RevisionPackage/delta semantics;
-- retrieval;
-- DSH/MCP public tools.
+Keep the Phase 5.3 saga and journal design.
 
-Phase 5.3 is an orchestration layer above them.
-
-## 2. No fake ACID
-
-CG-013 still applies.
-
-Do not claim target commit + lifecycle + source binding are one physical cross-store transaction.
-
-Implement a recoverable saga:
-1. validate all material + approval before KB side effects;
-2. target document publish;
-3. lifecycle publish;
-4. source-version final bind.
-
-Each completed step must be replay-safe.
-
-## 3. Internal publication models
-
-Add INTERNAL temporary schemas, recommended:
-knowledge_curator/schemas/revision_publication.py
-
-### RevisionApprovalDecision
-- APPROVED
-- REJECTED
-
-### RevisionApproval
-At least:
-- approval_id;
-- package_id;
-- scope_hash;
-- decision;
-- approver;
-- rationale;
-- trace_id;
-- provenance_id.
-
-No implicit approval.
-No synthetic high_confidence/multi_source flags.
-
-### RevisionPublicationPhase
-Recommended monotonic success phases:
-- PREPARED
-- TARGET_PUBLISHED
-- LIFECYCLE_PUBLISHED
-- FINALIZED
-
-Track last_error separately rather than moving backwards.
-
-### RevisionPublicationRecord
-At least:
-- publication_id = deterministic from package_id;
-- package_id;
-- request_material_hash;
-- phase;
-- target_commit_id;
-- target_version_id;
-- target_snapshot_id;
-- lifecycle_id;
-- final_version_id;
-- final_snapshot_id;
-- approval_id;
-- last_error.
-
-### RevisionPublicationResult
-At least statuses:
-- APPROVAL_REQUIRED / APPROVAL_REJECTED;
-- PACKAGE_REVIEW_REQUIRED;
-- TARGET_PENDING;
-- LIFECYCLE_PENDING;
-- CONFLICT;
-- FAILED;
-- FINALIZED.
-
-Include target/final version ids and idempotent/resumed flags.
-
-## 4. Internal publication journal Port
-
-Add INTERNAL:
-knowledge_curator/ports/revision_publication_store.py
-and in-memory adapter.
-
-Requirements:
-- get(publication_id);
-- create(record);
-- update(record);
-- same publication_id + same request material is idempotent;
-- same publication_id + different request_material_hash => conflict;
-- phase updates monotonic;
-- copy-on-write in-memory adapter.
-
-No external DB choice in this phase.
-
-## 5. Publication input
-
-Recommended coordinator input:
+Do not redesign frozen:
+- DocumentCommitCoordinator;
+- LifecycleRevisionCoordinator;
+- SourceVersionRegistry;
 - RevisionPackage;
-- target CommitRequest produced by the existing §5 KnowledgeCurator path;
-- optional/required RevisionApproval.
+- retrieval;
+- MCP/DSH.
 
-Do not accept raw uncurated assertions and silently fabricate CurationReport.
+Fix only orchestration correctness and real integration.
 
-E2E tests should actually use KnowledgeCurator.curate() to produce the CommitRequest.
+## 2. Make publication async
 
-## 6. Publication-resolved package gate
+Change main entry to:
 
-Before ANY KB side effect:
+async def publish(...)
 
-Require:
-- package.requires_manual_review == False.
+_run_target_commit must also be async or await the commit in the main path.
 
-An approval token does NOT resolve ambiguous Phase 5.2 semantic-slot matching.
+Call:
+result = await self._commit.commit(request)
 
-If true:
-- return PACKAGE_REVIEW_REQUIRED;
-- no target commit;
-- caller must rebuild a deterministic package after adjudication.
+Do not use asyncio.run inside library code.
 
-This separates content/diff ambiguity from governance approval.
+All publication tests invoking real/fake async commit must await publish.
 
-## 7. Validate SourceVersion lineage
+Provide AsyncFakeCommitCoordinator only for narrow synthetic branches if needed.
 
-Fetch prior/new source versions.
+## 3. Require a real CommitRequest
 
-Require:
-- both exist;
-- work/version/ref lineage matches package;
-- prior.kb_version_id == package.prior_bound_kb_version_id;
-- prior.snapshot_id non-empty;
-- new relation/prior/work match package.
+target_commit_request is mandatory.
 
-Before a new publication:
-- new SourceVersion should be unbound.
+At the start, before approval/journal/commit side effects:
+- reject None;
+- use knowledge_curator.schemas.commit.CommitRequest;
+- run validate_commit_request(request).
 
-Replay exception:
-if publication journal already records lifecycle/final state and the new binding matches the recorded final version/snapshot, allow exact idempotent completion.
+Binding errors => fail closed.
 
-Any unrelated pre-existing binding => CONFLICT.
+Do not maintain a second independent curation_report as authoritative material.
 
-## 8. Validate target CommitRequest identity
+Preferred API:
+await publish(
+    package=package,
+    target_commit_request=request,
+    approval=approval,
+)
 
-Before commit:
+Use request.report everywhere.
 
-Require:
-- request.source.ref_id == package.new_ref_id;
-- request.source.source_fingerprint == new.source_fingerprint;
-- request.assertion_set.ref_id == package.new_ref_id;
-- report.source_ref_id == package.new_ref_id.
+## 4. Exact request/package material validator
 
-Target assertions must match package.target_assertions EXACTLY as publication material.
+Add canonical assertion publication payload helper shared by:
+- package-vs-request validation;
+- approval scope hash;
+- existing commit guard.
 
-Canonical comparison must include:
-- id;
-- ref_id;
-- full scientific payload;
+Include at least:
+- id/ref_id;
+- subject class/entity/original mention;
+- property;
+- object value/unit/value_type/uncertainty;
+- conditions canonicalized deterministically;
+- provenance locator/sentence;
+- claim_type;
+- source_claim_origin;
 - confidence;
 - quality;
-- flags;
-- provenance locator/sentence.
+- missing_unit/speculative_wording/chart_quality_low.
 
-No missing or extra assertions.
+Require package.target_assertions and request.assertion_set.assertions to have identical ID set and identical material per ID.
 
-## 9. Validate target metadata against SourceVersion
+## 5. Source/metadata validation
 
-At minimum:
-- normalized AssertionSet metadata title, when present, agrees with new.normalized_title;
-- normalized DOI, when present, agrees with new.normalized_doi;
-- stable_id, when present, agrees with new.stable_id.
+Before side effects require:
+- request.source.ref_id == package.new_ref_id == new.ref_id;
+- request.source.source_fingerprint == new.source_fingerprint;
+- assertion_set.ref_id == new.ref_id;
+- report.source_ref_id == new.ref_id.
 
-Use frozen Phase 5.1 normalizers.
-Do not fuzzy-correct.
+Using frozen Phase 5.1 normalizers:
+- non-empty metadata.title must normalize to new.normalized_title when registry title exists;
+- non-empty metadata.doi must normalize to new.normalized_doi when registry DOI exists;
+- non-empty metadata.stable_id must match new.stable_id.
 
-Include full target AssertionSet metadata in publication material hashing.
+No fuzzy correction.
 
-## 10. CurationReport gate
+## 6. Curation gate uses request.report only
 
-Every target assertion must have exactly one decision.
+Run validate_commit_request first.
 
-Allowed Phase 5.3 publication actions:
-- ACCEPT;
-- DOWNGRADE.
+Then require for every target assertion exactly one decision.
 
-Reject publication before commit if any target assertion is:
+Allowed:
+- CurationAction.ACCEPT;
+- CurationAction.DOWNGRADE.
+
+Reject:
 - PENDING_REVIEW;
 - REJECT;
 - RETURN_UPSTREAM;
 - SUPERSEDE.
 
-Also reject:
-- missing decision;
-- extra decision;
-- returned_upstream_count > 0;
-- report/status material inconsistent with ACCEPT/DOWNGRADE publication.
+Also reject if:
+- report.returned_upstream_count > 0;
+- report.status == return_upstream/pending_review/rejected or otherwise inconsistent with all decisions being ACCEPT/DOWNGRADE.
 
-Reason:
-old knowledge must not be superseded by a replacement assertion that §5 rejected or left pending.
+Do not accept string synonyms such as "accepted" unless they are actual frozen enum values.
 
-## 11. Approval scope hash
+## 7. Approval scope binds actual CommitRequest
 
-Add:
-compute_publication_scope_hash(package, target_commit_request)
+compute_publication_scope_hash(package, request) must include:
 
-Canonical scope includes at least:
-- package.package_id;
-- new SourceVersion identity;
-- commit source ref/fingerprint;
-- AssertionSet metadata;
-- exact target assertion publication material;
-- curation decision material that affects commit:
-  assertion_id/action/confidence.
+### source
+- ref_id;
+- fingerprint.
 
-Exclude random report_id/timestamps.
+### AssertionSet metadata
+- title;
+- authors;
+- year;
+- source;
+- doi;
+- stable_id;
+- quality_grade;
+- no_structured_data;
+- schema counts;
+- charts/extra only where deterministic and publication-significant.
 
-Same semantic publication request => same scope hash.
+### assertions
+canonical exact publication payload.
 
-## 12. Manual approval semantics
+### report decisions
+- assertion_id;
+- action.value;
+- confidence.value.
 
-Current package_to_revision_draft is conservatively manual-adjudication-required.
+### report publication gates
+- status;
+- returned_upstream_count.
 
-Before ANY target commit side effect, when draft is manual-required:
-- approval must exist;
-- decision == APPROVED;
-- approval.package_id == package.package_id;
-- approval.scope_hash == computed scope hash;
-- approval_id and approver non-empty.
+Exclude only known ephemeral values like random report_id.
 
-REJECTED/missing/mismatched approval:
-- no KB side effects.
+Remove curation_decisions as an independent override.
 
-Do not convert approval into scientific evidence.
+Changing metadata/decision/source with same package must invalidate approval scope.
 
-## 13. Authorized draft
+## 8. Approval logic
 
-After approval validation, build draft from package.
+First build package draft to determine whether manual adjudication is required.
 
-At publication time:
-- draft.base_version_id = target KB version id, only AFTER target commit succeeds.
+If manual-required:
+- require explicit APPROVED approval with exact package/scope/approver.
 
-For explicit manual approval:
-- deep-copy draft;
-- set manual_adjudication_required=False ONLY because approval was validated;
-- KEEP risk_decision=MANUAL_ADJUDICATION_REQUIRED so the record still says rule-level auto eligibility was not established;
-- append auditable evidence refs:
-  approval:<approval_id>
-  approval_scope:<scope_hash>
-- append deterministic rationale mentioning approval id/approver.
+If auto-rule-eligible in a future valid package:
+- approval may be absent.
 
-Do not set fake AUTO_RULE_REVIEW_ELIGIBLE metadata.
+For current P2J path, manual approval remains expected.
 
-## 14. Publication request identity
+Approval trace/provenance should be included in request material identity if carried into audit state.
 
-publication_id deterministic from package.package_id.
+## 9. Publication request material hash
 
-request_material_hash must include:
-- package id;
-- publication scope hash;
-- approval material:
-  approval_id/package_id/scope_hash/decision/approver/rationale;
-- package trace/provenance identity.
+Hash:
+- package_id;
+- exact scope hash;
+- exact approval material including approval_id/package/scope/decision/approver/rationale/trace/provenance;
+- package trace/provenance.
 
-Same publication id with changed target metadata, curation decisions, or approval => CONFLICT before further side effects.
+Same full request -> same.
+Any audited approval/material change -> conflict.
 
-## 15. Existing target commit material guard
+## 10. Existing commit guard must be material-exact
 
-DocumentCommitCoordinator exact retries can return IDEMPOTENT_HIT for the same (ref_id,fingerprint).
+DocumentCommitStore inspection is mandatory when configured for real publication.
 
-Therefore inspect DocumentCommitStore.find_by_key before trusting/resuming an existing commit.
+Do not swallow store errors.
 
-If existing record contains admitted material:
-- admitted assertion material must exactly match package.target_assertions;
-- admitted ids exactly match target ids;
-- admitted actions/confidence must be compatible with validated CommitRequest decisions.
+For existing record compare:
+- ref/fingerprint;
+- admitted assertion canonical material;
+- exact admitted ID set;
+- action;
+- confidence;
+- visibility;
+- metadata_hash against expected request metadata hash or equivalent deterministic recomputation;
+- published manifest where present.
 
-Existing PUBLISHED same key + different material => CONFLICT.
-Do not continue lifecycle.
+Same IDs with changed value/unit/provenance/quality/action/confidence => CONFLICT.
 
-## 16. Step A — target document commit
+If record is partially staged with same material, allow frozen DocumentCommitCoordinator to resume.
 
-Call frozen:
-DocumentCommitCoordinator.commit(target_commit_request)
+## 11. Real target commit
 
-Proceed ONLY when:
+Use real await DocumentCommitCoordinator.commit.
+
+Accept only:
 - PUBLISHED;
-or
-- IDEMPOTENT_HIT;
+- IDEMPOTENT_HIT.
 
-and version_id/snapshot_id are resolvable and consistent.
+Pending statuses stop without lifecycle/bind.
 
-If:
-- PENDING_VECTOR;
-- PENDING_FINALIZE;
-return TARGET_PENDING and stop.
+After success validate:
+- version_id and snapshot_id present;
+- VersionStore.get_version(version_id) exists and published;
+- version.snapshot_id == result.snapshot_id;
+- VersionStore.get_snapshot(snapshot_id) exists;
+- commit store record exists for request key;
+- commit record.version_id/snapshot_id agree when phase is published;
+- snapshot manifest ref/fingerprint equal new source identity.
 
-If:
-- NOT_PUBLISHABLE;
-- FAILED;
-return FAILED and stop.
+Only then journal TARGET_PUBLISHED.
 
-Never apply lifecycle on a pending target commit.
+## 12. Lifecycle authorization and publication
 
-Update journal to TARGET_PUBLISHED only after validating actual published material.
+Keep prior-ref subject.
 
-## 17. Target version validation
+Set draft.base_version_id = V_target.
 
-Validate:
-- VersionStore.get_version(target_version_id) exists/published;
-- version.snapshot_id == target_snapshot_id;
-- target snapshot agrees with document commit record.
+For validated manual approval:
+- manual_adjudication_required=False;
+- keep risk_decision=MANUAL_ADJUDICATION_REQUIRED;
+- append approval audit evidence/rationale.
 
-Do NOT bind new SourceVersion here.
+Call frozen lifecycle with prior.source_fingerprint.
 
-## 18. Step B — lifecycle revision
+No silent rebase.
 
-Build draft from package:
-- lifecycle subject remains package.prior_ref_id;
-- replacement assertions remain new-source assertions.
+## 13. Final snapshot validation
 
-Set:
-draft.base_version_id = target_version_id.
+Resolve final snapshot even if LifecyclePublishResult.snapshot_id is None.
 
-Call:
-LifecycleRevisionCoordinator.apply_revision(
-    authorized_draft,
-    source_fingerprint=prior.source_fingerprint
-)
-
-Important:
-use PRIOR source fingerprint because lifecycle document record describes the prior ref.
-
-Frozen lifecycle snapshot creation will preserve the TARGET base manifest ref/fingerprint/content.
-
-## 19. Stale-base/interleaving behavior
-
-Do not silently rebase.
-
-For first lifecycle publication, frozen coordinator requires target_version_id to still be current.
-
-If an unrelated version advances current before lifecycle begins:
-- fail closed as CONFLICT / operator resolution;
-- do not choose the newer current version;
-- do not bind SourceVersion.
-
-For retry of an already staged/finalized lifecycle revision:
-use frozen coordinator resume/idempotent behavior.
-
-## 20. Lifecycle failure recovery
-
-If lifecycle fails before finalization:
-- keep journal at TARGET_PUBLISHED;
-- new SourceVersion remains unbound;
-- return LIFECYCLE_PENDING/FAILED with recoverable detail.
-
-Retry same publication material:
-- target commit idempotent;
-- lifecycle resumes staged state or returns finalized idempotent state.
-
-No second revision id.
-
-## 21. Resolve final lifecycle snapshot on replay
-
-LifecyclePublishResult may return:
-- version_id present;
-- snapshot_id=None
-for FINALIZED idempotent replay.
-
-Therefore:
-if snapshot_id is None and version_id exists:
-- VersionStore.get_version(version_id);
-- recover its snapshot_id.
-
-Require final version + snapshot before SourceVersion bind.
-
-## 22. Final version-chain validation
-
-Before bind require:
-- final lifecycle version exists/published;
+Require:
+- final version exists/published;
+- final version.snapshot_id == resolved final snapshot id;
 - final snapshot exists;
-- fresh final_version.prior_version_id == target_version_id.
+- final version prior == V_target for fresh publication.
 
-For finalized retry:
-preserve and verify recorded target/final chain.
-
-Validate final snapshot preserves target document content identity:
+Load V_target snapshot and compare content-preserving fields exactly:
+- ref_id;
+- source_fingerprint;
 - structural_stage_id;
 - assertion_hashes;
+- usdo_hashes;
+- usdo_record_ids;
 - vector_ids;
-- USDO ids/hashes;
-and adds lifecycle identity.
+- metadata_hash;
+- decision_hashes.
 
-Do not require final snapshot.ref_id == prior ref; frozen lifecycle intentionally preserves the target base manifest identity.
+Final lifecycle fields may differ/add lifecycle identities.
 
-## 23. Step C — bind new SourceVersion
+If target scientific/storage identity changes unexpectedly => CONFLICT, no bind.
 
-Only AFTER lifecycle finalization:
+## 14. Correct post-bind recovery
 
-bind:
-new_source_version_id
-→ final lifecycle version_id
-→ final lifecycle snapshot_id
+At publish entry, if new SourceVersion is already bound:
 
-Never bind to target intermediate version.
+### journal FINALIZED
+exact final version/snapshot -> idempotent FINALIZED.
 
-Prior SourceVersion binding remains unchanged.
+### journal LIFECYCLE_PUBLISHED
+if binding exactly equals record.final_version_id/final_snapshot_id:
+- this is crash-after-bind-before-journal-ack;
+- update journal FINALIZED;
+- return FINALIZED resumed/idempotent.
 
-Exact rebind => idempotent.
-Different existing binding => CONFLICT.
+### any other state/binding
+CONFLICT.
 
-## 24. Crash after lifecycle before bind
+Do this before rejecting pre-existing binding.
 
-Required retry:
-- target commit idempotent;
-- lifecycle returns finalized/idempotent, possibly snapshot_id=None;
-- resolve final snapshot from VersionStore;
-- bind_source_version completes;
-- FINALIZED.
+## 15. Failure-injectable publication journal
 
-## 25. Crash after bind before journal FINALIZED ack
+Enhance InMemoryRevisionPublicationStore with optional deterministic failure injection or a focused test wrapper.
 
-On retry:
-- journal may still be LIFECYCLE_PUBLISHED;
-- new SourceVersion may already be bound to recorded final version/snapshot.
+Must test failure AFTER the final bind side effect but BEFORE/ON journal FINALIZED persistence.
 
-Treat exact binding as idempotent and finalize journal.
+Retry must complete.
 
-Do not reject an exact post-side-effect retry.
+Do not weaken monotonic phase semantics.
 
-## 26. Final invariants
+## 16. Lineage exactness
 
-FINALIZED requires:
-- new SourceVersion bound to final lifecycle KB version;
-- final version != target intermediate version;
-- final version current on no-interleaving happy path;
-- prior SourceVersion binding unchanged;
-- prior P2J ref SUPERSEDED/ineligible currently;
-- new journal ref ACTIVE/eligible;
-- prior archived/superseded assertions ineligible;
-- replacement assertions not lifecycle-blocked;
-- outbox events emitted once;
-- historical prior version still resolvable.
+_validate_lineage additionally requires:
+- prior.ref_id == package.prior_ref_id;
+- new.ref_id == package.new_ref_id;
+- new.relation == package.relation;
+- prior/new work match package.work_id;
+- new.prior_source_version_id == prior.source_version_id;
+- prior binding == package prior binding.
 
-## 27. Empty/non-publishable target
+Any contradiction => CONFLICT before side effects.
 
-If target AssertionSet cannot pass existing DocumentCommitCoordinator publishability:
-- fail closed;
-- do not apply prior lifecycle transitions;
-- do not bind new SourceVersion.
+## 17. Real E2E fixture
 
-Do not invent a metadata-only commit path in Phase 5.3.
+Build at least one true async P2J E2E using:
 
-## 28. Tests
+- InMemorySourceVersionRegistry;
+- real KnowledgeCurator with existing in-memory repository/ontology adapters;
+- await KnowledgeCurator.curate(...) or curate + construct real CommitRequest;
+- real InMemoryDocumentCommitStore;
+- real InMemoryStructuralKnowledgeStore;
+- real InMemoryUSDOStore;
+- real InMemoryVectorIndex;
+- shared real InMemoryVersionStore;
+- real DocumentCommitCoordinator;
+- real LifecycleRevisionCoordinator;
+- RevisionPublicationCoordinator.
+
+Do not pre-create V_target manually.
+V_target must come from the real document commit.
+
+Prior source binding and VersionStore history must be mutually consistent in the same VersionStore fixture.
+
+## 18. Real E2E assertions
+
+Verify:
+- target commit publishes V_target;
+- lifecycle publishes V_final;
+- V_final.prior_version_id == V_target;
+- final snapshot preserves target content;
+- new SourceVersion -> V_final/S_final;
+- prior binding unchanged;
+- prior preprint current visibility false;
+- new journal visibility true;
+- old assertion visibility false;
+- current final version correct;
+- historical prior version remains resolvable;
+- replay exact request produces no duplicate version/event.
+
+## 19. Recovery tests with real components
+
+At least:
+1. real pending vector/failure recovery using frozen FailureInjection;
+2. lifecycle failure after target commit, retry succeeds;
+3. stale-base interleaving fails closed;
+4. bind failure before side effect, retry succeeds;
+5. bind succeeds then journal FINALIZED persistence fails, retry finalizes;
+6. lifecycle finalized replay with snapshot_id omitted path recovers snapshot;
+7. existing published target same material resumes;
+8. existing published target same IDs but changed assertion material conflicts.
+
+## 20. Approval/material tests
+
+Add:
+- request None -> no side effect;
+- source/ref/fingerprint mismatch -> no side effect;
+- metadata title/DOI/stable mismatch -> no side effect;
+- package/request assertion material mismatch -> no side effect;
+- request.report pending/reject/return/supersede -> no side effect;
+- changing metadata after approval changes scope hash;
+- changing decision after approval changes scope hash;
+- changing scientific value with same assertion ID changes scope hash.
+
+## 21. Baselines
 
 Maintain:
-- knowledge_curator >= 475 passed / 0 failed;
-- integration/dsh >= 90 passed / 0 failed.
+- all current knowledge_curator tests;
+- integration/dsh >= 90 / 0 failed.
 
-Add at least:
+Expected knowledge_curator count >= 489, likely substantially higher.
 
-### pre-side-effect validation
-1. package.requires_manual_review -> no commit;
-2. missing approval -> no commit;
-3. rejected approval -> no commit;
-4. approval wrong package -> no commit;
-5. approval wrong scope -> no commit;
-6. target source ref/fingerprint mismatch -> no commit;
-7. target assertion material mismatch -> no commit;
-8. curation PENDING/REJECT/RETURN/SUPERSEDE -> no commit.
+## 22. Deliverable
 
-### target commit
-9. valid target commit publishes V_target;
-10. PENDING_VECTOR -> no lifecycle/no bind;
-11. PENDING_FINALIZE -> no lifecycle/no bind;
-12. existing target commit same material resumes/idempotent;
-13. existing target commit different admitted material -> conflict.
-
-### lifecycle
-14. draft base == V_target;
-15. lifecycle subject == prior ref;
-16. prior fingerprint used for lifecycle record;
-17. explicit approval evidence persisted;
-18. stale target base due interleaving -> fail closed/no bind;
-19. lifecycle failure leaves new SourceVersion unbound;
-20. retry resumes lifecycle without duplicate events/version.
-
-### final bind/recovery
-21. V_final != V_target;
-22. V_final.prior_version_id == V_target;
-23. new SourceVersion binds V_final, not V_target;
-24. prior binding unchanged;
-25. lifecycle finalized then bind fails once -> retry completes;
-26. finalized lifecycle snapshot_id=None -> recover snapshot from VersionStore;
-27. bind succeeds then journal final update fails -> retry finalizes idempotently;
-28. conflicting pre-existing new binding -> conflict.
-
-### visibility / E2E
-29. P2J prior ref becomes superseded/ineligible;
-30. new journal ref remains eligible;
-31. old assertion ineligible, replacement not lifecycle-blocked;
-32. historical prior KB version remains resolvable;
-33. exact full replay returns FINALIZED idempotent with no duplicate events.
-
-## 29. Deliverables
+Update existing Phase 5.3 implementation, do not create a new architecture.
 
 Create:
-- knowledge_curator/schemas/revision_publication.py
-- knowledge_curator/ports/revision_publication_store.py
-- knowledge_curator/adapters/in_memory_revision_publication.py
-- knowledge_curator/core/revision_publication.py
-- Phase 5.3 tests
-- results/phase-05-3-executor-report.md
-
-No public MCP tool yet.
-No external DB/event transport selection.
-
-## 30. Report
+results/phase-05-3-r1-executor-report.md
 
 Report:
-- Phase 5.3 implementation CODE SHA;
-- approval-before-side-effects: PASS/FAILED;
-- exact target material gate: PASS/FAILED;
-- curation gate: PASS/FAILED;
-- target commit recovery: PASS/FAILED;
-- lifecycle recovery: PASS/FAILED;
-- final source-version binding: PASS/FAILED;
-- bind-after-lifecycle recovery: PASS/FAILED;
-- stale-base fail-closed: PASS/FAILED;
-- P2J visibility E2E: PASS/FAILED;
-- idempotent full replay: PASS/FAILED;
+- real async DocumentCommitCoordinator integration: PASS/FAILED;
+- exact CommitRequest/package gate: PASS/FAILED;
+- approval scope binds source/metadata/report: PASS/FAILED;
+- mandatory curation gate: PASS/FAILED;
+- exact existing-commit material guard: PASS/FAILED;
+- target version/snapshot validation: PASS/FAILED;
+- final snapshot content preservation: PASS/FAILED;
+- post-bind journal recovery: PASS/FAILED;
+- real P2J E2E: PASS/FAILED;
+- real full replay idempotency: PASS/FAILED;
 - integration tests;
 - knowledge_curator tests;
 - public contracts changed: NO;
 - origin/main SHA;
 - CONTRACT_GAPS changes.
 
-## 31. Completion
+## 23. Completion
 
 Update status.json:
-- phase = 5.3
+- phase = 5.3-R1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-3-executor-report.md
+- result_expected = results/phase-05-3-r1-executor-report.md
 
 Push main and STOP.
 
-Do not start Phase 5.4.
-Planner performs final module acceptance/freeze after reviewing Phase 5.3.
+Do not create Phase 5.4.
+Planner performs final acceptance/freeze immediately after R1 review.
