@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.0-R2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -23,7 +23,7 @@
     "no public lifecycle mutation MCP tool",
     "do not start Phase 5.1 until Planner review"
   ],
-  "latest_commit": "b7793b60d22dc327879e7ca169e95a286d15a0a9",
+  "latest_commit": "175cc643dacc5e887baab746c9a212bb7b37e579",
   "planner_review": "planner/phase-05-0-r1-review.md",
-  "live_smoke": "PHASE50_R1_MOSTLY_PASS_R2_RETRIEVAL_LIFECYCLE_CORRECTNESS"
+  "live_smoke": "PHASE50_R2_ALL_GAPS_PASS"
 }
