@@ -1,0 +1,74 @@
+{
+  "raw_mcp_tools": "PASS",
+  "mounted_dsh_tool_discovery": "PASS",
+  "baseline_control_status": "EMPTY_RESPONSE",
+  "evidence_live_status": "FAILED",
+  "retrieve_toolcall": "FAILED",
+  "retrieve_linked_result": "FAILED",
+  "direct_vs_dsh_evidence_identity_match": "NOT_RUN_ENV",
+  "validate_toolcall": "FAILED",
+  "validate_linked_result": "FAILED",
+  "direct_vs_dsh_policy_match": "NOT_RUN_ENV",
+  "mounted_dsh_retrieve_evidence_live": "NOT_RUN_ENV",
+  "mounted_dsh_validate_retrieved_claims_live": "NOT_RUN_ENV",
+  "external_runtime_unavailable": true,
+  "classification": "C_EXTERNAL_RUNTIME_UNAVAILABLE",
+  "live_attempts": {
+    "retrieve": 3,
+    "validate": 0
+  },
+  "dsh_src": "C:\\dsh-src",
+  "credential_available": true,
+  "secret_leaked": false,
+  "errors": [],
+  "warnings": [],
+  "live": {
+    "baseline_returncode": 1,
+    "baseline_stdout_tail": "\n\u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.8 \u001b[39m\u001b[90mC:/dsh-src\u001b[39m\n\n\u001b[90mstdout\u001b[2m | lane324_kc_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mknowledge-curator mounted Agent strict MCP round-trip\n\u001b[22m\u001b[39mKC_ROUNDTRIP {\"composed_preset\":\"knowledge-curator\",\"tool_visible\":true,\"event_types\":[\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"],\"tool_call_count\":0,\"tool_result_count\":0,\"tool_result_summary\":{},\"final_response_summary\":{},\"direct_core_summary\":{\"status\":\"successful\",\"action\":\"accept\",\"confidence\":\"medium\"},\"abc_match\":false,\"tool_result_evidence\":{\"hasOk\":false,\"hasRef\":false,\"hasReport\":false},\"credential_available\":true,\"secret_leaked\":false}\n\n \u001b[31m❯\u001b[39m lane324_kc_roundtrip.e2e.ts \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m | \u001b[22m\u001b[31m1 failed\u001b[39m\u001b[2m)\u001b[22m\u001b[33m 36454\u001b[2mms\u001b[22m\u001b[39m\n\u001b[31m   \u001b[31m×\u001b[31m knowledge-curator mounted Agent strict MCP round-trip\u001b[39m\u001b[33m 36452\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[31m1 failed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[31m1 failed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m   Start at \u001b[22m 09:14:50\n\u001b[2m   Duration \u001b[22m 37.88s\u001b[2m (transform 2.43s, setup 0ms, import 205ms, tests 36.45s, environment 0ms)\u001b[22m\n\n",
+    "baseline_stderr_tail": "\n\u001b[31m⎯⎯⎯⎯⎯⎯⎯\u001b[39m\u001b[1m\u001b[41m Failed Tests 1 \u001b[49m\u001b[22m\u001b[31m⎯⎯⎯⎯⎯⎯⎯\u001b[39m\n\n\u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m lane324_kc_roundtrip.e2e.ts\u001b[2m > \u001b[22mknowledge-curator mounted Agent strict MCP round-trip\n\u001b[31m\u001b[1mAssertionError\u001b[22m: expected +0 to be 1 // Object.is equality\u001b[39m\n\n\u001b[32m- Expected\u001b[39m\n\u001b[31m+ Received\u001b[39m\n\n\u001b[32m- 1\u001b[39m\n\u001b[31m+ 0\u001b[39m\n\n\u001b[36m \u001b[2m❯\u001b[22m lane324_kc_roundtrip.e2e.ts:\u001b[2m191:34\u001b[22m\u001b[39m\n    \u001b[90m189|\u001b[39m     \u001b[35mawait\u001b[39m web\u001b[33m.\u001b[39m\u001b[34mclose\u001b[39m()\u001b[33m.\u001b[39m\u001b[35mcatch\u001b[39m(() \u001b[33m=>\u001b[39m undefined)\n    \u001b[90m190|\u001b[39m   }\n    \u001b[90m191|\u001b[39m   \u001b[34mexpect\u001b[39m(report\u001b[33m.\u001b[39mtool_call_count)\u001b[33m.\u001b[39m\u001b[34mtoBe\u001b[39m(\u001b[34m1\u001b[39m)\n    \u001b[90m   |\u001b[39m                                  \u001b[31m^\u001b[39m\n    \u001b[90m192|\u001b[39m   \u001b[34mexpect\u001b[39m(report\u001b[33m.\u001b[39mtool_result_count)\u001b[33m.\u001b[39m\u001b[34mtoBe\u001b[39m(\u001b[34m1\u001b[39m)\n    \u001b[90m193|\u001b[39m   \u001b[34mexpect\u001b[39m(report\u001b[33m.\u001b[39mabc_match)\u001b[33m.\u001b[39m\u001b[34mtoBe\u001b[39m(\u001b[35mtrue\u001b[39m)\n\n\u001b[31m\u001b[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\u001b[22m\u001b[39m\n\n",
+    "evidence_returncode": 1,
+    "evidence_stdout_tail": "\n\u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.8 \u001b[39m\u001b[90mC:/dsh-src\u001b[39m\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mstrict mounted Agent evidence live acceptance\n\u001b[22m\u001b[39mLANE325_DISCOVERY_OK=1\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mstrict mounted Agent evidence live acceptance\n\u001b[22m\u001b[39mLANE325_RETRIEVE_ATTEMPT=1 calls=0 results=0 types=[\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"]\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mstrict mounted Agent evidence live acceptance\n\u001b[22m\u001b[39mLANE325_RETRIEVE_ATTEMPT=2 calls=0 results=0 types=[\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"]\n\n\u001b[90mstdout\u001b[2m | lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22m\u001b[2mstrict mounted Agent evidence live acceptance\n\u001b[22m\u001b[39mLANE325_RETRIEVE_ATTEMPT=3 calls=0 results=0 types=[\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"]\nLANE325_RETRIEVE_FAILED attempts=3 types=[\"permission/preset\",\"sandbox/mode\",\"approval/policy\",\"agent/inbox/spliced\",\"turn/start\",\"step/start\",\"system/message\",\"user/message\",\"request/header\",\"request/context\",\"session/title\",\"assistant/attempt\",\"step/end\",\"turn/end\"]\n\n \u001b[31m❯\u001b[39m lane325_kc_evidence_roundtrip.e2e.ts \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m | \u001b[22m\u001b[31m1 failed\u001b[39m\u001b[2m)\u001b[22m\u001b[33m 13412\u001b[2mms\u001b[22m\u001b[39m\n\u001b[31m   \u001b[31m×\u001b[31m strict mounted Agent evidence live acceptance\u001b[39m\u001b[33m 13411\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[31m1 failed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[31m1 failed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m   Start at \u001b[22m 09:15:29\n\u001b[2m   Duration \u001b[22m 13.93s\u001b[2m (transform 751ms, setup 0ms, import 104ms, tests 13.41s, environment 0ms)\u001b[22m\n\n",
+    "evidence_stderr_tail": "\n\u001b[31m⎯⎯⎯⎯⎯⎯⎯\u001b[39m\u001b[1m\u001b[41m Failed Tests 1 \u001b[49m\u001b[22m\u001b[31m⎯⎯⎯⎯⎯⎯⎯\u001b[39m\n\n\u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m lane325_kc_evidence_roundtrip.e2e.ts\u001b[2m > \u001b[22mstrict mounted Agent evidence live acceptance\n\u001b[31m\u001b[1mError\u001b[22m: retrieve_evidence: no linked structured tool result after bounded attempts\u001b[39m\n\u001b[36m \u001b[2m❯\u001b[22m lane325_kc_evidence_roundtrip.e2e.ts:\u001b[2m206:13\u001b[22m\u001b[39m\n    \u001b[90m204|\u001b[39m     \u001b[35mif\u001b[39m (\u001b[33m!\u001b[39mretrieveLinked) {\n    \u001b[90m205|\u001b[39m       console.log(redact(`LANE325_RETRIEVE_FAILED attempts=${attempts}…\n    \u001b[90m206|\u001b[39m       throw new Error('retrieve_evidence: no linked structured tool re…\n    \u001b[90m   |\u001b[39m             \u001b[31m^\u001b[39m\n    \u001b[90m207|\u001b[39m     }\n    \u001b[90m208|\u001b[39m\n\n\u001b[31m\u001b[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\u001b[22m\u001b[39m\n\n"
+  },
+  "strict_live_harness": "PASS",
+  "live_validation_blocked_external": true,
+  "final_status": "LIVE_VALIDATION_BLOCKED_EXTERNAL",
+  "markers_required": [
+    "LANE325_DISCOVERY_OK=1",
+    "LANE325_RETRIEVE_TOOLCALL_OK=1",
+    "LANE325_RETRIEVE_RESULT_OK=1",
+    "LANE325_RETRIEVE_IDENTITY_MATCH=1",
+    "LANE325_VALIDATE_TOOLCALL_OK=1",
+    "LANE325_VALIDATE_RESULT_OK=1",
+    "LANE325_VALIDATE_POLICY_MATCH=1",
+    "LANE325_LIVE_COMPLETE=1"
+  ],
+  "markers_seen": [
+    "LANE325_DISCOVERY_OK=1",
+    "LANE325_RETRIEVE_ATTEMPT=1",
+    "LANE325_RETRIEVE_ATTEMPT=2",
+    "LANE325_RETRIEVE_ATTEMPT=3",
+    "LANE325_RETRIEVE_FAILED"
+  ],
+  "test_counts": {
+    "knowledge_curator": 311,
+    "integration_dsh": 90
+  },
+  "baseline_control_detail": {
+    "lane": "lane324_kc_roundtrip.e2e.ts",
+    "tool_visible": true,
+    "tool_call_count": 0,
+    "tool_result_count": 0,
+    "event_tail": [
+      "assistant/attempt",
+      "turn/end"
+    ]
+  },
+  "evidence_lane_detail": {
+    "lane": "lane325_kc_evidence_roundtrip.e2e.ts",
+    "discovery_ok": true,
+    "retrieve_attempts": 3,
+    "retrieve_tool_calls": 0,
+    "validate_reached": false
+  }
+}
