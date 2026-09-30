@@ -206,6 +206,40 @@ def _make_request(pkg, new_sfp="fp-j"):
     )
 
 
+def _make_curated_request(pkg, new_sfp="fp-j"):
+    """Build CommitRequest from the real KnowledgeCurator pipeline."""
+    assertions = list(pkg.target_assertions)
+    aset = AssertionSet(
+        ref_id=pkg.new_ref_id,
+        metadata=DocumentMetadata(
+            title="Journal Study", authors=["A"], year=2024,
+            source="Journal", doi="10.1000/j.1", stable_id="J:1",
+        ),
+        assertions=assertions,
+        quality_grade=QualityGrade.B,
+    )
+    curator = KnowledgeCurator(
+        repository=InMemoryKnowledgeRepository(),
+        ontology=SimpleOntologyService(),
+        mechanism_validator=FakeMechanismValidator(),
+    )
+    report = _run(curator.curate(aset, context={"report_id": "R-REAL-P2J"}))
+    assert report.source_ref_id == pkg.new_ref_id
+    assert report.returned_upstream_count == 0
+    assert all(
+        decision.action in (CurationAction.ACCEPT, CurationAction.DOWNGRADE)
+        for decision in report.decisions
+    )
+    assert report.trace["pipeline"] == [
+        "completeness", "conflict_detection", "quality_evaluation", "curation_decision"
+    ]
+    return CommitRequest(
+        source=SourceIdentity(ref_id=pkg.new_ref_id, source_fingerprint=new_sfp),
+        assertion_set=aset,
+        report=report,
+    )
+
+
 def _approval(pkg, request):
     scope = compute_publication_scope_hash(pkg, request)
     return RevisionApproval(
@@ -336,7 +370,7 @@ def test_real_p2j_e2e():
     reg.bind_source_version(p1.source_version_id, v1.version_id, s1.snapshot_id)
 
     pkg = _build_pkg(reg, p1, j1, wid)
-    req = _make_request(pkg)
+    req = _make_curated_request(pkg)
     appr = _approval(pkg, req)
 
     journal = InMemoryRevisionPublicationStore()
