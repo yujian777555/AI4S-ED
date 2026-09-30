@@ -318,6 +318,41 @@ def test_existing_published_missing_manifest_fails_closed():
     assert "manifest" in (err.last_error or "")
 
 
+def test_existing_manifest_metadata_hash_mismatch_conflict():
+    from knowledge_curator.core.revision_publication import RevisionPublicationCoordinator
+    from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
+    from knowledge_curator.adapters.in_memory_source_versions import InMemorySourceVersionRegistry
+    from knowledge_curator.adapters.in_memory_commit import InMemoryVersionStore, FailureInjection
+    from knowledge_curator.schemas.commit import SnapshotManifest
+
+    pkg, req = _make_pkg_req_for_guard()
+    versions = InMemoryVersionStore(failures=FailureInjection())
+    coord = RevisionPublicationCoordinator(
+        publication_store=InMemoryRevisionPublicationStore(),
+        source_registry=InMemorySourceVersionRegistry(),
+        version_store=versions,
+        lifecycle_coordinator=None,
+        document_commit_coordinator=None,
+        document_commit_store=None,
+    )
+    mh = coord._expected_metadata_hash(req)
+    manifest = SnapshotManifest(
+        ref_id="REF-N", source_fingerprint="fp",
+        assertion_hashes=[], usdo_hashes=[], vector_ids=[],
+        metadata_hash="WRONG", decision_hashes=[],
+    )
+    record = FakeCommitRecord(
+        [FakeAdmitted(_assertion("J-A1", value=2.0))],
+        metadata_hash=mh,
+        manifest=manifest,
+    )
+    coord._commit_store = FakeStore(record)
+    err = coord._existing_commit_guard(pkg, req)
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "manifest metadata_hash" in (err.last_error or "")
+
+
 def test_existing_published_manifest_assertion_hashes_mismatch_conflict():
     from knowledge_curator.core.revision_publication import RevisionPublicationCoordinator
     from knowledge_curator.adapters.in_memory_revision_publication import InMemoryRevisionPublicationStore
@@ -462,6 +497,46 @@ def test_post_target_store_record_missing_fails_closed():
     assert err is not None
     assert err.status.value == "failed"
     assert "record missing" in (err.last_error or "")
+
+
+def test_post_target_store_unreadable_fails_closed():
+    coord, pkg, req, record, new = _post_target_case(lambda rec, ver, snap: rec)
+
+    class BrokenStore:
+        def find_by_key(self, ref, fp):
+            raise RuntimeError("store broken after commit")
+
+    coord._commit_store = BrokenStore()
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "failed"
+    assert "store read failed" in (err.last_error or "")
+
+
+def test_post_target_nonpublished_phase_conflict():
+    from knowledge_curator.schemas.commit import CommitPhase
+
+    def mutate(rec, ver, snap):
+        rec.phase = CommitPhase.VECTOR_COMMITTED
+        return rec
+
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "phase" in (err.last_error or "")
+
+
+def test_post_target_store_identity_mismatch_conflict():
+    def mutate(rec, ver, snap):
+        rec.source_fingerprint = "fp-wrong"
+        return rec
+
+    coord, pkg, req, record, new = _post_target_case(mutate)
+    err = _run(coord._run_target_commit(pkg, req, record, new))
+    assert err is not None
+    assert err.status.value == "conflict"
+    assert "source_fingerprint" in (err.last_error or "")
 
 
 def test_post_target_version_mismatch_conflict():
