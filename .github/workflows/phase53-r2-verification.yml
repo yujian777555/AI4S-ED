@@ -16,7 +16,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest anyio mcp pyyaml numpy
+          python -m pip install pytest anyio mcp pyyaml numpy jieba faiss-cpu deepseek-harness-sdk
       - name: Run knowledge_curator suite
         run: python -m pytest knowledge_curator/tests -q
 
@@ -30,6 +30,6 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest anyio mcp pyyaml numpy
+          python -m pip install pytest anyio mcp pyyaml numpy jieba faiss-cpu deepseek-harness-sdk
       - name: Run integration/dsh suite
         run: python -m pytest integration/dsh/tests -q
