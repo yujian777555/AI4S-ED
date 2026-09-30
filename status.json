@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -24,7 +24,7 @@
     "no public cross-team schema changes; CG-019 and CG-020 remain compatibility boundaries",
     "do not start Phase 5.3 until Planner review"
   ],
-  "latest_commit": "cc61612cf621d8f57b2f6f1d93a30d65b1dc9245",
+  "latest_commit": "6638077519f447cab8c387e268db3460bbbc6adc",
   "planner_review": "planner/phase-05-1-r3-review.md",
-  "live_smoke": "PHASE51_SOURCE_IDENTITY_FROZEN_PHASE52_DELTA_PLANNING"
+  "live_smoke": "PHASE52_CONTENT_DELTA_REVISION_PACKAGE_PASS"
 }
