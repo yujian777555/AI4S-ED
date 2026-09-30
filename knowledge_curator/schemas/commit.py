@@ -99,13 +99,18 @@ class SnapshotManifest:
     # Internal temporary storage identities for version-scoped resolution
     structural_stage_id: str = ""
     usdo_record_ids: list[str] = field(default_factory=list)
+    # Phase 5.0: lifecycle fields. Backward compatibility — only included in
+    # stable_payload when non-empty so old manifests keep their historical hash.
+    lifecycle_hashes: list[str] = field(default_factory=list)
+    lifecycle_record_ids: list[str] = field(default_factory=list)
 
     def stable_payload(self) -> dict[str, Any]:
         """Canonical payload used for deterministic content hashing.
 
         Excludes ephemeral identifiers (random report_id, timestamps).
+        Lifecycle fields are omitted when empty to preserve Phase 2 hashes.
         """
-        return {
+        payload: dict[str, Any] = {
             "ref_id": self.ref_id,
             "source_fingerprint": self.source_fingerprint,
             "assertion_hashes": sorted(self.assertion_hashes),
@@ -114,6 +119,11 @@ class SnapshotManifest:
             "metadata_hash": self.metadata_hash,
             "decision_hashes": sorted(self.decision_hashes),
         }
+        if self.lifecycle_hashes:
+            payload["lifecycle_hashes"] = sorted(self.lifecycle_hashes)
+        if self.lifecycle_record_ids:
+            payload["lifecycle_record_ids"] = sorted(self.lifecycle_record_ids)
+        return payload
 
 
 @dataclass

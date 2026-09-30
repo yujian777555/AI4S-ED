@@ -1,0 +1,45 @@
+{
+  "phase": "5.0",
+  "scope": "docs/03 §7 lifecycle core",
+  "lifecycle_models_store": "PASS",
+  "revision_draft_risk_gate": "PASS",
+  "retraction_soft_archive": "PASS",
+  "corrigendum_supersede": "PASS",
+  "version_publication": "PASS",
+  "rollback_visibility": "PASS",
+  "historical_preservation": "PASS",
+  "retrieval_eligibility_integration": "PASS",
+  "training_eligibility": "PASS",
+  "event_outbox": "PASS",
+  "backward_manifest_hash_compatibility": "PASS",
+  "failure_atomicity": "PASS",
+  "scenario": {
+    "V1_active": true,
+    "V2_retracted": true,
+    "current_retrieval_excludes_ref": true,
+    "rollback_V1_restores_visibility": true,
+    "V2_history_preserved": true
+  },
+  "event_types": [
+    "kb_document_retracted",
+    "kb_assertions_archived",
+    "kb_assertions_superseded",
+    "kb_revision_published",
+    "kb_version_rolled_back",
+    "kb_corrigendum_published"
+  ],
+  "cg018_scope": "internal LifecycleEvent + Outbox Port only; no Kafka/Redis/HTTP transport",
+  "not_implemented": [
+    "Crossref/RetractionWatch crawler",
+    "publisher polling",
+    "04/05/07 consumers",
+    "external event bus",
+    "arXiv-journal fuzzy matching",
+    "final QA generator"
+  ],
+  "test_counts": {
+    "knowledge_curator": 329,
+    "integration_dsh": 90
+  },
+  "public_contracts_changed": false
+}

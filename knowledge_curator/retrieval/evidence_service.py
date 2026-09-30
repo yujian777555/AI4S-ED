@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from knowledge_curator.ports.retrieval import (
     KeywordSearchPort,
@@ -57,6 +57,26 @@ class EvidenceRequest:
     integration_fixture: bool = False
 
 
+class _EligibilityFilteredPort:
+    """Pre-ranking filter: drop candidates whose ref is not lifecycle-eligible."""
+
+    def __init__(self, inner: Any, visibility: Any, at_version_id: Optional[str] = None) -> None:
+        self._inner = inner
+        self._visibility = visibility
+        self._at_version_id = at_version_id
+
+    def search(self, query: RetrievalQuery) -> list[Any]:
+        cands = self._inner.search(query)
+        out = []
+        for c in cands:
+            elig = self._visibility.document_eligibility(
+                c.chunk.ref_id, at_version_id=self._at_version_id
+            )
+            if elig.visible_for_retrieval:
+                out.append(c)
+        return out
+
+
 class EvidenceRetrievalService:
     """Compose frozen retrieval into an EvidenceBundle."""
 
@@ -68,6 +88,7 @@ class EvidenceRetrievalService:
         reranker: Optional[RerankerPort] = None,
         retrieval_config: Optional[RetrievalConfig] = None,
         default_evidence_type: Optional[EvidenceType] = EvidenceType.LITERATURE,
+        lifecycle_visibility: Optional[Any] = None,
     ) -> None:
         self._vector_port = vector_port
         self._keyword_port = keyword_port
@@ -78,6 +99,7 @@ class EvidenceRetrievalService:
             top_k=5,
         )
         self._default_evidence_type = default_evidence_type
+        self._lifecycle_visibility = lifecycle_visibility
 
     def retrieve(self, request: EvidenceRequest) -> EvidenceBundle:
         if self._vector_port is None and self._keyword_port is None:
@@ -101,6 +123,27 @@ class EvidenceRetrievalService:
         )
 
         allowed = set(request.allowed_ref_ids) if request.allowed_ref_ids else None
+        # Lifecycle composition (Phase 5.0): restrict allowed refs BEFORE frozen
+        # hybrid_retrieve so retracted refs cannot enter candidates at all.
+        vector_port = self._vector_port
+        keyword_port = self._keyword_port
+        if self._lifecycle_visibility is not None:
+            if allowed is not None:
+                eligible = set(
+                    self._lifecycle_visibility.eligible_ref_ids(list(allowed))
+                )
+                allowed = eligible if eligible else set()
+            else:
+                vector_port = (
+                    _EligibilityFilteredPort(self._vector_port, self._lifecycle_visibility)
+                    if self._vector_port is not None
+                    else None
+                )
+                keyword_port = (
+                    _EligibilityFilteredPort(self._keyword_port, self._lifecycle_visibility)
+                    if self._keyword_port is not None
+                    else None
+                )
 
         all_hits: list[RankedHit] = []
         diagnostics: list[dict] = []
@@ -125,8 +168,8 @@ class EvidenceRetrievalService:
             )
             res = hybrid_retrieve(
                 q,
-                vector_port=self._vector_port,
-                keyword_port=self._keyword_port,
+                vector_port=vector_port,
+                keyword_port=keyword_port,
                 reranker=self._reranker,
                 config=cfg,
             )
