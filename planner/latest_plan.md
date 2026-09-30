@@ -1,4 +1,4 @@
-# Phase 5.1 Plan — §7.1 Incremental Intake Identity & Source-Version Family Registry
+# Phase 5.1-R1 Plan — Identity Precedence, Explicit Lineage, Registry Invariants
 
 Planner: ChatGPT
 Executor: Kimi/Codex
@@ -6,408 +6,213 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Implement the knowledge_curator-owned identity/version-comparison gate for docs/03 §7.1.
+Close the five identity correctness blockers in:
+planner/phase-05-1-review.md
 
-Given an already-discovered source candidate from upstream, deterministically classify it as:
-- EXACT_REPLAY;
-- SAME_WORK_NEW_VERSION;
-- NEW_WORK;
-- REVIEW_REQUIRED / IDENTITY_CONFLICT.
+Do not start Phase 5.2.
 
-Record append-only work/version lineage so preprint and journal versions can belong to one work family.
+## 1. Freeze accepted behavior
 
-This phase does NOT discover literature.
+Do not change:
+- safe DOI/title/stable-id normalization rules;
+- title-only REVIEW_REQUIRED behavior;
+- no-fuzzy matching policy;
+- Phase 5.0 lifecycle semantics;
+- public schemas/contracts;
+- bind-only-after-published behavior except for direct bug fixes.
 
-## 1. Boundaries
+## 2. Cross-identifier checks before positive returns
 
-Do NOT:
-- crawl Crossref, arXiv, journal TOCs, RetractionWatch, publisher sites or citation networks;
-- implement lit_researcher;
-- implement fuzzy semantic title/author matching;
-- automatically claim a preprint and journal article are the same work from embedding similarity;
-- re-extract changed paragraphs yet;
-- archive/supersede preprint assertions yet;
-- change Phase 5.0 lifecycle semantics;
-- add external event transport;
-- create a public cross-team schema.
+In prepare(), compute:
+- doi_works;
+- stable_works;
+- title_works.
 
-CG-019 remains an internal compatibility boundary.
+Before returning SAME_WORK_NEW_VERSION from DOI or stable_id:
 
-## 2. Internal source identity models
-
-Add INTERNAL temporary models, recommended:
-knowledge_curator/schemas/source_versions.py
-
-Recommended enums:
-
-SourceKind:
-- PREPRINT
-- JOURNAL
-- CONFERENCE
-- STANDARD
-- PATENT
-- OTHER
-
-IntakeDisposition:
-- EXACT_REPLAY
-- SAME_WORK_NEW_VERSION
-- NEW_WORK
-- REVIEW_REQUIRED
-- IDENTITY_CONFLICT
-
-VersionRelation:
-- REVISION_OF
-- PREPRINT_TO_JOURNAL
-- CORRECTED_VERSION
-- EXPLICIT_SAME_WORK
-- NONE
-
-Models should include at least:
-
-SourceCandidate:
-- ref_id;
-- source_fingerprint;
-- DocumentMetadata-compatible title/authors/year/source/doi/stable_id;
-- source_kind;
-- explicit_work_id optional;
-- explicit_prior_version_id optional;
-- explicit_relation optional;
-- trace_id;
-- provenance_id.
-
-WorkRecord:
-- work_id;
-- created identity evidence;
-- version ids / append order or equivalent append-only representation.
-
-SourceVersionRecord:
-- source_version_id;
-- work_id;
-- ref_id;
-- source_fingerprint;
-- normalized identifier evidence;
-- source_kind;
-- relation;
-- prior_source_version_id optional;
-- kb_version_id optional;
-- snapshot_id optional;
-- trace_id/provenance_id;
-- append sequence.
-
-Do not overload ref_id as the work-family identity.
-
-## 3. Deterministic normalization
-
-Implement small pure functions.
-
-### DOI
-Canonicalize only safe syntax:
-- trim whitespace;
-- remove leading doi:;
-- remove https://doi.org/ or http://doi.org/ or http(s)://dx.doi.org/ prefix;
-- casefold.
-
-Do not fuzzy-correct malformed DOI strings.
-
-### title
-For matching only:
-- Unicode NFKC;
-- trim;
-- collapse repeated whitespace;
-- casefold.
-
-Do NOT remove all punctuation or words.
-Do NOT use embeddings/edit distance in Phase 5.1.
-
-### stable_id
-Trim surrounding whitespace.
-Do not invent provider-specific normalization rules unless the provider namespace is explicit.
-
-Preserve raw metadata alongside normalized match keys.
-
-## 4. SourceVersionRegistry Port
-
-Create an INTERNAL Port with operations sufficient for:
-- lookup exact ref_id + fingerprint;
-- lookup by normalized DOI;
-- lookup by stable_id;
-- lookup by normalized exact title;
-- get work(work_id);
-- get source version(source_version_id);
-- list versions(work_id);
-- append/register a prepared source version;
-- bind source version to published kb_version_id + snapshot_id.
-
-In-memory adapter required.
-
-Registry is append-only for source version records.
-A binding from unbound -> one published KB version may be a finalization field.
-It may never be rebound to a different KB version.
-
-## 5. Material idempotency
-
-Same deterministic source_version_id + identical material:
-- idempotent.
-
-Same source_version_id + different material:
-- fail closed.
-
-Material identity includes at least:
-- work_id;
-- ref_id;
-- fingerprint;
-- normalized DOI/title/stable id;
-- source kind;
-- relation;
-- prior version;
-- trace/provenance where identity policy treats them as semantic.
-
-Do not silently merge conflicting DOI/work mappings.
-
-## 6. Classification precedence
-
-Implement deterministic classification in this order.
-
-### A. exact replay
-If the same registered ref_id + source_fingerprint already exists:
-- EXACT_REPLAY;
-- return existing work/version binding;
-- no new source version record.
-
-### B. explicit lineage
-If explicit_work_id / explicit_prior_version_id is supplied:
-- target must exist;
-- explicit prior must belong to explicit work;
-- explicit relation must be compatible;
-- candidate identifiers must not contradict a known exact DOI mapping to another work.
-
-If valid and fingerprint is new:
-- SAME_WORK_NEW_VERSION.
-
-If contradictory:
+### DOI invariant
+If len(doi_works) > 1:
 - IDENTITY_CONFLICT.
 
-### C. exact DOI
-If normalized DOI maps to exactly one work:
-- same fingerprint -> replay if applicable;
-- different fingerprint -> SAME_WORK_NEW_VERSION.
+### stable-id invariant
+If len(stable_works) > 1:
+- IDENTITY_CONFLICT.
 
-If one DOI maps to multiple works:
-- registry invariant error / IDENTITY_CONFLICT.
+### DOI/stable disagreement
+If len(doi_works)==1 and len(stable_works)==1 and the work ids differ:
+- IDENTITY_CONFLICT;
+- match_evidence includes exact_doi + exact_stable_id;
+- ambiguity_candidates includes both works.
 
-### D. stable_id
-Same rule as exact stable id.
+Only after these checks may DOI/stable positive classification occur.
 
-### E. exact normalized title only
-A title-only hit is NOT enough to auto-merge in Phase 5.1.
+## 3. Regression for currently unreachable mismatch
 
-Return REVIEW_REQUIRED with candidate work ids/evidence.
+Create Work A with DOI X.
+Create Work B with stable_id Y.
+Candidate contains DOI X + stable_id Y.
 
-This avoids false merges for generic titles.
+Required:
+IDENTITY_CONFLICT.
 
-### F. no match
-NEW_WORK.
+It must never return Work A merely because DOI precedence comes first.
 
-## 7. DOI/title disagreement
+## 4. Prior-only explicit lineage
 
-Fail closed or review-required when identifiers disagree.
+Call explicit-lineage classification when:
 
-Examples:
-- exact DOI -> Work A, explicit_work_id -> Work B: IDENTITY_CONFLICT;
-- title -> Work A but DOI is new/unseen: do not silently merge from title alone;
-- DOI exact Work A but title changed: DOI identity wins for same-work classification, but record title_changed diagnostic.
+candidate.explicit_work_id is not None
+OR
+candidate.explicit_prior_version_id is not None
 
-Do not rewrite historical metadata.
+Rules:
+- valid prior, no explicit work -> inherit prior.work_id;
+- invalid prior -> IDENTITY_CONFLICT;
+- prior/work mismatch -> IDENTITY_CONFLICT;
+- exact DOI/stable mapping contradicting inherited work -> IDENTITY_CONFLICT.
 
-## 8. Work/version registration flow
+Add regression:
+- valid prior-only lineage -> SAME_WORK_NEW_VERSION in prior work.
 
-Add an IncrementalIntakeService (name may vary):
+## 5. PREPRINT_TO_JOURNAL compatibility
 
-prepare(candidate) -> IntakeDecision
+If explicit_relation == PREPRINT_TO_JOURNAL:
 
-Decision includes:
-- disposition;
-- work_id if resolved;
-- existing source_version_id if replay;
-- match evidence;
-- ambiguity candidates;
-- diagnostics;
-- whether normal curation/commit should proceed.
+Require:
+- explicit_prior_version_id is present;
+- prior exists;
+- resolved work exists;
+- prior.work_id == resolved work;
+- prior.source_kind == PREPRINT;
+- candidate.source_kind == JOURNAL.
 
-For NEW_WORK / SAME_WORK_NEW_VERSION:
-- create a deterministic prepared source version record only when caller explicitly proceeds;
-- do not mark it published yet.
+If any condition fails:
+IDENTITY_CONFLICT with explicit diagnostic.
 
-For REVIEW_REQUIRED / IDENTITY_CONFLICT:
-- no source version publication/binding.
+Valid case:
+- produces SAME_WORK_NEW_VERSION;
+- VersionUpgradeIntent exists;
+- prior/new versions preserved in same work.
 
-## 9. Bind only after successful KB publication
+Invalid cases:
+- no prior;
+- prior JOURNAL;
+- candidate PREPRINT;
+- prior from another work.
 
-Add finalize/bind operation taking:
-- prepared source_version_id;
-- CommitResult or explicit kb_version_id + snapshot_id.
+No fuzzy fallback.
 
-Allowed:
-- CommitStatus.PUBLISHED;
-- CommitStatus.IDEMPOTENT_HIT when binding matches the existing published source version.
+## 6. Other explicit relations
 
-Not allowed:
-- FAILED;
-- NOT_PUBLISHABLE;
-- PENDING_VECTOR;
-- PENDING_FINALIZE without confirmed published version binding.
+For REVISION_OF / CORRECTED_VERSION:
+- if explicit_prior_version_id is supplied, validate it belongs to resolved work.
+- do not invent a prior when absent.
 
-If commit publishes and registry bind fails, retry must be idempotently recoverable.
-Do not create a second source version.
+EXPLICIT_SAME_WORK may resolve with explicit_work_id alone.
 
-## 10. Existing DocumentCommitCoordinator remains frozen
+VersionRelation.NONE must not override a meaningful explicit lineage relation accidentally.
 
-Do not rewrite its §5 commit algorithm.
+Keep semantics deterministic and minimal.
 
-Phase 5.1 composes around it:
-source identity preflight
--> existing curator/commit path
--> source-version bind.
+## 7. Registry uniqueness: ref+fingerprint
 
-Exact same (ref_id, fingerprint) behavior remains compatible with the existing DocumentCommitStore idempotency.
+In append_source_version():
 
-## 11. Explicit preprint -> journal lineage
+Before inserting, check _by_ref_fp[(ref_id,fingerprint)].
 
-Phase 5.1 supports a caller-supplied explicit relation only.
+If an existing version id is present:
+- identical material -> return idempotently if it is truly the same source-version record;
+- different source_version_id/work/material -> raise ValueError.
 
-Example:
-- existing PREPRINT source version P1;
-- candidate JOURNAL J1 with different ref_id/DOI;
-- caller supplies explicit_work_id=P1.work_id, explicit_prior_version_id=P1, relation=PREPRINT_TO_JOURNAL.
+Do not overwrite the index silently.
 
-Then:
-- classify SAME_WORK_NEW_VERSION;
-- register J1 into the same work;
-- preserve P1;
-- versions(work_id) shows both in append order.
+## 8. Registry uniqueness: DOI across works
 
-Do NOT yet:
-- archive P1 assertions;
-- choose changed paragraphs;
-- re-extract assertions;
-- automatically infer the relation from title similarity.
+If normalized_doi is non-empty:
+- existing versions with that DOI may all belong to the SAME work;
+- if any belong to a different work_id than the incoming record -> reject.
 
-Instead produce a structured follow-up:
-IncrementalRevisionPlan / VersionUpgradeIntent containing:
-- work_id;
-- prior source version;
-- new source version;
-- relation=PREPRINT_TO_JOURNAL;
-- base KB version if bound;
-- requires_delta_extraction=true;
-- lifecycle_reason=PREPRINT_TO_JOURNAL.
+Multiple versions in one work sharing the DOI are valid.
 
-This is input for Phase 5.2.
+## 9. Registry uniqueness: stable_id across works
 
-## 12. New fingerprint under same DOI
+Same rule:
+- repeated stable_id within one work is valid;
+- same stable_id across different works -> reject.
 
-Required scenario:
-- DOI X / fingerprint F1 bound to KB V1;
-- same DOI X / fingerprint F2 arrives.
+## 10. Append atomicity
 
-Classify:
-SAME_WORK_NEW_VERSION.
+Perform all conflict checks BEFORE mutating:
+- _versions;
+- _version_order;
+- _by_ref_fp;
+- _by_doi;
+- _by_stable;
+- _by_title.
 
-After successful existing curation/commit:
-- append source version V2 to same work;
-- preserve V1;
-- bind V2 to the new KB version.
+A rejected append must leave registry state unchanged.
 
-Do not treat different fingerprint as exact replay.
+Add test proving failed append does not partially mutate indexes.
 
-## 13. Same fingerprint under conflicting metadata
+## 11. WorkRecord idempotency
 
-If the same ref_id+fingerprint arrives with materially contradictory identity metadata:
-- fail closed / IDENTITY_CONFLICT;
-- do not call it replay.
+If practical, harden append_work:
+- same work_id + same material -> idempotent;
+- same work_id + contradictory created_evidence/trace/provenance -> fail closed.
 
-Add a material metadata check to replay classification.
+This is recommended but secondary to source-version invariants.
 
-## 14. Registry queries
+Do not make created_seq material.
 
-Provide internal read helpers:
-- resolve_work_by_version;
-- list_versions(work_id);
-- current/latest bound version according to append order;
-- find_by_doi/stable_id/title.
-
-Do not expose a mutable “delete version”.
-
-## 15. Auditability
-
-Every decision should report match evidence such as:
-- exact_ref_fingerprint;
-- exact_doi;
-- exact_stable_id;
-- exact_title_review_only;
-- explicit_lineage.
-
-Preserve trace_id + provenance_id.
-
-Do not output opaque “matched=true” only.
-
-## 16. Tests
+## 12. Tests
 
 Maintain:
-- knowledge_curator >= 358 passed / 0 failed;
+- knowledge_curator >= 379 passed / 0 failed;
 - integration/dsh >= 90 passed / 0 failed.
 
 Add at least:
+1. DOI Work A + stable Work B -> conflict;
+2. stable_id mapped to multiple works -> conflict/fail closed;
+3. valid prior-only explicit lineage;
+4. invalid prior-only lineage;
+5. prior-only lineage contradicted by DOI -> conflict;
+6. PREPRINT_TO_JOURNAL without prior -> conflict;
+7. PREPRINT_TO_JOURNAL prior JOURNAL -> conflict;
+8. PREPRINT_TO_JOURNAL candidate PREPRINT -> conflict;
+9. valid PREPRINT_TO_JOURNAL remains PASS;
+10. duplicate ref+fingerprint across work -> adapter reject;
+11. DOI reused across different work -> adapter reject;
+12. stable_id reused across different work -> adapter reject;
+13. same DOI across versions of same work -> allowed;
+14. failed append leaves indexes unchanged.
 
-1. exact ref+fingerprint replay;
-2. replay with contradictory metadata fails closed;
-3. same DOI + new fingerprint -> SAME_WORK_NEW_VERSION;
-4. exact stable_id + new fingerprint -> SAME_WORK_NEW_VERSION;
-5. exact title only -> REVIEW_REQUIRED, not auto-merge;
-6. no match -> NEW_WORK;
-7. DOI maps to Work A + explicit Work B -> IDENTITY_CONFLICT;
-8. invalid explicit prior/work lineage rejected;
-9. explicit preprint -> journal relation merges versions into one work;
-10. no fuzzy preprint merge without explicit relation;
-11. bind only after published commit;
-12. PENDING_VECTOR/PENDING_FINALIZE not falsely finalized;
-13. bind retry idempotent;
-14. conflicting rebind rejected;
-15. list_versions preserves append-only lineage;
-16. normalized DOI variants match safely;
-17. NFKC/case/whitespace title normalization behaves deterministically;
-18. different punctuation titles are not collapsed accidentally.
-
-## 17. Deliverables
+## 13. Deliverable
 
 Create:
-results/phase-05-1-executor-report.md
+results/phase-05-1-r1-executor-report.md
 
 Report:
-- normalization: PASS/FAILED;
-- SourceVersionRegistry: PASS/FAILED;
-- exact replay: PASS/FAILED;
-- same-work new version: PASS/FAILED;
-- title-only review gate: PASS/FAILED;
-- identity conflict fail-closed: PASS/FAILED;
-- published-bind idempotency: PASS/FAILED;
-- explicit preprint->journal lineage: PASS/FAILED;
-- upgrade intent generation: PASS/FAILED;
-- exact test counts;
+- DOI/stable precedence conflict: PASS/FAILED;
+- stable multi-work invariant: PASS/FAILED;
+- prior-only explicit lineage: PASS/FAILED;
+- preprint->journal compatibility: PASS/FAILED;
+- ref+fingerprint uniqueness: PASS/FAILED;
+- DOI/stable registry uniqueness: PASS/FAILED;
+- append atomicity: PASS/FAILED;
+- exact tests;
 - public contracts changed: NO;
 - implementation CODE SHA;
 - origin/main SHA;
 - CONTRACT_GAPS changes.
 
-## 18. Completion
+## 14. Completion
 
 Update status.json:
-- phase = 5.1
+- phase = 5.1-R1
 - actor = executor
 - state = executor_complete
 - latest_commit = actual CODE SHA
-- result_expected = results/phase-05-1-executor-report.md
+- result_expected = results/phase-05-1-r1-executor-report.md
 
 Push main and STOP.
-
-Do not start Phase 5.2, crawlers, changed-paragraph extraction, or automatic fuzzy linkage until Planner review.
+Do not start Phase 5.2.
