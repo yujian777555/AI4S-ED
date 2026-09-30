@@ -29,3 +29,6 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 
 
 | CG-017 | 03 §6.3 / retrieval support threshold | §6.3 requires Abstain when top evidence similarity is below a threshold, but the project does not define one calibrated score space/threshold across FAISS cosine, BM25, RRF and reranker scores. Treating raw RRF/BM25/FAISS values as a shared [0,1] support score would be incorrect. | Phase 4.3 must never feed raw heterogeneous retrieval scores into the existing 0.3 support threshold. Low-support Abstain is evaluated only when an explicitly calibrated support value/config is supplied; otherwise report `retrieval_support_checked=false` and still enforce coverage, confidence, H1/H2/H3, privacy and other deterministic Abstain gates. | 否 | 05/07/08 |
+
+
+| CG-018 | 03 §7.3 event broadcast | §7.3 requires invalidation/update events for QA evidence cache, 04 training/constraint consumers, and 07 audit/metrics, but AI4S-ED currently has no frozen cross-team event-bus/topic/schema contract for these consumers. | Implement an internal append-only LifecycleEvent/Outbox Port with trace_id/provenance_id and deterministic event ids. Do not choose Kafka/Redis/HTTP or consumer topic names. External adapters wait for 04/07/08 contract. | 否 | 04/07/08 |
