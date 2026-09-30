@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.3",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,7 @@
     "no new public MCP contract",
     "do not start Phase 5.4; Planner performs final freeze after review"
   ],
-  "latest_commit": "726f45e31420227d3cf0c3161b0f1ef3fc54e81e",
+  "latest_commit": "0474ce9066fbce1ea3d7624ba91e50829bb7c523",
   "planner_review": "planner/phase-05-2-r3-review.md",
-  "live_smoke": "PHASE52_FROZEN_PHASE53_PUBLICATION_ORCHESTRATION"
+  "live_smoke": "PHASE53_PUBLICATION_ORCHESTRATION_PASS"
 }
