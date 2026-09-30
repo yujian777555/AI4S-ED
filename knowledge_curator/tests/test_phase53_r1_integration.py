@@ -348,6 +348,8 @@ def test_real_p2j_e2e():
     )
     result = _run(coord.publish(package=pkg, target_commit_request=req, approval=appr))
     assert result.status == PublicationStatus.FINALIZED, result.last_error
+    assert result.idempotent is False
+    assert result.resumed is False
 
     rec = journal.get(pkg.package_id)
     assert rec.phase == PublicationPhase.FINALIZED
@@ -362,15 +364,30 @@ def test_real_p2j_e2e():
     prior = reg.get_source_version(p1.source_version_id)
     assert prior.kb_version_id == v1.version_id
 
-    # Visibility
+    # Visibility: prior preprint is superseded and ineligible for retrieval/training;
+    # the new journal remains active and eligible.
     vis = InMemoryLifecycleVisibility(life._lifecycle)
-    assert vis.document_eligibility("ARXIV-1").visible_for_retrieval is False
-    assert vis.document_eligibility("JOURNAL-1").visible_for_retrieval is True
+    prior_vis = vis.document_eligibility("ARXIV-1")
+    journal_vis = vis.document_eligibility("JOURNAL-1")
+    assert prior_vis.status == "superseded"
+    assert prior_vis.visible_for_retrieval is False
+    assert prior_vis.eligible_for_training is False
+    assert journal_vis.status == "active"
+    assert journal_vis.visible_for_retrieval is True
+    assert journal_vis.eligible_for_training is True
 
     # Replay
     result2 = _run(coord.publish(package=pkg, target_commit_request=req, approval=appr))
     assert result2.status == PublicationStatus.FINALIZED
     assert result2.idempotent is True
+    assert result2.resumed is True
+
+    # Historical versions remain resolvable and rollback-safe after lifecycle publication.
+    assert versions.get_version(v1.version_id) is not None
+    assert versions.get_snapshot(v1.snapshot_id) is not None
+    rolled = versions.rollback_to(v1.version_id)
+    assert rolled.version_id == v1.version_id
+    assert versions.current_version().version_id == v1.version_id
 
 
 def test_post_bind_journal_recovery():
@@ -417,14 +434,20 @@ def test_post_bind_journal_recovery():
     state["fail"] = True
 
     result1 = _run(coord.publish(package=pkg, target_commit_request=req, approval=appr))
-    # May fail at journal finalize
-    assert result1.status in (PublicationStatus.FAILED, PublicationStatus.FINALIZED)
+    assert result1.status == PublicationStatus.FAILED
+    bound_after_crash = reg.get_source_version(j1.source_version_id)
+    assert bound_after_crash.kb_version_id is not None
+    event_ids_before_retry = [event.event_id for event in life._outbox.list_all()]
+    assert event_ids_before_retry
 
-    # Retry: bind already done, journal recovery should finalize
+    # Retry: bind already done, journal recovery should finalize without re-emitting outbox events.
     result2 = _run(coord.publish(package=pkg, target_commit_request=req, approval=appr))
     assert result2.status == PublicationStatus.FINALIZED
+    assert result2.idempotent is True
+    assert result2.resumed is True
     rec = journal.get(pkg.package_id)
     assert rec.phase == PublicationPhase.FINALIZED
+    assert [event.event_id for event in life._outbox.list_all()] == event_ids_before_retry
 
 
 def test_existing_commit_material_conflict():
