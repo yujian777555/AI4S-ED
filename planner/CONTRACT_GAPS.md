@@ -38,3 +38,6 @@ Executor 不得在这里的问题上自行改变全项目接口；可使用最�
 
 
 | CG-020 | 03 §7.1 / changed-content delta | §7.1 requires preprint→journal to re-extract only changed paragraphs, but no frozen cross-team contract defines stable cross-version paragraph/table/chart identities, content hashes, or explicit old→new unit alignment from the parser/lit_researcher. Without that, knowledge_curator cannot safely infer changed paragraphs. | Phase 5.2 uses INTERNAL temporary VersionContentManifest/ContentUnit models. Delta matching is exact only: stable unit_id or caller-supplied prior_unit_id plus content hash. No embedding/edit-distance/fuzzy alignment. If safe alignment is insufficient, return FULL_REEXTRACT_REQUIRED rather than guessing. | 否 | parser/lit_researcher/02/08 |
+
+
+| CG-021 | 03 §7.3 / manual revision approval | §7.3 requires high-risk lifecycle revisions to pass L0 manual approval, but the current internal RevisionDraft/LifecycleRevisionCoordinator has no frozen cross-team approval-token/auditor schema. Silently fabricating high_confidence/multi_source metadata would violate the risk gate. | Phase 5.3 will use an INTERNAL auditable RevisionApproval compatibility model (caller-supplied approval_id/decision/actor or equivalent) and will not reinterpret it as scientific evidence. Public approval/audit schema waits for 07/08 governance contract. | 否 | 07/08/governance |
