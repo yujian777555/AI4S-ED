@@ -188,38 +188,32 @@ def _make_coord(reg, commit=None):
     m.content_hash = hashlib.sha256(_json.dumps(m.stable_payload(), sort_keys=True).encode()).hexdigest()
     snap = versions.create_snapshot(m)
     v1 = versions.publish_version(snap.snapshot_id)
-    # Create real target version for fake commit to return
-    mt = SnapshotManifest(ref_id="JOURNAL-1", source_fingerprint="fp-j", assertion_hashes=["j1"], usdo_hashes=["ju1"], vector_ids=["jv1"], metadata_hash="jm1", decision_hashes=["jd1"])
-    mt.content_hash = hashlib.sha256(_json.dumps(mt.stable_payload(), sort_keys=True).encode()).hexdigest()
-    snap_t = versions.create_snapshot(mt)
-    v_target = versions.publish_version(snap_t.snapshot_id)
+    commit_store = InMemoryDocumentCommitStore()
 
     lstore = InMemoryLifecycleStore(version_visible=make_version_visible_fn(versions))
     outbox = InMemoryEventOutbox()
     life = LifecycleRevisionCoordinator(lifecycle_store=lstore, outbox=outbox, version_store=versions)
     journal = InMemoryRevisionPublicationStore()
     if commit is None:
-        commit = AsyncFakeCommit()
-        # Patch default result to use real target version
-        commit.results = []
-        class _RealResult:
-            def __init__(self):
-                from knowledge_curator.schemas.commit import CommitResult, CommitPhase, CommitStatus
-                self._r = CommitResult(
-                    status=CommitStatus.PUBLISHED, version_id=v_target.version_id,
-                    snapshot_id=v_target.snapshot_id, commit_id="c-1", phase=CommitPhase.PUBLISHED,
-                )
-            def __getattr__(self, k):
-                return getattr(self._r, k)
-        # Override commit to return real result
-        async def _commit_real(request):
-            commit.calls += 1
-            return _RealResult()
-        commit.commit = _commit_real
+        # Successful publication coverage must use the real DocumentCommitCoordinator.
+        from knowledge_curator.adapters.in_memory_commit import (
+            InMemoryStructuralKnowledgeStore,
+            InMemoryUSDOStore,
+            InMemoryVectorIndex,
+        )
+        from knowledge_curator.core.commit import DocumentCommitCoordinator
+
+        commit = DocumentCommitCoordinator(
+            commit_store=commit_store,
+            structural_store=InMemoryStructuralKnowledgeStore(),
+            vector_index=InMemoryVectorIndex(),
+            usdo_store=InMemoryUSDOStore(),
+            version_store=versions,
+        )
     coord = RevisionPublicationCoordinator(
         publication_store=journal, source_registry=reg, version_store=versions,
         lifecycle_coordinator=life, document_commit_coordinator=commit,
-        document_commit_store=InMemoryDocumentCommitStore(),
+        document_commit_store=commit_store,
     )
     return coord, versions, journal, life, v1
 
