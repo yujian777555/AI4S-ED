@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "knowledge_curator",
   "phase": "5.2-R2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -22,7 +22,7 @@
     "no lifecycle publication or Phase 5.3",
     "no public cross-team schema changes; CG-019/CG-020 remain compatibility boundaries"
   ],
-  "latest_commit": "a16db3b614ba5552a5f9c59abcb1a1ac4ffee96b",
+  "latest_commit": "ea03c1365a2f54bc2acc21174de8b95c8932bb0e",
   "planner_review": "planner/phase-05-2-r1-review.md",
-  "live_smoke": "PHASE52_R1_MOSTLY_PASS_R2_FULL_REEXTRACT_MATERIAL"
+  "live_smoke": "PHASE52_R2_FULL_REEXTRACT_MATERIAL_PASS"
 }
