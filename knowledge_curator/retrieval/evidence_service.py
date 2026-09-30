@@ -60,39 +60,81 @@ class EvidenceRequest:
 
 
 class _EligibilityFilteredPort:
-    """Pre-cutoff lifecycle filter (R1-D).
+    """Progressive pre-cutoff lifecycle filter (R2-A + R2-C).
 
-    Expands backend retrieval beyond the requested top_k so that dropping
-    ineligible refs cannot hide eligible lower-ranked hits. Returns eligible
-    candidates in backend rank order.
+    Expands backend depth until enough lifecycle-eligible candidates are
+    obtained or the backend is proven exhausted. Applies BOTH document and
+    assertion-level eligibility. Preserves backend rank order and does not
+    re-rank.
     """
+
+    # Deterministic progressive depths. Start small, grow geometrically.
+    _INITIAL_DEPTH = 50
+    _MAX_STEPS = 12  # safety bound: 50 * 2^11 is enormous
 
     def __init__(self, inner: Any, visibility: Any, at_version_id: Optional[str] = None) -> None:
         self._inner = inner
         self._visibility = visibility
         self._at_version_id = at_version_id
 
-    def search(self, query: RetrievalQuery) -> list[Any]:
-        # Expand the backend cutoff so post-filter cannot under-fill top_k.
-        expanded = max(int(query.top_k or 1) * 10, 50)
-        expanded_query = RetrievalQuery(
-            text=query.text,
-            level=query.level,
-            top_k=expanded,
-            allowed_ref_ids=query.allowed_ref_ids,
-            subquestion_id=query.subquestion_id,
+    def _is_eligible(self, candidate: Any) -> bool:
+        chunk = getattr(candidate, "chunk", candidate)
+        doc = self._visibility.document_eligibility(
+            chunk.ref_id, at_version_id=self._at_version_id
         )
-        cands = self._inner.search(expanded_query)
-        out = []
-        for c in cands:
-            elig = self._visibility.document_eligibility(
-                c.chunk.ref_id, at_version_id=self._at_version_id
+        if not doc.visible_for_retrieval:
+            return False
+        assertion_id = getattr(chunk, "assertion_id", None)
+        if assertion_id is not None:
+            a_elig = self._visibility.assertion_eligibility(
+                assertion_id, chunk.ref_id, at_version_id=self._at_version_id
             )
-            if elig.visible_for_retrieval:
-                out.append(c)
-            if len(out) >= expanded:
+            if not a_elig.visible_for_retrieval:
+                return False
+        return True
+
+    def search(self, query: RetrievalQuery) -> list[Any]:
+        target = max(int(query.top_k or 1), 1)
+        depth = self._INITIAL_DEPTH
+        best_out: list[Any] = []
+        prev_eligible_ids: frozenset = frozenset()
+
+        for _step in range(self._MAX_STEPS):
+            expanded_query = RetrievalQuery(
+                text=query.text,
+                level=query.level,
+                top_k=depth,
+                allowed_ref_ids=query.allowed_ref_ids,
+                subquestion_id=query.subquestion_id,
+            )
+            cands = self._inner.search(expanded_query)
+            if not cands:
                 break
-        return out
+
+            out = [c for c in cands if self._is_eligible(c)]
+            eligible_ids = frozenset(
+                getattr(c, "chunk", c).chunk_id for c in out
+            )
+
+            # Keep the deepest successful eligible set (preserves backend order).
+            if len(out) >= len(best_out):
+                best_out = out
+
+            if len(out) >= target:
+                return out
+
+            # Exhaustion A: backend returned fewer than requested depth.
+            if len(cands) < depth:
+                break
+
+            # Exhaustion B: expanding produced no new eligible identities.
+            if depth > self._INITIAL_DEPTH and eligible_ids == prev_eligible_ids:
+                break
+            prev_eligible_ids = eligible_ids
+
+            depth = depth * 2
+
+        return best_out
 
 
 class EvidenceRetrievalService:
