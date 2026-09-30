@@ -35,8 +35,36 @@ def _hash_json(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def canonical_value(value: Any) -> Any:
+    """Typed canonical representation preserving primitive/nested types (R2-02)."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [canonical_value(v) for v in value]
+    if isinstance(value, tuple):
+        return {"__type__": "tuple", "items": [canonical_value(v) for v in value]}
+    if isinstance(value, dict):
+        return {str(k): canonical_value(v) for k, v in sorted(value.items(), key=lambda x: str(x[0]))}
+    # Enum or exotic
+    if hasattr(value, "value") and hasattr(value, "name"):
+        return {"__type__": "enum", "class": type(value).__name__, "value": canonical_value(value.value)}
+    return {
+        "__type__": f"{type(value).__module__}.{type(value).__qualname__}",
+        "repr": repr(value),
+    }
+
+
 def canonical_assertion_material(a: Assertion) -> dict:
-    """Canonical publication material for one assertion (R1-04)."""
+    """Canonical publication material for one assertion (R2 typed)."""
+    conds = [
+        {
+            "eddo": c.eddo_class,
+            "val": canonical_value(c.value),
+            "unit": c.unit,
+        }
+        for c in (a.conditions or [])
+    ]
+    conds.sort(key=lambda x: json.dumps(x, sort_keys=True, ensure_ascii=False, default=str))
     return {
         "id": a.id,
         "ref": a.ref_id,
@@ -44,13 +72,11 @@ def canonical_assertion_material(a: Assertion) -> dict:
         "entity": a.subject.resolved_entity,
         "mention": a.subject.original_mention,
         "prop": a.property,
-        "val": a.object.value,
+        "val": canonical_value(a.object.value),
         "unit": a.object.unit,
         "vt": a.object.value_type.value,
-        "unc": a.object.uncertainty,
-        "conds": sorted(
-            [[c.eddo_class, str(c.value), c.unit or ""] for c in (a.conditions or [])]
-        ),
+        "unc": canonical_value(a.object.uncertainty),
+        "conds": conds,
         "loc": a.provenance.locator if a.provenance else "",
         "sent": a.provenance.sentence if a.provenance else "",
         "ct": a.claim_type.value,
@@ -347,12 +373,46 @@ class RevisionPublicationCoordinator:
             )
         return None
 
+    def _expected_metadata_hash(self, request: CommitRequest) -> str:
+        """Mirror frozen DocumentCommitCoordinator metadata hashing (R2-03)."""
+        meta = request.assertion_set.metadata
+        return _hash_json(
+            {
+                "title": meta.title,
+                "authors": list(meta.authors),
+                "year": meta.year,
+                "source": meta.source,
+                "doi": meta.doi,
+                "stable_id": meta.stable_id,
+            }
+        )
+
+    def _expected_decision_map(self, request: CommitRequest) -> dict[str, dict]:
+        """Derive expected admitted decision material from request.report (R2-04)."""
+        out: dict[str, dict] = {}
+        for d in getattr(request.report, "decisions", []) or []:
+            aid = getattr(d, "assertion_id", None)
+            action = getattr(d, "action", None)
+            conf = getattr(d, "confidence", None)
+            action_val = action.value if hasattr(action, "value") else str(action)
+            conf_val = conf.value if hasattr(conf, "value") else str(conf)
+            if action_val == "accept":
+                vis = "active"
+            elif action_val == "downgrade":
+                vis = "downgraded"
+            else:
+                vis = None
+            out[aid] = {"action": action_val, "confidence": conf_val, "visibility": vis}
+        return out
+
     def _existing_commit_guard(
-        self, package: RevisionPackage, ref_id: str, fingerprint: str
+        self, package: RevisionPackage, request: CommitRequest
     ) -> Optional[RevisionPublicationResult]:
-        """R1-05: material-exact existing commit guard. Fail closed on store errors."""
+        """Material-exact existing commit guard (R2). Fail closed on store errors."""
         if self._commit_store is None:
             return None
+        ref_id = request.source.ref_id
+        fingerprint = request.source.source_fingerprint
         try:
             existing = self._commit_store.find_by_key(ref_id, fingerprint)
         except Exception as exc:
@@ -362,9 +422,39 @@ class RevisionPublicationCoordinator:
             )
         if existing is None:
             return None
+
+        # R2-03: metadata hash guard
+        expected_meta_hash = self._expected_metadata_hash(request)
+        existing_meta_hash = getattr(existing, "metadata_hash", None)
+        if existing_meta_hash and existing_meta_hash != expected_meta_hash:
+            return RevisionPublicationResult(
+                status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                last_error="existing commit metadata_hash mismatch",
+            )
+        existing_manifest = getattr(existing, "manifest", None)
+        if existing_manifest is not None:
+            if getattr(existing_manifest, "metadata_hash", None) and existing_manifest.metadata_hash != expected_meta_hash:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="existing manifest metadata_hash mismatch",
+                )
+            if getattr(existing_manifest, "ref_id", None) and existing_manifest.ref_id != ref_id:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="existing manifest ref_id mismatch",
+                )
+            if getattr(existing_manifest, "source_fingerprint", None) and existing_manifest.source_fingerprint != fingerprint:
+                return RevisionPublicationResult(
+                    status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                    last_error="existing manifest fingerprint mismatch",
+                )
+
         admitted = getattr(existing, "admitted", None) or []
         if not admitted:
             return None
+
+        # R2-04: expected decision material
+        expected_decisions = self._expected_decision_map(request)
         target_by_id = {a.id: a for a in package.target_assertions}
         admitted_ids = set()
         for item in admitted:
@@ -381,6 +471,30 @@ class RevisionPublicationCoordinator:
                     status=PublicationStatus.CONFLICT, publication_id=package.package_id,
                     last_error=f"existing commit material mismatch for {aid}",
                 )
+            # Decision material comparison
+            exp = expected_decisions.get(aid)
+            if exp is not None:
+                item_action = getattr(item, "action", None)
+                item_action_val = item_action.value if hasattr(item_action, "value") else str(item_action)
+                if item_action_val != exp["action"]:
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                        last_error=f"existing action {item_action_val} != expected {exp['action']} for {aid}",
+                    )
+                item_conf = getattr(item, "confidence", None)
+                item_conf_val = item_conf.value if hasattr(item_conf, "value") else str(item_conf)
+                if item_conf_val != exp["confidence"]:
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                        last_error=f"existing confidence {item_conf_val} != expected {exp['confidence']} for {aid}",
+                    )
+                item_vis = getattr(item, "visibility", None)
+                item_vis_val = item_vis.value if hasattr(item_vis, "value") else str(item_vis)
+                if exp["visibility"] is not None and item_vis_val != exp["visibility"]:
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=package.package_id,
+                        last_error=f"existing visibility {item_vis_val} != expected {exp['visibility']} for {aid}",
+                    )
         if admitted_ids != set(target_by_id):
             return RevisionPublicationResult(
                 status=PublicationStatus.CONFLICT, publication_id=package.package_id,
@@ -420,7 +534,7 @@ class RevisionPublicationCoordinator:
         if cur_err is not None:
             return cur_err
 
-        guard_err = self._existing_commit_guard(package, package.new_ref_id, new.source_fingerprint)
+        guard_err = self._existing_commit_guard(package, target_commit_request)
         if guard_err is not None:
             return guard_err
 
@@ -460,6 +574,7 @@ class RevisionPublicationCoordinator:
 
         request_mat = compute_request_material_hash(package, scope_hash, approval)
         pub_id = package.package_id
+        is_resumed = False
 
         # R1-14: post-bind recovery check
         if new.kb_version_id is not None:
@@ -473,7 +588,7 @@ class RevisionPublicationCoordinator:
                 return RevisionPublicationResult(
                     status=PublicationStatus.FINALIZED, publication_id=pub_id,
                     final_version_id=new.kb_version_id, final_snapshot_id=new.snapshot_id,
-                    idempotent=True,
+                    idempotent=True, resumed=True,
                 )
             if (
                 existing_rec is not None
@@ -506,9 +621,11 @@ class RevisionPublicationCoordinator:
                 return RevisionPublicationResult(
                     status=PublicationStatus.FINALIZED, publication_id=pub_id,
                     final_version_id=existing.final_version_id,
-                    final_snapshot_id=existing.final_snapshot_id, idempotent=True,
+                    final_snapshot_id=existing.final_snapshot_id,
+                    idempotent=True, resumed=True,
                 )
             record = existing
+            is_resumed = True
         else:
             record = RevisionPublicationRecord(
                 publication_id=pub_id, package_id=package.package_id,
@@ -540,13 +657,16 @@ class RevisionPublicationCoordinator:
             record = self._journal.get(pub_id)
 
         if record.phase == PublicationPhase.FINALIZED:
+            # R2-06: fresh vs replay result semantics
             return RevisionPublicationResult(
                 status=PublicationStatus.FINALIZED, publication_id=pub_id,
                 target_version_id=record.target_version_id,
                 target_snapshot_id=record.target_snapshot_id,
                 final_version_id=record.final_version_id,
                 final_snapshot_id=record.final_snapshot_id,
-                lifecycle_id=record.lifecycle_id, idempotent=True,
+                lifecycle_id=record.lifecycle_id,
+                idempotent=is_resumed,
+                resumed=is_resumed,
             )
 
         return RevisionPublicationResult(
@@ -636,6 +756,44 @@ class RevisionPublicationCoordinator:
                 status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
                 last_error=record.last_error,
             )
+
+        # R2-05: post-target commit-store agreement (when store has a record)
+        if self._commit_store is not None:
+            try:
+                store_rec = self._commit_store.find_by_key(new.ref_id, new.source_fingerprint)
+            except Exception as exc:
+                record.last_error = f"post-commit store read failed: {exc}"
+                self._journal.update(record)
+                return RevisionPublicationResult(
+                    status=PublicationStatus.FAILED, publication_id=record.publication_id,
+                    last_error=record.last_error,
+                )
+            if store_rec is not None:
+                rec_phase = getattr(store_rec, "phase", None)
+                rec_phase_val = rec_phase.value if hasattr(rec_phase, "value") else str(rec_phase or "")
+                if rec_phase_val not in ("published", "PUBLISHED", "idempotent_hit", "IDEMPOTENT_HIT"):
+                    record.last_error = f"post-commit store phase {rec_phase_val} not published"
+                    self._journal.update(record)
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                        last_error=record.last_error,
+                    )
+                rec_vid = getattr(store_rec, "version_id", None)
+                rec_sid = getattr(store_rec, "snapshot_id", None)
+                if rec_vid is not None and rec_vid != version_id:
+                    record.last_error = f"post-commit store version_id {rec_vid} != result {version_id}"
+                    self._journal.update(record)
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                        last_error=record.last_error,
+                    )
+                if rec_sid is not None and rec_sid != snapshot_id:
+                    record.last_error = f"post-commit store snapshot_id {rec_sid} != result {snapshot_id}"
+                    self._journal.update(record)
+                    return RevisionPublicationResult(
+                        status=PublicationStatus.CONFLICT, publication_id=record.publication_id,
+                        last_error=record.last_error,
+                    )
 
         record.target_commit_id = getattr(result, "commit_id", None)
         record.target_version_id = version_id
