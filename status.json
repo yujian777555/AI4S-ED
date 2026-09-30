@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "knowledge_curator",
-  "phase": "5.1-R1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "5.1-R2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "Kimi/Codex",
   "authoritative_docs": [
@@ -12,11 +12,11 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-05-1-r1-executor-report.md",
+  "result_expected": "results/phase-05-1-r2-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
     "Phase 5.0 lifecycle core remains frozen",
-    "Phase 5.1-R1 only fixes identity precedence, explicit prior lineage, preprint relation compatibility, and registry uniqueness",
+    "Phase 5.1-R2 only fixes replay lineage consistency, explicit relation validation/defaults, and registry work/prior referential integrity",
     "no crawling or fuzzy semantic matching",
     "title-only remains REVIEW_REQUIRED",
     "no changed-content extraction or lifecycle supersede in this phase",
@@ -24,6 +24,6 @@
     "do not start Phase 5.2 until Planner review"
   ],
   "latest_commit": "c65cfb7466ad53f73ddee5e5f5f2640bce785f56",
-  "planner_review": "planner/phase-05-1-review.md",
-  "live_smoke": "PHASE51_R1_IDENTITY_CORRECTNESS_PASS"
+  "planner_review": "planner/phase-05-1-r1-review.md",
+  "live_smoke": "PHASE51_R1_MOSTLY_PASS_R2_LINEAGE_REFERENTIAL_INTEGRITY"
 }
