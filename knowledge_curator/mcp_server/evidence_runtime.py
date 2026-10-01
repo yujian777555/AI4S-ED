@@ -63,6 +63,29 @@ def create_integration_evidence_runtime(
     )
 
 
+def create_production_evidence_runtime(
+    retrieval: EvidenceRetrievalService,
+    *,
+    mechanism_validator: Optional[MechanismValidator] = None,
+    adapter_note: str = "external production evidence adapters",
+) -> EvidenceRuntime:
+    """Create a production evidence runtime from an injected real retrieval service.
+
+    Properties:
+    - integration_fixture=False (never a synthetic fixture)
+    - retrieval_available=True
+    - no fallback to build_fixture_evidence_service()
+    """
+    return EvidenceRuntime(
+        retrieval=retrieval,
+        guard=ClaimGuardService(mechanism_validator=mechanism_validator),
+        adapter_note=adapter_note,
+        integration_fixture=False,
+        retrieval_available=True,
+        unavailability_reason=None,
+    )
+
+
 def build_fixture_evidence_service() -> EvidenceRetrievalService:
     """Build an in-memory evidence service over the checked-in synthetic fixture.
 

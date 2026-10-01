@@ -7,6 +7,7 @@ Does not modify §5.1–§5.4 deterministic core logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from knowledge_curator.adapters import (
     FakeMechanismValidator,
@@ -35,6 +36,27 @@ def create_default_runtime() -> CuratorRuntime:
         mechanism_validator=FakeMechanismValidator(),
     )
     return CuratorRuntime(curator=curator, adapter_note=INTEGRATION_ADAPTER_NOTE)
+
+
+def create_curator_runtime(
+    *,
+    repository: Any,
+    ontology: Any,
+    mechanism_validator: Any,
+    adapter_note: str = "external production adapters",
+) -> CuratorRuntime:
+    """Create a KnowledgeCurator from externally supplied production adapters.
+
+    This is the production injection point. The caller must supply real
+    implementations of the existing ports. This function does not fall back
+    to InMemory/Fake adapters.
+    """
+    curator = KnowledgeCurator(
+        repository=repository,
+        ontology=ontology,
+        mechanism_validator=mechanism_validator,
+    )
+    return CuratorRuntime(curator=curator, adapter_note=adapter_note)
 
 
 async def run_curate(runtime: CuratorRuntime, assertion_set: AssertionSet) -> CurationReport:
