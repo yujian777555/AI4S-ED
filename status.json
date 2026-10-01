@@ -44,8 +44,23 @@
     "frozen": true,
     "final_r2_sha": "0f014f0a3aad75a6cada18874fead10414469d6b"
   },
-  "si2a": {
-    "goal": "compose production commit dependencies and implement transport-independent curation-to-commit application workflow",
-    "state": "ready_for_executor"
+  "si2a_acceptance": {
+    "verdict": "ACCEPTED",
+    "frozen": true,
+    "implementation_code_sha": "95d55e7",
+    "bookkeeping_head": "6282a48",
+    "accepted_capability": [
+      "CurationCommitWorkflow: SourceIdentity + AssertionSet -> CuratorRuntime -> CurationReport -> precommit gate -> CommitRequest -> DocumentCommitCoordinator -> CommitResult",
+      "application_composition.py: commit dependency composition with 5 Port validation, InMemory rejection",
+      "Provider bundle extended with commit group (commit_store, structural_store, vector_index, usdo_store, version_store)",
+      "Precommit gate: return_upstream / empty decisions / all REJECT -> commit_attempted=False",
+      "No auto-retry for PENDING_VECTOR / PENDING_FINALIZE / FAILED; recovery via same (ref_id, source_fingerprint)",
+      "Test-local si2a_provider.py with TestFailureInjection, zero forbidden InMemory adapters"
+    ],
+    "test_evidence": {
+      "knowledge_curator": "522 passed / 0 skipped / 0 failed",
+      "integration_system": "107 passed / 0 skipped / 0 failed",
+      "integration_dsh": "90 passed / 0 skipped / 0 failed"
+    }
   }
 }
