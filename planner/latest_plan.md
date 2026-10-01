@@ -1,4 +1,4 @@
-# Phase SI-1-R1 Plan — Production Composition Hardening
+# Phase SI-1.5 Plan — DSH Production Bootstrap Wiring
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,43 +6,250 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close the remaining SI-1 production-composition integrity gaps identified in:
+Wire the accepted SI-1 production runtime composition into the existing DSH `knowledge-curator` preset.
 
-`planner/phase-si-1-review.md`
+This phase changes **only the DSH launch path and its integration verification**.
 
-This is a **narrow R1 hardening pass**.
+Current path:
 
-Do not begin SI-2.
+```
+DSH knowledge-curator preset
+  -> python -m knowledge_curator.mcp_server
+  -> integration/default runtime
+```
 
-Do not add orchestrator/workflows.
+Target path:
 
-Do not change frozen Knowledge Curator core behavior.
+```
+DSH knowledge-curator preset
+  -> python -m system.mcp_stdio
+  -> AI4S_SYSTEM_ADAPTER_FACTORY
+  -> production provider bundle
+  -> system.composition
+  -> CuratorRuntime / EvidenceRuntime
+  -> existing create_mcp_server(...)
+  -> existing four MCP tools
+```
+
+Do not implement SI-2.
+
+Do not add an orchestrator.
+
+Do not wire curation to commit.
 
 ---
 
-## 1. Frozen baseline
+## 1. Frozen baselines
 
-Knowledge Curator remains:
-
-- ACCEPTED
-- FROZEN
-- DELIVERABLE
-
-Frozen implementation CODE SHA:
+Knowledge Curator final implementation:
 
 `42e39121af5f6120174e088a521c9ad014abdcda`
 
-Reviewed SI-1 implementation CODE SHA:
+Status:
 
-`e5ccf224def859357ac0f9f14605817829815a06`
+**ACCEPTED / FROZEN / DELIVERABLE**
 
-Current R1 review:
+SI-1 production composition implementation:
 
-`planner/phase-si-1-review.md`
+`073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7`
+
+Status:
+
+**ACCEPTED / FROZEN**
+
+SI-1 final Planner acceptance:
+
+`planner/phase-si-1-final-acceptance.md`
+
+No Phase 5.4 is authorized.
 
 ---
 
-## 2. Frozen files/directories
+## 2. Scope
+
+SI-1.5 is **DSH production bootstrap wiring only**.
+
+Allowed work:
+
+- change the DSH knowledge-curator MCP subprocess entry point;
+- pass production provider configuration through environment;
+- add/update DSH integration tests;
+- add deterministic test provider fixtures under integration-only paths;
+- verify exact four-tool discovery through the DSH/MCP path;
+- verify startup fails when production provider configuration is absent/invalid;
+- document deployment environment variables.
+
+Do not implement new scientific behavior.
+
+---
+
+## 3. Required DSH preset change
+
+Modify:
+
+`dsh/knowledge-curator/cordis.patch.yml`
+
+Current:
+
+```yaml
+args:
+  - -m
+  - knowledge_curator.mcp_server
+```
+
+Target:
+
+```yaml
+args:
+  - -m
+  - system.mcp_stdio
+```
+
+Keep:
+
+- stdio transport;
+- `AI4S_KC_PYTHON`;
+- `AI4S_KC_WORKSPACE`;
+- `failOnStartupError: true`;
+- current timeout unless a demonstrated test requirement exists.
+
+Do not hard-code a provider module into the production preset.
+
+The production provider remains configured via:
+
+`AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function`
+
+Do not add secrets to the YAML.
+
+---
+
+## 4. Production startup semantics
+
+When DSH launches the preset:
+
+### provider configured and valid
+
+Startup proceeds through:
+
+`system.mcp_stdio -> provider_loader -> composition -> create_mcp_server`
+
+### provider missing
+
+Startup MUST fail.
+
+Because the DSH preset has:
+
+`failOnStartupError: true`
+
+the Agent/MCP mount must not silently become an integration runtime.
+
+### provider invalid
+
+Startup MUST fail.
+
+### evidence omitted by valid provider
+
+This is allowed.
+
+The MCP server starts with:
+
+- production curator adapters;
+- evidence tools present;
+- evidence retrieval explicitly unavailable/fail-closed.
+
+Do not fall back to the integration fixture.
+
+---
+
+## 5. Integration-only DSH provider fixture
+
+DSH CI/smoke tests need a valid deterministic provider without relying on real production infrastructure.
+
+Add an **integration-only external provider fixture** under a clearly test-only path, for example:
+
+`integration/system/fixtures/dsh_provider.py`
+
+or equivalent.
+
+It must:
+
+- satisfy the frozen curator Ports;
+- use test-local stub classes, not Knowledge Curator InMemory/Fake adapters;
+- optionally expose a deterministic EvidenceRetrievalService built from test-local protocol-compatible backends;
+- never be selected by production preset automatically;
+- only be selected when test environment explicitly sets `AI4S_SYSTEM_ADAPTER_FACTORY`.
+
+Do not put this fixture under `system/` production code.
+
+---
+
+## 6. DSH integration test environment
+
+Any DSH test that actually launches the `knowledge-curator` preset must explicitly provide a valid integration-only provider factory.
+
+Example intent:
+
+```
+AI4S_SYSTEM_ADAPTER_FACTORY=
+integration.system.fixtures.dsh_provider:create_provider_bundle
+```
+
+Do not modify production code to detect pytest or DSH test mode.
+
+Do not introduce a hidden fallback when the variable is absent.
+
+---
+
+## 7. Mandatory end-to-end DSH/MCP verification
+
+Add/modify tests to prove the actual DSH-configured subprocess path uses:
+
+`python -m system.mcp_stdio`
+
+and not:
+
+`python -m knowledge_curator.mcp_server`
+
+At minimum verify:
+
+1. preset command/args point to `system.mcp_stdio`;
+2. no provider => subprocess startup fails closed;
+3. invalid provider => startup fails closed;
+4. valid integration-only provider => subprocess initializes successfully;
+5. MCP tool discovery returns exactly:
+   - `curate_assertion_set`
+   - `knowledge_curator_health`
+   - `retrieve_evidence`
+   - `validate_retrieved_claims`
+6. health reports a production-style adapter note/provider identity from the injected provider;
+7. curation tool completes one deterministic round-trip through the new system bootstrap;
+8. if test provider includes evidence retrieval, one evidence retrieval round-trip succeeds;
+9. if provider omits evidence retrieval, evidence tool returns explicit `retrieval_unavailable`;
+10. no fixture is auto-enabled by `KC_EVIDENCE_INTEGRATION_FIXTURE`.
+
+No external network call is required.
+
+---
+
+## 8. Preserve MCP public contract
+
+Do not change:
+
+- tool names;
+- input schemas;
+- output schemas;
+- health response schema;
+- CurationReport semantics;
+- EvidenceBundle semantics;
+- claim-guard semantics.
+
+The DSH Agent should see the same four tools as before.
+
+Only the runtime underneath changes from integration/default composition to production composition.
+
+---
+
+## 9. Frozen files/directories
 
 Do not modify:
 
@@ -53,359 +260,182 @@ Do not modify:
 - `knowledge_curator/mcp_server/app.py`
 - `knowledge_curator/mcp_server/runtime.py`
 - `knowledge_curator/mcp_server/evidence_runtime.py`
+- `system/composition.py`
+- `system/provider_loader.py`
+- `system/mcp_stdio.py`
 - `planner/CONTRACT_GAPS.md`
-- `dsh/knowledge-curator/cordis.patch.yml`
 
-R1 should be implemented entirely in the system composition/bootstrap layer and system integration tests.
+SI-1 and Knowledge Curator remain frozen.
 
----
-
-## 3. R1-01 — Reject nested test adapters inside EvidenceRetrievalService
-
-The production guard must not only inspect the outer evidence object.
-
-A production provider may supply an `EvidenceRetrievalService` whose nested components are test adapters.
-
-For a configured production `EvidenceRetrievalService`, inspect its configured backend dependencies at minimum:
-
-- vector backend;
-- keyword backend;
-- reranker.
-
-Apply the existing deterministic forbidden-adapter rule to those nested objects.
-
-The checked-in integration fixture produced by:
-
-`knowledge_curator.mcp_server.evidence_runtime.build_fixture_evidence_service()`
-
-MUST be rejected by production composition.
-
-Do not change `EvidenceRetrievalService`.
-
-Do not use heuristic scientific-quality checks.
-
-Only prevent known test/integration adapters from masquerading as production.
-
-### Required tests
-
-1. `build_fixture_evidence_service()` is rejected by production composition;
-2. an `EvidenceRetrievalService` containing `InMemoryVectorSearch` is rejected;
-3. containing `InMemoryKeywordSearch` is rejected;
-4. containing `FakeReranker` is rejected;
-5. a service built from non-test protocol-compatible stubs is accepted.
+If a real defect is found in these files, STOP and report it instead of fixing it inside SI-1.5.
 
 ---
 
-## 4. R1-02 — Validate production dependencies against existing frozen contracts
+## 10. No orchestrator / no commit workflow
 
-Use the existing runtime-checkable frozen Ports to validate curator dependency shape before MCP startup.
-
-Required curator contracts:
-
-- `KnowledgeRepository`
-- `OntologyService`
-- `MechanismValidator`
-
-Production composition must reject dependencies that do not satisfy those Ports.
-
-For evidence:
-
-- configured retrieval must be an `EvidenceRetrievalService`;
-- optional evidence mechanism validator must satisfy `MechanismValidator`;
-- nested evidence backends must pass R1-01 isolation checks.
-
-Do not modify the Port definitions.
-
-### Required negative tests
-
-Reject before `create_mcp_server(...)`:
-
-- `repository=object()`;
-- `ontology=object()`;
-- `mechanism_validator=object()`;
-- `retrieval=object()`;
-- evidence `mechanism_validator=object()`.
-
-### Required positive tests
-
-Use complete external stubs that satisfy the existing Protocols.
-
-The positive curator stub must implement all methods required by the frozen Port, not merely the method reached by one happy-path test.
-
----
-
-## 5. R1-03 — Sanitize external provider exceptions
-
-In `system/provider_loader.py`, external provider/import exception text must not be copied verbatim into user-visible errors.
-
-Forbidden pattern:
-
-`... {exc}`
-
-for arbitrary provider/import execution exceptions.
-
-Allowed diagnostic material:
-
-- provider module name;
-- factory attribute name;
-- exception class/type;
-- stable category such as `provider_module_import_failed` or `provider_factory_failed`.
-
-Preserve the original exception as the chained cause:
-
-`raise ProviderLoadError(...) from exc`
-
-but do not expose `str(exc)` in the outer message.
-
-### Required tests
-
-Create deterministic external test modules/factories that raise with:
-
-`TOP_SECRET_SENTINEL`
-
-Verify:
-
-- load fails;
-- exposed `ProviderLoadError` string does not contain the sentinel.
-
-Cover both:
-
-- module import execution failure where practical;
-- factory execution failure.
-
-At minimum factory failure sentinel coverage is mandatory.
-
----
-
-## 6. R1-04 — Mandatory MCP checks must run, not skip
-
-The SI-1 report showed:
-
-`19 passed / 2 skipped / 0 failed`
-
-The two MCP contract tests are mandatory acceptance checks.
-
-Do not use `pytest.importorskip("mcp")` for mandatory SI-1 MCP tests.
-
-Run `integration/system/tests` in the MCP-qualified environment used by the DSH suite.
-
-Final SI-1-R1 system suite must report:
-
-- **0 skipped**
-
-unless an unrelated pre-existing non-mandatory test is explicitly documented and approved by Planner.
-
----
-
-## 7. Add real system-bootstrap MCP test
-
-Add a test that exercises the actual SI-1 path:
-
-```
-provider factory
-  -> load_provider_bundle
-  -> _extract_deps
-  -> compose_system_runtime
-  -> create_mcp_server
-```
-
-Use:
-
-`system.mcp_stdio.build_system_mcp_server(...)`
-
-with a valid protocol-compatible provider.
-
-Then verify using the MCP server API:
-
-exact tool set:
-
-- `curate_assertion_set`
-- `knowledge_curator_health`
-- `retrieve_evidence`
-- `validate_retrieved_claims`
-
-No fifth tool is allowed.
-
-Call `knowledge_curator_health` and verify existing response fields expose:
-
-- curator production adapter note/provider identity;
-- evidence production adapter note or explicit unavailable state.
-
-Do not add or change health response schema.
-
-No network call.
-
----
-
-## 8. Provider bundle validation semantics
-
-It is acceptable for `provider_loader._validate_bundle()` to perform only structural top-level validation if `compose_system_runtime()` performs the complete dependency validation immediately afterward.
-
-The invariant is:
-
-**invalid dependencies must fail before the MCP server is returned/started.**
-
-No lazy failure only when a scientific tool is later invoked.
-
----
-
-## 9. Production fail-closed invariants
-
-After R1, all of these must remain true:
-
-- no configured provider => hard fail;
-- invalid provider import => hard fail;
-- invalid factory => hard fail;
-- provider exception => hard fail;
-- invalid dependency shape => hard fail;
-- known integration/test adapters => hard fail;
-- nested fixture retrieval adapters => hard fail;
-- missing evidence retrieval => explicit `retrieval_unavailable`, not fixture fallback;
-- no secret-bearing external exception text copied into stderr-facing errors;
-- no default fallback to InMemory/Fake.
-
----
-
-## 10. Scope limits
-
-Do not create or implement:
+SI-1.5 must not add:
 
 - Agent Factory;
-- Orchestrator;
+- system Orchestrator;
 - CurationWorkflow;
 - RevisionWorkflow;
 - QAEvidenceWorkflow;
-- commit/lifecycle wiring;
-- new production database implementation;
-- new vector database implementation;
-- new ontology implementation;
-- new public MCP tool;
-- DSH preset migration.
+- commit workflow;
+- lifecycle workflow.
 
-Do not call:
+Do not call from new SI-1.5 code:
 
 - `DocumentCommitCoordinator`
 - `RevisionPublicationCoordinator`
-- `LifecycleRevisionCoordinator`
+- `LifecycleRevisionCoordinator`.
 
-from `system/**`.
+The purpose of SI-1.5 is only:
+
+**DSH -> production MCP bootstrap**
+
+not:
+
+**DSH -> whole application workflow**.
 
 ---
 
-## 11. Tests
+## 11. Documentation
 
-Required:
+Update the relevant DSH integration README/documentation so operators know:
+
+Required production variables:
+
+```
+AI4S_KC_PYTHON
+AI4S_KC_WORKSPACE
+AI4S_SYSTEM_ADAPTER_FACTORY
+```
+
+Clarify:
+
+- `AI4S_SYSTEM_ADAPTER_FACTORY` identifies a deployment-owned production dependency factory;
+- it is not a secret;
+- secrets needed by adapters remain deployment-specific environment/configuration and must not be committed;
+- missing provider causes fail-closed startup;
+- no default integration fixture is used in production.
+
+Do not document the integration test provider as a production recommendation.
+
+---
+
+## 12. Tests
+
+Run:
 
 ```bash
 pytest knowledge_curator/tests
-pytest integration/dsh/tests
 pytest integration/system/tests
+pytest integration/dsh/tests
 ```
 
-Acceptance targets:
+Acceptance minimums:
 
 ### knowledge_curator
 
-At least frozen baseline:
-
 `522 passed / 0 skipped / 0 failed`
-
-### integration/dsh
-
-At least frozen baseline:
-
-`90 passed / 0 failed`
 
 ### integration/system
 
-All mandatory SI-1/SI-1-R1 tests pass.
+Existing accepted baseline:
 
-**0 skipped.**
+`38 passed / 0 skipped / 0 failed`
 
-No network.
+All must remain green.
 
-Do not remove or weaken existing SI-1 tests.
+### integration/dsh
 
----
+Existing accepted baseline:
 
-## 12. Freeze verification
+`90 passed / 0 failed`
 
-Before completion compare the final tree against the pre-SI-1 frozen baseline and explicitly report no changes under:
+New SI-1.5 tests are additive.
 
-- `knowledge_curator/core/**`
-- `knowledge_curator/schemas/**`
-- `knowledge_curator/ports/**`
-- `knowledge_curator/retrieval/**`
-- `knowledge_curator/mcp_server/app.py`
-- `planner/CONTRACT_GAPS.md`
-- `dsh/knowledge-curator/cordis.patch.yml`
+Mandatory SI-1.5 tests must have **0 skipped**.
 
-Also report whether either SI-1 runtime constructor file changed during R1:
-
-- `knowledge_curator/mcp_server/runtime.py`
-- `knowledge_curator/mcp_server/evidence_runtime.py`
-
-Expected: **NO**.
+No network requirement.
 
 ---
 
-## 13. Deliverable
+## 13. Freeze verification
 
-Update:
+Before completion, compare against the SI-1 accepted tree and verify no changes under:
 
-`results/phase-si-1-executor-report.md`
+- frozen Knowledge Curator paths listed above;
+- frozen SI-1 `system/*.py` production composition/bootstrap files;
+- `planner/CONTRACT_GAPS.md`.
 
-with an R1 section containing exactly:
+The intended code/config changes should be limited to:
+
+- `dsh/knowledge-curator/cordis.patch.yml`;
+- `integration/dsh/**`;
+- optionally integration-only fixture under `integration/system/**`;
+- integration documentation;
+- executor report/status bookkeeping.
+
+---
+
+## 14. Required report
+
+Create:
+
+`results/phase-si-1-5-executor-report.md`
+
+Report exactly:
 
 ```
-Phase SI-1-R1 implementation CODE SHA:
+Phase SI-1.5 implementation CODE SHA:
 
-checked-in integration fixture rejected as production:
+DSH preset uses system.mcp_stdio:
 PASS / FAILED
 
-nested InMemory vector rejected:
+AI4S_SYSTEM_ADAPTER_FACTORY required:
 PASS / FAILED
 
-nested InMemory keyword rejected:
+missing provider DSH startup fail-closed:
 PASS / FAILED
 
-nested Fake reranker rejected:
+invalid provider DSH startup fail-closed:
 PASS / FAILED
 
-production curator Port validation:
+valid integration-only provider DSH startup:
 PASS / FAILED
 
-production evidence type/Port validation:
+system bootstrap exact four-tool discovery via DSH path:
 PASS / FAILED
 
-external protocol-compatible composition:
+health production adapter identity via DSH path:
 PASS / FAILED
 
-provider exception secret redaction:
+curation round-trip via DSH/system bootstrap:
 PASS / FAILED
 
-system bootstrap exact four-tool contract:
+evidence configured round-trip via DSH/system bootstrap:
+PASS / FAILED / NOT CONFIGURED IN TEST PROVIDER
+
+evidence omitted remains retrieval_unavailable:
 PASS / FAILED
 
-health production adapter identity:
+KC_EVIDENCE_INTEGRATION_FIXTURE cannot bypass production composition:
 PASS / FAILED
 
-production missing-provider fail-closed:
-PASS / FAILED
-
-evidence unavailable remains fail-closed:
-PASS / FAILED
+public MCP contract changed:
+NO
 
 orchestrator/workflow added:
 NO
 
-DSH preset changed:
+curation-to-commit wiring added:
 NO
 
-frozen knowledge_curator tree changed:
+knowledge_curator frozen tree changed:
 NO
 
-SI-1 runtime constructor files changed during R1:
+SI-1 frozen system composition changed:
 NO
 
 CONTRACT_GAPS changed:
@@ -414,11 +444,11 @@ NO
 knowledge_curator tests:
 X passed / Y skipped / Z failed
 
-integration/dsh tests:
-X passed / Z failed
-
 integration/system tests:
-X passed / 0 skipped / Z failed
+X passed / Y skipped / Z failed
+
+integration/dsh tests:
+X passed / Y skipped / Z failed
 
 origin/main SHA:
 
@@ -428,30 +458,36 @@ NONE / describe
 
 ---
 
-## 14. status.json
+## 15. status.json
 
-At completion:
+At completion set:
 
 - module = `system_integration`
-- phase = `SI-1-R1`
+- phase = `SI-1.5`
 - actor = `executor`
 - state = `executor_complete`
 - current_plan = `planner/latest_plan.md`
-- result_expected = `results/phase-si-1-executor-report.md`
-- latest_commit = actual R1 implementation CODE SHA
+- result_expected = `results/phase-si-1-5-executor-report.md`
+- latest_commit = actual SI-1.5 CODE SHA
 
-Preserve:
+Preserve both freezes:
 
-`knowledge_curator_freeze.implementation_code_sha = 42e39121af5f6120174e088a521c9ad014abdcda`
+### Knowledge Curator
+
+`42e39121af5f6120174e088a521c9ad014abdcda`
+
+### SI-1
+
+`073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7`
 
 ---
 
-## 15. Completion rule
+## 16. Completion rule
 
-Push SI-1-R1 implementation, tests, updated report, and status to `main`.
+Push implementation, integration tests, report, and status to `main`.
 
 Then STOP.
 
 Do not begin SI-2.
 
-Planner will perform final SI-1 acceptance review after R1.
+Planner will review the DSH production bootstrap wiring before authorizing any orchestrator/workflow work.
