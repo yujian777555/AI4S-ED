@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-1.5-R1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-1.5-R2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -17,15 +17,16 @@
     "GitHub origin/main is the source of truth",
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
     "Phase SI-1 remains ACCEPTED / FROZEN at CODE SHA 073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
-    "SI-1.5-R1 closes DSH production bootstrap migration gaps",
+    "SI-1.5-R2 closes mounted DSH qualification-path mismatches",
     "do not begin SI-2",
     "do not add orchestrator/workflows",
     "do not wire curation to commit",
     "do not modify frozen Knowledge Curator or SI-1 production composition",
+    "do not modify the accepted product preset during R2",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "c2f2cb24580689b82551bb8f3971d1e75d07da3e",
-  "planner_review": "planner/phase-si-1-5-review.md",
+  "latest_commit": "ed129caf53e1b112cc2ef5d0ec534e9b7bc4a039",
+  "planner_review": "planner/phase-si-1-5-r2-review.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
     "frozen": true,
@@ -36,5 +37,17 @@
     "verdict": "ACCEPTED",
     "frozen": true,
     "implementation_code_sha": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7"
+  },
+  "si15_review": {
+    "verdict": "R2_REQUIRED",
+    "reviewed_code_sha": "c2f2cb24580689b82551bb8f3971d1e75d07da3e",
+    "reviewed_executor_head": "b758ed9def4ee357a83eb5e316b9cd5d8ca8d331",
+    "required_fixes": [
+      "correct production-vs-direct integration_fixture semantics in lane325",
+      "align integration provider evidence corpus with direct reference using test-local adapters",
+      "wire run_lane325 and lane324 baseline to AI4S_SYSTEM_ADAPTER_FACTORY",
+      "wire mcp_smoke to an explicit provider contract",
+      "update stale generated-patch template documentation"
+    ]
   }
 }
