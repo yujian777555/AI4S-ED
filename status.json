@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-1.5",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -26,7 +26,7 @@
     "do not change public MCP tool contracts",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "a06f06cf8f8dd7c3adb6bab7cef5329e67791d5b",
+  "latest_commit": "fd000223b308b209b02f3163e2eee72a6637aab2",
   "planner_review": "planner/phase-si-1-final-acceptance.md",
   "system_integration_audit": "planner/system-integration-audit.md",
   "knowledge_curator_final_acceptance": "planner/KNOWLEDGE_CURATOR_FINAL_ACCEPTANCE.md",
