@@ -75,3 +75,108 @@ NONE
 - `knowledge_curator/**` 全部
 - `system/composition.py` / `provider_loader.py` / `mcp_stdio.py`
 - `planner/CONTRACT_GAPS.md`
+
+---
+
+## Phase SI-1.5-R2 implementation CODE SHA
+
+（见 commit）
+
+direct reference integration_fixture=true asserted:
+PASS
+
+mounted/provider integration_fixture=false asserted:
+PASS
+
+integration provider fixture-corpus parity:
+PASS
+
+evidence chunk identity parity:
+PASS
+
+coverage/Abstain parity:
+PASS
+
+claim-guard policy parity:
+PASS
+
+integration provider uses forbidden InMemory/Fake adapters:
+NO
+
+run_lane325 supplies AI4S_SYSTEM_ADAPTER_FACTORY:
+PASS
+
+run_lane325 globally sets KC_EVIDENCE_INTEGRATION_FIXTURE:
+NO
+
+lane324 baseline receives provider contract:
+PASS
+
+mcp_smoke preserves caller-supplied provider:
+PASS
+
+mcp_smoke supplies integration provider when absent:
+PASS
+
+patch template documents system.mcp_stdio:
+PASS
+
+real stdio subprocess acceptance remains green:
+PASS
+
+actual mounted DSH live lane executed:
+NOT_RUN_ENV
+
+known deterministic mounted-live mismatch remains:
+NO
+
+knowledge_curator frozen tree changed:
+NO
+
+SI-1 frozen production composition changed:
+NO
+
+product preset changed during R2:
+NO
+
+CONTRACT_GAPS changed:
+NO
+
+orchestrator/workflow added:
+NO
+
+curation-to-commit wiring added:
+NO
+
+knowledge_curator tests:
+522 passed / 0 skipped / 0 failed
+
+integration/system tests:
+78 passed / 0 skipped / 0 failed
+
+integration/dsh tests:
+90 passed / 0 skipped / 0 failed
+
+origin/main SHA:
+（见 push 后）
+
+deviations:
+NONE
+
+---
+
+## R2 修改文件
+
+- integration/system/fixtures/dsh_provider.py — 重写证据适配器为测试本地类，对齐 fixture 语料
+- integration/dsh/lane325_kc_evidence_roundtrip.e2e.ts — integration_fixture 边界断言（direct=true / DSH=false）
+- integration/dsh/run_lane325.py — 设置 AI4S_SYSTEM_ADAPTER_FACTORY，移除全局 KC_EVIDENCE_INTEGRATION_FIXTURE
+- integration/dsh/mcp_smoke.py — 新增 resolve_smoke_provider，保留调用方 provider / 缺省注入 integration provider
+- integration/dsh/patches/knowledge-curator-mcp.patch.yml — 文档改为 system.mcp_stdio + provider 注入说明
+- integration/system/tests/test_si15_r2_qualification_path.py — 20 个 keyless R2 回归
+
+## 未修改 / R2
+
+- knowledge_curator/** 全部
+- system/composition.py / provider_loader.py / mcp_stdio.py
+- planner/CONTRACT_GAPS.md
+- dsh/knowledge-curator/cordis.patch.yml

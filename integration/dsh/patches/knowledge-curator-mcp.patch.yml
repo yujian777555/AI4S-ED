@@ -14,7 +14,11 @@ description: Insert knowledge_curator stdio MCP client into DSH sdk-minimal prof
 #       serverName: knowledge_curator
 #       transport: stdio
 #       command: <sys.executable>
-#       args: ['-m', 'knowledge_curator.mcp_server']
+#       args: ['-m', 'system.mcp_stdio']
 #       cwd: <repo root>
 #       failOnStartupError: true
 #       toolCallTimeoutMs: 60000
+#
+# Provider configuration is supplied by the qualification/deployment
+# environment via AI4S_SYSTEM_ADAPTER_FACTORY. The patch does not hard-code
+# a provider.

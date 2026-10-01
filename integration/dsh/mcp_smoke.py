@@ -389,6 +389,28 @@ def compute_direct_core_summary() -> dict[str, Any]:
     }
 
 
+INTEGRATION_PROVIDER_SPEC = (
+    "integration.system.fixtures.dsh_provider:create_provider_bundle"
+)
+_PROVIDER_ENV_KEY = "AI4S_SYSTEM_ADAPTER_FACTORY"
+
+
+def resolve_smoke_provider(
+    environ: dict | None = None,
+) -> tuple[str, str, str | None]:
+    """Resolve provider for the integration smoke run (SI-1.5-R2 / R2-05).
+
+    Returns (effective_spec, source, previous_value) where source is
+    'caller' or 'integration_default'. previous_value is the original
+    environ value when we override, else None.
+    """
+    env = environ if environ is not None else os.environ
+    caller = str(env.get(_PROVIDER_ENV_KEY, "") or "").strip()
+    if caller:
+        return caller, "caller", None
+    return INTEGRATION_PROVIDER_SPEC, "integration_default", env.get(_PROVIDER_ENV_KEY)
+
+
 def run_live_mcp_bridge() -> McpSmokeResult:
     result = McpSmokeResult(
         dsh_sdk_version=_ver("deepseek-harness-sdk"),
@@ -405,6 +427,14 @@ def run_live_mcp_bridge() -> McpSmokeResult:
     if not result.credential_available:
         result.errors.append("LIVE_SMOKE_NOT_RUN_NO_SECRET")
         return result
+
+    # SI-1.5-R2 / R2-05: ensure provider contract for MCP subprocess.
+    effective_provider, provider_source, _prev_provider = resolve_smoke_provider()
+    if provider_source == "caller":
+        result.warnings.append("provider_preserved_from_caller")
+    else:
+        os.environ[_PROVIDER_ENV_KEY] = effective_provider
+        result.warnings.append("provider_defaulted_to_integration_fixture")
 
     from integration.dsh.config import load_config
 

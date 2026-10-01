@@ -208,18 +208,25 @@ it('strict mounted Agent evidence live acceptance', async () => {
       throw new Error('retrieve_evidence: no linked structured tool result after bounded attempts')
     }
 
-    // Direct vs DSH identity
+    // Direct vs DSH identity (SI-1.5-R2: fixture marker boundary, not equality)
     const directR = directRef('retrieve')
     const obsBundle = retrieveLinked.payload?.evidence_bundle
     const obsIds = (obsBundle?.evidence_records ?? []).map((r: any) => r.chunk_id)
+    // R2-01: direct legacy reference is integration fixture; mounted DSH is not.
+    const directFixture = Boolean(directR?.identity?.integration_fixture)
+    const dshFixture = Boolean(retrieveLinked.payload?.integration_fixture)
+    if (!directFixture) {
+      throw new Error('direct reference must report integration_fixture=true')
+    }
+    if (dshFixture) {
+      throw new Error('mounted DSH production path must report integration_fixture=false')
+    }
     const identityOk =
       directR?.identity?.chunk_ids &&
       sameSet(directR.identity.chunk_ids, obsIds) &&
       JSON.stringify(directR.identity.coverage_keys) ===
         JSON.stringify(obsBundle?.coverage_keys ?? []) &&
-      Boolean(directR.identity.abstain) === Boolean(obsBundle?.abstain?.abstain) &&
-      Boolean(directR.identity.integration_fixture) ===
-        Boolean(retrieveLinked.payload?.integration_fixture)
+      Boolean(directR.identity.abstain) === Boolean(obsBundle?.abstain?.abstain)
     if (!identityOk) {
       console.log(
         redact(
@@ -275,6 +282,10 @@ it('strict mounted Agent evidence live acceptance', async () => {
     }
 
     const directV = directRef('validate')
+    // R2-01: same fixture-marker boundary on the validate path.
+    if (Boolean(validateLinked.payload?.integration_fixture)) {
+      throw new Error('mounted DSH validate must report integration_fixture=false')
+    }
     const byId = Object.fromEntries(
       (validateLinked.payload?.claim_results ?? []).map((c: any) => [c.claim_id, c]),
     )

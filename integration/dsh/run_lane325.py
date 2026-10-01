@@ -253,7 +253,10 @@ def main() -> int:
     env = os.environ.copy()
     env["DSH_SRC"] = str(DSH_SRC)
     env["AI4S_ED_ROOT"] = str(ROOT)
-    env["KC_EVIDENCE_INTEGRATION_FIXTURE"] = "1"
+    # SI-1.5-R2 / R2-03: supply provider contract for both mounted lanes.
+    env["AI4S_SYSTEM_ADAPTER_FACTORY"] = (
+        "integration.system.fixtures.dsh_provider:create_provider_bundle"
+    )
     env["AI4S_KC_PYTHON"] = env.get("AI4S_KC_PYTHON") or sys.executable
     env["AI4S_KC_WORKSPACE"] = str(ROOT)
     if key:
