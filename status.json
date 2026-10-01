@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-1.5-R1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -24,7 +24,7 @@
     "do not modify frozen Knowledge Curator or SI-1 production composition",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "0b71943cd79b500aed01301a804676c8330f1235",
+  "latest_commit": "c2f2cb24580689b82551bb8f3971d1e75d07da3e",
   "planner_review": "planner/phase-si-1-5-review.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
@@ -36,16 +36,5 @@
     "verdict": "ACCEPTED",
     "frozen": true,
     "implementation_code_sha": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7"
-  },
-  "si15_review": {
-    "verdict": "R1_REQUIRED",
-    "reviewed_code_sha": "fd000223b308b209b02f3163e2eee72a6637aab2",
-    "reviewed_executor_head": "1c2592f786eec1456f550d94d6778f231d2dbc22",
-    "required_fixes": [
-      "wire mounted DSH lane to AI4S_SYSTEM_ADAPTER_FACTORY",
-      "migrate generated mcp_patch to system.mcp_stdio",
-      "update DSH product documentation",
-      "add real stdio subprocess acceptance"
-    ]
   }
 }
