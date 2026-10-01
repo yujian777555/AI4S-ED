@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-1-R1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-1",
+  "actor": "planner",
+  "state": "accepted_frozen",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -12,21 +12,18 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-1-executor-report.md",
+  "result_expected": null,
   "constraints": [
     "GitHub origin/main is the source of truth",
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
+    "Phase SI-1 is ACCEPTED / FROZEN",
     "no Phase 5.4",
-    "SI-1-R1 is a narrow production composition hardening pass",
-    "do not begin SI-2",
-    "do not add orchestrator/workflows",
-    "do not wire curation to commit",
-    "do not migrate the DSH preset",
+    "do not begin SI-2 until Planner publishes a separate plan",
     "do not change public MCP tool contracts",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
   "latest_commit": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
-  "planner_review": "planner/phase-si-1-review.md",
+  "planner_review": "planner/phase-si-1-final-acceptance.md",
   "system_integration_audit": "planner/system-integration-audit.md",
   "knowledge_curator_final_acceptance": "planner/KNOWLEDGE_CURATOR_FINAL_ACCEPTANCE.md",
   "knowledge_curator_freeze": {
@@ -35,15 +32,15 @@
     "deliverable": true,
     "implementation_code_sha": "42e39121af5f6120174e088a521c9ad014abdcda"
   },
-  "si1_review": {
-    "verdict": "R1_REQUIRED",
-    "reviewed_code_sha": "e5ccf224def859357ac0f9f14605817829815a06",
-    "reviewed_executor_head": "2acefe5ca02e57ae805e574d4c1c783c5a91063c",
-    "required_fixes": [
-      "reject nested integration fixture/test retrieval adapters",
-      "validate production dependencies against frozen runtime-checkable ports",
-      "sanitize external provider exception text",
-      "run mandatory system MCP checks with zero skips"
-    ]
+  "si1_acceptance": {
+    "verdict": "ACCEPTED",
+    "frozen": true,
+    "implementation_code_sha": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
+    "executor_bookkeeping_sha": "270586b302db4cca5633cc5f9ebca2d3827bb6bd",
+    "knowledge_curator_tests": "522 passed / 0 skipped / 0 failed",
+    "integration_dsh_tests": "90 passed / 0 failed",
+    "integration_system_tests": "38 passed / 0 skipped / 0 failed",
+    "frozen_tree_changed": false,
+    "runtime_constructor_files_changed_during_r1": false
   }
 }
