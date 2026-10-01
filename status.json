@@ -1,7 +1,7 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-2A",
+  "phase": "SI-2B",
   "actor": "executor",
   "state": "executor_complete",
   "planner": "ChatGPT",
@@ -12,7 +12,7 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-2a-executor-report.md",
+  "result_expected": "results/phase-si-2b-executor-report.md",
   "constraints": [
     "GitHub origin/main is the source of truth",
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
@@ -26,7 +26,7 @@
     "do not modify frozen Knowledge Curator or SI-1/SI-1.5 production files",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "95d55e7",
+  "latest_commit": "d2d69f6",
   "planner_review": "planner/phase-si-1-5-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",

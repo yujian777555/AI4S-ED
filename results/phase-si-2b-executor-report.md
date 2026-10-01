@@ -9,7 +9,7 @@
 
 ## Phase SI-2B implementation CODE SHA
 
-（见 commit）
+d2d69f6
 
 revision application composition:
 PASS
