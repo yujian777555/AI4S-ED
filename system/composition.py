@@ -1,4 +1,4 @@
-"""System-level production dependency composition (Phase SI-1).
+"""System-level production dependency composition (Phase SI-1 / R1).
 
 Composes external production adapters into the existing
 CuratorRuntime / EvidenceRuntime injection points.
@@ -13,8 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-# Known test/integration adapter class names and module fragments that must
-# never appear as production dependencies.
+# Known test/integration adapter class names that must never appear as production.
 _FORBIDDEN_ADAPTER_NAMES = frozenset(
     {
         "InMemoryKnowledgeRepository",
@@ -52,7 +51,6 @@ class ProductionAdapterError(ValueError):
 
 
 def _is_forbidden_adapter(obj: Any) -> bool:
-    """Return True if obj is a known test/integration adapter instance or class."""
     cls = obj if isinstance(obj, type) else type(obj)
     if cls.__name__ in _FORBIDDEN_ADAPTER_NAMES:
         return True
@@ -73,10 +71,37 @@ def _validate_production_adapter(obj: Any, label: str) -> None:
         )
 
 
+def _validate_port(obj: Any, port_cls: type, label: str) -> None:
+    """Validate obj satisfies a frozen runtime-checkable Port."""
+    _validate_production_adapter(obj, label)
+    if not isinstance(obj, port_cls):
+        raise ProductionAdapterError(
+            f"{label} does not satisfy required Port: {port_cls.__name__}"
+        )
+
+
+def _validate_evidence_service(service: Any, label: str) -> None:
+    """Validate EvidenceRetrievalService and inspect nested backends (R1-01)."""
+    _validate_production_adapter(service, label)
+    from knowledge_curator.retrieval.evidence_service import EvidenceRetrievalService
+
+    if not isinstance(service, EvidenceRetrievalService):
+        raise ProductionAdapterError(
+            f"{label} must be EvidenceRetrievalService, got {type(service).__name__}"
+        )
+    # Inspect nested backends for known test adapters
+    for attr, backend_label in (
+        ("_vector_port", "evidence vector backend"),
+        ("_keyword_port", "evidence keyword backend"),
+        ("_reranker", "evidence reranker"),
+    ):
+        backend = getattr(service, attr, None)
+        if backend is not None:
+            _validate_production_adapter(backend, backend_label)
+
+
 @dataclass
 class CuratorDependencies:
-    """External production dependencies for KnowledgeCurator construction."""
-
     repository: Any
     ontology: Any
     mechanism_validator: Any
@@ -85,8 +110,6 @@ class CuratorDependencies:
 
 @dataclass
 class EvidenceDependencies:
-    """External production dependencies for evidence retrieval/guard."""
-
     retrieval: Optional[Any] = None
     mechanism_validator: Optional[Any] = None
     provider_identity: str = "external"
@@ -94,24 +117,28 @@ class EvidenceDependencies:
 
 @dataclass
 class SystemRuntime:
-    """Composed system runtime yielding existing injection-point objects."""
-
-    curator_runtime: Any  # CuratorRuntime from knowledge_curator.mcp_server.runtime
-    evidence_runtime: Any  # EvidenceRuntime from knowledge_curator.mcp_server.evidence_runtime
+    curator_runtime: Any
+    evidence_runtime: Any
     provider_identity: str = "external"
 
 
 def _validate_curator_deps(deps: CuratorDependencies) -> None:
-    _validate_production_adapter(deps.repository, "repository")
-    _validate_production_adapter(deps.ontology, "ontology")
-    _validate_production_adapter(deps.mechanism_validator, "mechanism_validator")
+    from knowledge_curator.ports.knowledge_repository import KnowledgeRepository
+    from knowledge_curator.ports.ontology_service import OntologyService
+    from knowledge_curator.ports.mechanism_validator import MechanismValidator
+
+    _validate_port(deps.repository, KnowledgeRepository, "repository")
+    _validate_port(deps.ontology, OntologyService, "ontology")
+    _validate_port(deps.mechanism_validator, MechanismValidator, "mechanism_validator")
 
 
 def _validate_evidence_deps(deps: EvidenceDependencies) -> None:
     if deps.retrieval is not None:
-        _validate_production_adapter(deps.retrieval, "evidence retrieval")
+        _validate_evidence_service(deps.retrieval, "evidence retrieval")
     if deps.mechanism_validator is not None:
-        _validate_production_adapter(deps.mechanism_validator, "evidence mechanism_validator")
+        from knowledge_curator.ports.mechanism_validator import MechanismValidator
+
+        _validate_port(deps.mechanism_validator, MechanismValidator, "evidence mechanism_validator")
 
 
 def compose_system_runtime(
@@ -144,7 +171,6 @@ def compose_system_runtime(
             adapter_note=f"production:{evidence_deps.provider_identity}",
         )
     else:
-        # Intentional absence: fail-closed unavailable evidence is correct.
         evidence_runtime = create_unavailable_evidence_runtime(
             mechanism_validator=evidence_deps.mechanism_validator if evidence_deps else None
         )

@@ -27,10 +27,17 @@ from system.provider_loader import (
 class StubRepository:
     def find_assertions(self, **kwargs):
         return []
+    def commit_assertions(self, *args, **kwargs):
+        return None
 
 
 class StubOntology:
-    pass
+    def normalize_entity(self, *args, **kwargs):
+        return None
+    def normalize_condition(self, *args, **kwargs):
+        return None
+    def are_conditions_compatible(self, *args, **kwargs):
+        return True
 
 
 class StubValidator:
@@ -38,6 +45,21 @@ class StubValidator:
         from knowledge_curator.ports.mechanism_validator import MechanismCheckResult
 
         return MechanismCheckResult(ok=True)
+
+
+class StubVector:
+    def search(self, query):
+        return []
+
+
+class StubKeyword:
+    def search(self, query):
+        return []
+
+
+class StubReranker:
+    def rerank(self, hits, query):
+        return hits
 
 
 class StubRetrieval:
@@ -61,7 +83,7 @@ def test_missing_provider_fails_closed():
 
 
 def test_invalid_module_fails_closed():
-    with pytest.raises(ProviderLoadError, match="import failed"):
+    with pytest.raises(ProviderLoadError, match="provider_module_import_failed"):
         load_provider_bundle("nonexistent.module:factory")
 
 
@@ -83,7 +105,7 @@ def test_factory_exception_fails_closed():
     mod = types.ModuleType("test_factory_boom")
     mod.boom = boom
     sys.modules["test_factory_boom"] = mod
-    with pytest.raises(ProviderLoadError, match="raised exception"):
+    with pytest.raises(ProviderLoadError, match="provider_factory_failed"):
         load_provider_bundle("test_factory_boom:boom")
 
 
@@ -212,8 +234,13 @@ def test_injected_curator_executes_curation():
 
 
 def test_valid_external_evidence_injection():
+    from knowledge_curator.retrieval.evidence_service import EvidenceRetrievalService
+
     deps = _curator_deps()
-    ev = EvidenceDependencies(retrieval=StubRetrieval(), provider_identity="test-external")
+    svc = EvidenceRetrievalService(
+        vector_port=StubVector(), keyword_port=StubKeyword(), reranker=StubReranker()
+    )
+    ev = EvidenceDependencies(retrieval=svc, provider_identity="test-external")
     rt = compose_system_runtime(curator_deps=deps, evidence_deps=ev)
     assert rt.evidence_runtime.retrieval_available is True
     assert rt.evidence_runtime.integration_fixture is False
@@ -268,7 +295,10 @@ def test_system_not_imported_by_frozen_core():
 
     for mod in (knowledge_curator.core.curator, knowledge_curator.core.commit, knowledge_curator.retrieval.hybrid):
         src = open(mod.__file__, encoding="utf-8").read()
-        assert "system." not in src, f"{mod.__name__} imports system package"
+        # Check for actual imports, not docstring mentions
+        import re
+        imports = re.findall(r'^(?:from|import)\s+system', src, re.M)
+        assert not imports, f"{mod.__name__} imports system package"
 
 
 def test_production_bootstrap_ignores_fixture_env():

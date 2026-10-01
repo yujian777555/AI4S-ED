@@ -1,4 +1,4 @@
-"""Production provider loading boundary (Phase SI-1).
+"""Production provider loading boundary (Phase SI-1 / R1).
 
 Deployment contract:
     AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function
@@ -7,6 +7,8 @@ The factory returns a dependency bundle for system.composition.
 
 Fail-closed: any missing/invalid provider configuration raises ProviderLoadError
 before MCP server startup. Never falls back to InMemory/Fake adapters.
+
+R1-03: external exception text is NOT copied into user-visible errors.
 """
 
 from __future__ import annotations
@@ -20,6 +22,11 @@ PROVIDER_ENV_VAR = "AI4S_SYSTEM_ADAPTER_FACTORY"
 
 class ProviderLoadError(RuntimeError):
     """Raised when a production provider cannot be loaded or is invalid."""
+
+
+def _sanitize_error(exc: BaseException) -> str:
+    """Return a stable category without leaking external exception text."""
+    return type(exc).__name__
 
 
 def _load_factory(spec: str) -> Callable[..., Any]:
@@ -38,8 +45,9 @@ def _load_factory(spec: str) -> Callable[..., Any]:
     try:
         module = importlib.import_module(module_name)
     except Exception as exc:
+        # R1-03: do not leak str(exc); keep chained cause internally.
         raise ProviderLoadError(
-            f"provider module import failed: {module_name}: {exc}"
+            f"provider_module_import_failed: {module_name}: {_sanitize_error(exc)}"
         ) from exc
     if not hasattr(module, attr_name):
         raise ProviderLoadError(
@@ -54,18 +62,14 @@ def _load_factory(spec: str) -> Callable[..., Any]:
 
 
 def _validate_bundle(bundle: Any) -> Any:
-    """Validate the dependency bundle shape returned by the factory."""
     if bundle is None:
         raise ProviderLoadError("provider factory returned None")
-    # Accept either a mapping-like or an object with expected attributes.
     if isinstance(bundle, dict):
         if "curator" not in bundle:
             raise ProviderLoadError("dependency bundle missing 'curator' key")
         return bundle
     if not hasattr(bundle, "curator"):
-        raise ProviderLoadError(
-            "dependency bundle missing 'curator' attribute"
-        )
+        raise ProviderLoadError("dependency bundle missing 'curator' attribute")
     return bundle
 
 
@@ -74,18 +78,7 @@ def load_provider_bundle(
     *,
     environ: Optional[dict[str, str]] = None,
 ) -> Any:
-    """Load and validate the production provider dependency bundle.
-
-    Args:
-        spec: explicit 'module:factory' string; if None, read from environ.
-        environ: environment mapping; defaults to os.environ.
-
-    Returns:
-        The validated dependency bundle from the factory.
-
-    Raises:
-        ProviderLoadError: on any missing/invalid provider configuration.
-    """
+    """Load and validate the production provider dependency bundle."""
     env = environ if environ is not None else os.environ
     raw_spec = spec if spec is not None else env.get(PROVIDER_ENV_VAR, "")
     if not raw_spec or not raw_spec.strip():
@@ -96,7 +89,8 @@ def load_provider_bundle(
     try:
         bundle = factory()
     except Exception as exc:
+        # R1-03: do not leak str(exc); keep chained cause internally.
         raise ProviderLoadError(
-            f"provider factory raised exception: {raw_spec}: {exc}"
+            f"provider_factory_failed: {raw_spec}: {_sanitize_error(exc)}"
         ) from exc
     return _validate_bundle(bundle)
