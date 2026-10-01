@@ -9,7 +9,7 @@
 
 ## Phase SI-1.5-R1 implementation CODE SHA
 
-（见 commit）
+0f014f0
 
 ---
 
@@ -80,7 +80,7 @@ NONE
 
 ## Phase SI-1.5-R2 implementation CODE SHA
 
-（见 commit）
+0f014f0
 
 direct reference integration_fixture=true asserted:
 PASS

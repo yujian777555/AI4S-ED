@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-1.5-R2",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -25,7 +25,7 @@
     "do not modify the accepted product preset during R2",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "ed129caf53e1b112cc2ef5d0ec534e9b7bc4a039",
+  "latest_commit": "0f014f0",
   "planner_review": "planner/phase-si-1-5-r2-review.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
