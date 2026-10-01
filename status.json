@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-2A",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -26,7 +26,7 @@
     "do not modify frozen Knowledge Curator or SI-1/SI-1.5 production files",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "45b8b0a01bb64ef62e4be6abecd9239d685686f5",
+  "latest_commit": "95d55e7",
   "planner_review": "planner/phase-si-1-5-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",

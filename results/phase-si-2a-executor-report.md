@@ -9,7 +9,7 @@
 
 ## Phase SI-2A implementation CODE SHA
 
-（见 commit）
+95d55e7
 
 application commit dependency composition:
 PASS
