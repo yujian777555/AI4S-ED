@@ -1,4 +1,4 @@
-# Phase SI-1.5-R1 Plan — DSH Wiring Closure
+# Phase SI-1.5-R2 Plan — Qualification Path Closure
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,15 +6,15 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close the remaining DSH production-bootstrap wiring gaps identified in:
+Close the remaining qualification-path mismatches identified in:
 
-`planner/phase-si-1-5-review.md`
+`planner/phase-si-1-5-r2-review.md`
 
-This is a narrow closure pass.
+This is a narrow DSH/integration closure pass.
 
 Do not begin SI-2.
 
-Do not modify frozen Knowledge Curator or SI-1 production composition.
+Do not modify frozen production code.
 
 ---
 
@@ -36,13 +36,13 @@ Status:
 
 **ACCEPTED / FROZEN**
 
-Reviewed SI-1.5 implementation:
+Reviewed SI-1.5-R1 CODE SHA:
 
-`fd000223b308b209b02f3163e2eee72a6637aab2`
+`c2f2cb24580689b82551bb8f3971d1e75d07da3e`
 
-Planner review:
+Current Planner review:
 
-`planner/phase-si-1-5-review.md`
+`planner/phase-si-1-5-r2-review.md`
 
 ---
 
@@ -55,209 +55,235 @@ Do not modify:
 - `system/provider_loader.py`
 - `system/mcp_stdio.py`
 - `planner/CONTRACT_GAPS.md`
+- `dsh/knowledge-curator/cordis.patch.yml`
 
-Do not add orchestration/workflow behavior.
+The product preset itself is already correct and should remain unchanged.
 
 ---
 
-## 3. R1-01 — Fix mounted DSH lane provider wiring
+## 3. R2-01 — Fix lane325 integration_fixture semantics
 
 Update:
 
 `integration/dsh/lane325_kc_evidence_roundtrip.e2e.ts`
 
-The DSH MCP server launched from the product preset must receive:
+Current comparison incorrectly requires:
+
+`direct.integration_fixture == mounted_dsh.integration_fixture`
+
+After SI-1.5 this is no longer valid.
+
+Expected:
+
+- direct reference path: `integration_fixture == true`
+- mounted DSH production-composition path: `integration_fixture == false`
+
+Change the live identity assertion to:
+
+1. compare evidence identities/coverage/Abstain semantics that should match;
+2. separately assert direct fixture marker is true;
+3. separately assert mounted DSH/provider marker is false.
+
+Do not weaken evidence identity comparison beyond removing the now-invalid equality of the fixture marker.
+
+---
+
+## 4. R2-02 — Make integration-only provider evidence match the reference corpus
+
+Update:
+
+`integration/system/fixtures/dsh_provider.py`
+
+The integration-only provider must continue to use **test-local adapter classes**.
+
+Do not import, instantiate, wrap, or delegate to:
+
+- `InMemoryVectorSearch`
+- `InMemoryKeywordSearch`
+- `FakeReranker`
+
+or other known forbidden Knowledge Curator integration adapters.
+
+Instead:
+
+1. load the checked-in deterministic evidence fixture chunks from the existing frozen fixture-data builder;
+2. implement test-local protocol-compatible vector/keyword adapters over those chunks;
+3. implement a test-local deterministic reranker;
+4. preserve the same relevant filtering/rank behavior required for direct-reference parity;
+5. construct an ordinary `EvidenceRetrievalService` from those test-local components.
+
+This fixture remains under `integration/**` only.
+
+It must never be imported by `system/**` production code.
+
+---
+
+## 5. Keyless evidence parity regression
+
+Add a deterministic keyless test proving the direct reference corpus and the integration provider's production-style evidence runtime remain semantically aligned.
+
+Use the same lane325 query/request.
+
+Verify at minimum:
+
+- same evidence chunk-id sequence/set as appropriate to the frozen retrieval contract;
+- same coverage keys;
+- same coverage states;
+- same query-level Abstain result/reasons;
+- same relevant claim-guard policy for the lane325 C1/C2 claims.
+
+Also verify explicitly:
+
+- direct reference request/bundle is integration fixture = true;
+- production-style provider runtime/bundle is integration fixture = false.
+
+The difference in the fixture marker is expected and must not cause identity failure.
+
+---
+
+## 6. R2-03 — Fix run_lane325 environment
+
+Update:
+
+`integration/dsh/run_lane325.py`
+
+Set in the qualification environment:
 
 ```
 AI4S_SYSTEM_ADAPTER_FACTORY=
 integration.system.fixtures.dsh_provider:create_provider_bundle
 ```
 
-The mounted DSH path must no longer rely on:
+This environment is shared by the mounted lane324 baseline and lane325 evidence lane.
+
+Remove the runner-global:
 
 `KC_EVIDENCE_INTEGRATION_FIXTURE=1`
 
-to configure the MCP server.
+The direct-reference helper already owns its own explicit old-fixture behavior and may keep it locally.
 
-If `directRef(...)` still needs the old integration fixture for direct-result comparison, it may set `KC_EVIDENCE_INTEGRATION_FIXTURE=1` only inside that separate direct-reference subprocess.
-
-The mounted DSH Agent's MCP child must use the provider factory.
-
-Add assertions/comments making this distinction explicit.
+Do not rely on the parent qualification runner's fixture flag for MCP composition.
 
 ---
 
-## 4. R1-02 — Migrate generated DSH MCP patch
+## 7. R2-04 — lane324 baseline provider compatibility
+
+The lane324 baseline mounts the same product preset.
+
+Do not hard-code a provider into production product config.
+
+It is acceptable for lane324 to inherit the provider from `run_lane325.py`.
+
+Add/update a keyless structural regression proving:
+
+- the qualification runner sets `AI4S_SYSTEM_ADAPTER_FACTORY`;
+- lane324 is launched under that environment;
+- the runner no longer depends on `KC_EVIDENCE_INTEGRATION_FIXTURE` to start the MCP child.
+
+---
+
+## 8. R2-05 — Fix integration/dsh/mcp_smoke provider environment
 
 Update:
 
-`integration/dsh/mcp_patch.py`
+`integration/dsh/mcp_smoke.py`
 
-Generated MCP subprocess args must become:
+This is integration/qualification code.
 
-```python
-["-m", "system.mcp_stdio"]
-```
+When the caller already supplies:
 
-Do not generate the old:
+`AI4S_SYSTEM_ADAPTER_FACTORY`
 
-`knowledge_curator.mcp_server`
+preserve it.
 
-entry point.
+When the caller does not supply one, the integration smoke must explicitly use:
 
-Qualification/smoke callers using this generated patch must provide a valid explicit provider environment.
+`integration.system.fixtures.dsh_provider:create_provider_bundle`
 
-Do not hard-code a deployment production provider into the reusable patch payload.
+for the duration of the smoke run.
 
----
+Do not change production system code.
 
-## 5. Qualification/smoke environment
+Do not use `KC_EVIDENCE_INTEGRATION_FIXTURE` as the provider mechanism.
 
-Any integration/qualification runner that starts the system MCP server must explicitly set:
+Do not overwrite a caller-supplied real provider.
 
-```
-AI4S_SYSTEM_ADAPTER_FACTORY=
-integration.system.fixtures.dsh_provider:create_provider_bundle
-```
+Add a test proving both:
 
-when using the integration-only provider.
-
-Do not auto-detect pytest.
-
-Do not add production fallback behavior.
-
-Do not use `KC_EVIDENCE_INTEGRATION_FIXTURE` as the system MCP provider mechanism.
+- caller-supplied provider is preserved;
+- absent provider resolves to the integration-only provider for the qualification smoke.
 
 ---
 
-## 6. R1-03 — Product DSH documentation
+## 9. R2-06 — Update generated patch template documentation
 
 Update:
 
-`dsh/knowledge-curator/README.md`
+`integration/dsh/patches/knowledge-curator-mcp.patch.yml`
 
-Document the actual child process:
+Its logical-shape comment must show:
 
-`python -m system.mcp_stdio`
+```
+args: ['-m', 'system.mcp_stdio']
+```
 
-Document required deployment variables:
+Add a comment that:
 
-- `AI4S_KC_PYTHON`
-- `AI4S_KC_WORKSPACE`
-- `AI4S_SYSTEM_ADAPTER_FACTORY`
-
-Required explanation:
-
-### AI4S_SYSTEM_ADAPTER_FACTORY
-
-Format:
-
-`package.module:factory_function`
-
-It identifies a deployment-owned dependency factory.
-
-It is not itself a secret.
-
-Adapter-specific credentials remain deployment-owned environment/configuration.
-
-Never commit adapter credentials.
-
-Missing/invalid provider => startup fails closed.
-
-No production fallback to InMemory/Fake or the checked-in integration fixture.
-
-Do not recommend the integration test provider as a production provider.
+- provider configuration is supplied by the qualification/deployment environment;
+- the patch does not hard-code a provider.
 
 ---
 
-## 7. R1-04 — Real stdio subprocess acceptance
+## 10. Existing real stdio acceptance must remain green
 
-Add a deterministic keyless test that launches the actual process:
+Preserve the real keyless subprocess tests added in R1.
 
-```
-python -m system.mcp_stdio
-```
+They must continue to prove:
 
-using official MCP stdio client transport.
-
-Valid-provider subprocess environment:
-
-```
-AI4S_SYSTEM_ADAPTER_FACTORY=
-integration.system.fixtures.dsh_provider:create_provider_bundle
-PYTHONPATH=<repo root>
-```
-
-Then initialize an MCP ClientSession and verify:
-
-1. process initializes successfully;
-2. exactly four tools are discovered:
-   - `curate_assertion_set`
-   - `knowledge_curator_health`
-   - `retrieve_evidence`
-   - `validate_retrieved_claims`
-3. health reports the injected integration-test provider through existing metadata;
-4. one `curate_assertion_set` call succeeds.
-
-No DeepSeek credential is required.
-
-### Negative subprocess case
-
-Launch the same:
-
-`python -m system.mcp_stdio`
-
-without `AI4S_SYSTEM_ADAPTER_FACTORY`.
-
-Prove startup exits/fails closed.
-
-Do not accept silent empty tool discovery as a pass.
+- valid explicit provider starts;
+- exact four tools;
+- health identity;
+- curation round-trip;
+- missing-provider fail-closed;
+- evidence omitted remains unavailable;
+- `KC_EVIDENCE_INTEGRATION_FIXTURE` cannot bypass production composition.
 
 ---
 
-## 8. DSH path assertion
+## 11. Mounted live lane status
 
-Add/update keyless DSH contract tests proving:
+If no DeepSeek credential/runtime is available:
 
-- product preset points to `system.mcp_stdio`;
-- generated `mcp_patch.py` points to `system.mcp_stdio`;
-- mounted lane sets `AI4S_SYSTEM_ADAPTER_FACTORY`;
-- mounted lane does not set `KC_EVIDENCE_INTEGRATION_FIXTURE` for the MCP child composition path;
-- product README documents the provider contract.
+`actual mounted DSH live lane executed = NOT_RUN_ENV`
 
----
+is acceptable **only if**:
 
-## 9. Evidence qualification semantics
+- all keyless structural/bootstrap checks pass;
+- parity tests prove no known deterministic evidence mismatch remains;
+- lane324/lane325 runner provider wiring is correct.
 
-The integration-only DSH provider may include its deterministic protocol-compatible EvidenceRetrievalService.
-
-That provider is allowed only because tests select it explicitly.
-
-Do not change `integration/system/fixtures/dsh_provider.py` into production code.
-
-Do not import it from `system/**`.
+Do not report the live lane as PASS unless it actually ran.
 
 ---
 
-## 10. No workflow changes
+## 12. No workflow changes
 
-Do not create or implement:
+Do not add:
 
 - Agent Factory;
 - Orchestrator;
 - CurationWorkflow;
 - RevisionWorkflow;
 - QAEvidenceWorkflow;
-- DocumentCommit workflow;
-- lifecycle workflow.
+- commit/lifecycle wiring.
 
-Do not add curation-to-commit behavior.
+Do not begin SI-2.
 
 ---
 
-## 11. Tests
+## 13. Tests
 
-Run at minimum:
+Run:
 
 ```bash
 pytest knowledge_curator/tests
@@ -265,7 +291,7 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Acceptance baselines:
+Acceptance minimums:
 
 ### knowledge_curator
 
@@ -273,99 +299,116 @@ Acceptance baselines:
 
 ### integration/system
 
-At least:
+At least current baseline:
 
-`52 passed / 0 skipped / 0 failed`
+`58 passed / 0 skipped / 0 failed`
+
+plus new R2 tests.
 
 ### integration/dsh
 
-At least:
+At least current baseline:
 
 `90 passed / 0 skipped / 0 failed`
 
-New tests are additive.
+plus new R2 tests.
 
-Mandatory SI-1.5-R1 tests:
+Mandatory SI-1.5-R2 tests:
 
 **0 skipped**
 
 No external network required.
 
-If the TypeScript mounted lane cannot be run keylessly because actual DSH source/runtime is unavailable, the real stdio subprocess acceptance above is mandatory and must pass. Report the mounted-live lane environment limitation explicitly rather than claiming it ran.
-
 ---
 
-## 12. Freeze verification
+## 14. Freeze verification
 
-Before completion compare final tree against SI-1.5-R1 handoff.
-
-Explicitly verify no changes under:
+Before completion verify no changes under:
 
 - `knowledge_curator/**`
 - `system/composition.py`
 - `system/provider_loader.py`
 - `system/mcp_stdio.py`
 - `planner/CONTRACT_GAPS.md`
+- `dsh/knowledge-curator/cordis.patch.yml`
 
-Expected: no changes.
+Expected: **NO CHANGES**.
 
-Allowed implementation scope:
+Allowed implementation changes are limited to:
 
-- `dsh/knowledge-curator/README.md`;
 - `integration/dsh/**`;
-- `integration/system/tests/**` only if needed;
-- report/status bookkeeping.
+- `integration/system/fixtures/**`;
+- `integration/system/tests/**`;
+- SI-1.5 report/status bookkeeping.
 
 ---
 
-## 13. Required report
+## 15. Required report
 
-Update/create:
+Update:
 
 `results/phase-si-1-5-executor-report.md`
 
-Add R1 section:
+Add an R2 section:
 
 ```
-Phase SI-1.5-R1 implementation CODE SHA:
+Phase SI-1.5-R2 implementation CODE SHA:
 
-product preset uses system.mcp_stdio:
+direct reference integration_fixture=true asserted:
 PASS / FAILED
 
-generated DSH mcp_patch uses system.mcp_stdio:
+mounted/provider integration_fixture=false asserted:
 PASS / FAILED
 
-mounted DSH lane supplies AI4S_SYSTEM_ADAPTER_FACTORY:
+integration provider fixture-corpus parity:
 PASS / FAILED
 
-mounted DSH MCP composition no longer relies on KC_EVIDENCE_INTEGRATION_FIXTURE:
+evidence chunk identity parity:
 PASS / FAILED
 
-product README documents AI4S_SYSTEM_ADAPTER_FACTORY:
+coverage/Abstain parity:
 PASS / FAILED
 
-real stdio subprocess valid-provider startup:
+claim-guard policy parity:
 PASS / FAILED
 
-real stdio subprocess exact four-tool discovery:
+integration provider uses forbidden InMemory/Fake adapters:
+NO
+
+run_lane325 supplies AI4S_SYSTEM_ADAPTER_FACTORY:
 PASS / FAILED
 
-real stdio subprocess health provider identity:
+run_lane325 globally sets KC_EVIDENCE_INTEGRATION_FIXTURE:
+NO
+
+lane324 baseline receives provider contract:
 PASS / FAILED
 
-real stdio subprocess curation round-trip:
+mcp_smoke preserves caller-supplied provider:
 PASS / FAILED
 
-real stdio subprocess missing-provider fail-closed:
+mcp_smoke supplies integration provider when absent:
+PASS / FAILED
+
+patch template documents system.mcp_stdio:
+PASS / FAILED
+
+real stdio subprocess acceptance remains green:
 PASS / FAILED
 
 actual mounted DSH live lane executed:
 PASS / NOT_RUN_ENV / FAILED
 
+known deterministic mounted-live mismatch remains:
+NO / YES
+
 knowledge_curator frozen tree changed:
 NO
 
 SI-1 frozen production composition changed:
+NO
+
+product preset changed during R2:
 NO
 
 CONTRACT_GAPS changed:
@@ -392,20 +435,18 @@ deviations:
 NONE / describe
 ```
 
-Do not mark actual mounted DSH live lane PASS unless it was actually executed.
-
 ---
 
-## 14. status.json
+## 16. status.json
 
 At completion set:
 
 - module = `system_integration`
-- phase = `SI-1.5-R1`
+- phase = `SI-1.5-R2`
 - actor = `executor`
 - state = `executor_complete`
 - result_expected = `results/phase-si-1-5-executor-report.md`
-- latest_commit = actual R1 implementation CODE SHA
+- latest_commit = actual R2 implementation CODE SHA
 
 Preserve freezes:
 
@@ -419,7 +460,7 @@ Preserve freezes:
 
 ---
 
-## 15. Completion
+## 17. Completion
 
 Push implementation/tests/report/status to `main`.
 
@@ -427,4 +468,4 @@ Then STOP.
 
 Do not begin SI-2.
 
-Planner performs final SI-1.5 acceptance review after R1.
+Planner performs the final SI-1.5 acceptance review after R2.
