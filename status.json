@@ -18,16 +18,18 @@
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
     "Phase SI-1 remains ACCEPTED / FROZEN at CODE SHA 073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
     "Phase SI-1.5 remains ACCEPTED / FROZEN at closure SHA 0f014f0a3aad75a6cada18874fead10414469d6b",
-    "SI-2A is curation-to-commit application workflow only",
+    "Phase SI-2A remains ACCEPTED / FROZEN at CODE SHA 95d55e71390a2e7266b2084243161101c5aff60a",
+    "SI-2B is same-work revision publication application composition/workflow only",
+    "delegate publication saga to frozen RevisionPublicationCoordinator and LifecycleRevisionCoordinator",
+    "do not implement direct external retraction orchestration in SI-2B",
     "do not add a global orchestrator",
-    "do not add revision/lifecycle workflows",
     "do not add new public MCP tools",
     "do not modify the DSH knowledge-curator preset",
-    "do not modify frozen Knowledge Curator or SI-1/SI-1.5 production files",
+    "do not modify frozen Knowledge Curator, SI-1, SI-1.5, or SI-2A production files",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
   "latest_commit": "d2d69f6",
-  "planner_review": "planner/phase-si-1-5-final-acceptance.md",
+  "planner_review": "planner/phase-si-2a-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
     "frozen": true,
@@ -47,8 +49,7 @@
   "si2a_acceptance": {
     "verdict": "ACCEPTED",
     "frozen": true,
-    "implementation_code_sha": "95d55e7",
-    "bookkeeping_head": "6282a48",
+    "implementation_code_sha": "95d55e71390a2e7266b2084243161101c5aff60a",
     "accepted_capability": [
       "CurationCommitWorkflow: SourceIdentity + AssertionSet -> CuratorRuntime -> CurationReport -> precommit gate -> CommitRequest -> DocumentCommitCoordinator -> CommitResult",
       "application_composition.py: commit dependency composition with 5 Port validation, InMemory rejection",
@@ -61,6 +62,8 @@
       "knowledge_curator": "522 passed / 0 skipped / 0 failed",
       "integration_system": "107 passed / 0 skipped / 0 failed",
       "integration_dsh": "90 passed / 0 skipped / 0 failed"
-    }
+    },
+    "executor_bookkeeping_head_reviewed": "410d03a45c6c439f8971226386943221a7e06fa9",
+    "planner_acceptance_commit": "622e5799f4930f63a4999bc67b3023111f6af88d"
   }
 }
