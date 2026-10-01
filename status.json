@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-2A",
-  "actor": "executor",
-  "state": "executor_complete",
+  "actor": "planner",
+  "state": "accepted_frozen",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -26,8 +26,8 @@
     "do not modify frozen Knowledge Curator or SI-1/SI-1.5 production files",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "95d55e7",
-  "planner_review": "planner/phase-si-1-5-final-acceptance.md",
+  "latest_commit": "622e5799f4930f63a4999bc67b3023111f6af88d",
+  "planner_review": "planner/phase-si-2a-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
     "frozen": true,
@@ -47,8 +47,7 @@
   "si2a_acceptance": {
     "verdict": "ACCEPTED",
     "frozen": true,
-    "implementation_code_sha": "95d55e7",
-    "bookkeeping_head": "6282a48",
+    "implementation_code_sha": "95d55e71390a2e7266b2084243161101c5aff60a",
     "accepted_capability": [
       "CurationCommitWorkflow: SourceIdentity + AssertionSet -> CuratorRuntime -> CurationReport -> precommit gate -> CommitRequest -> DocumentCommitCoordinator -> CommitResult",
       "application_composition.py: commit dependency composition with 5 Port validation, InMemory rejection",
@@ -61,6 +60,8 @@
       "knowledge_curator": "522 passed / 0 skipped / 0 failed",
       "integration_system": "107 passed / 0 skipped / 0 failed",
       "integration_dsh": "90 passed / 0 skipped / 0 failed"
-    }
+    },
+    "executor_bookkeeping_head_reviewed": "410d03a45c6c439f8971226386943221a7e06fa9",
+    "planner_acceptance_commit": "622e5799f4930f63a4999bc67b3023111f6af88d"
   }
 }
