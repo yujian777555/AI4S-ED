@@ -1,268 +1,509 @@
-# Phase 5.3-R3 Plan — Final Commit-Store / Manifest Integrity Closure
+# Phase SI-1 Plan — Production Runtime Composition
 
-Planner: ChatGPT
-Executor: Kimi/Codex
+Planner: ChatGPT  
+Executor: MiMo / Kimi / Codex  
 State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Close only the final authoritative commit-store integrity gaps from:
-planner/phase-05-3-r2-review.md
+Create the **system-level production runtime composition boundary** for AI4S-ED without reopening the frozen `knowledge_curator` implementation.
 
-Do not add features.
-Do not create Phase 5.4.
+SI-1 must make it possible for a deployment to provide real implementations of the existing Knowledge Curator ports and to construct an MCP server from those dependencies through the already-existing runtime injection points.
 
-## 1. Freeze all existing architecture
+This phase is **composition/bootstrap only**.
 
-Do not redesign:
-- async RevisionPublicationCoordinator API;
-- approval/scope model;
-- publication journal;
-- DocumentCommitCoordinator;
-- LifecycleRevisionCoordinator;
-- SourceVersionRegistry;
-- RevisionPackage;
-- DSH/MCP.
+Do not implement workflow orchestration yet.
 
-## 2. Phase 5.3 requires DocumentCommitStore
+---
 
-For publication orchestration, document_commit_store must be configured.
+## 1. Frozen baseline
 
-Before any target publication side effect:
-- if self._commit_store is None, return FAILED;
-- do not treat missing store capability as optional.
+Knowledge Curator remains:
 
-This is an internal orchestration requirement, not a public contract change.
+- ACCEPTED
+- FROZEN
+- DELIVERABLE
 
-## 3. Mirror frozen assertion hash exactly
+Frozen implementation CODE SHA:
 
-Add an internal helper that mirrors DocumentCommitCoordinator._hash_assertion without changing it.
+`42e39121af5f6120174e088a521c9ad014abdcda`
 
-Payload must match Phase 2 exactly:
+System integration audit:
 
-- id;
-- ref_id;
-- subject_class;
-- subject_entity;
-- subject_mention;
-- property;
-- value;
-- unit;
-- value_type;
-- uncertainty;
-- conditions as ordered {c,v,u};
-- locator;
-- sentence;
-- claim_type;
-- origin;
-- quality.
+`planner/system-integration-audit.md`
 
-Use the same canonical JSON:
-json.dumps(sort_keys=True, ensure_ascii=False, default=str)
-then SHA256.
+Planner audit review:
 
-Do NOT substitute Phase 5.3 typed canonical material here. This helper exists to verify the frozen Phase 2 snapshot contract byte-for-byte.
+`planner/system-integration-audit-review.md`
 
-## 4. Mirror frozen decision hash exactly
+No Phase 5.4 is authorized.
 
-For each admitted assertion mirror:
+---
 
-{
-  "assertion_id": item.assertion.id,
-  "action": item.action.value,
-  "confidence": item.confidence.value,
-  "visibility": item.visibility.value
-}
+## 2. Files/directories that MUST remain semantically frozen
 
-Same canonical JSON/SHA256 as frozen commit coordinator.
+Do not modify:
 
-## 5. One shared committed-record validator
+- `knowledge_curator/core/**`
+- `knowledge_curator/schemas/**`
+- `knowledge_curator/ports/**`
+- `knowledge_curator/retrieval/**`
+- `knowledge_curator/mcp_server/app.py`
+- `planner/CONTRACT_GAPS.md`
 
-Refactor if useful:
+Do not change public MCP tool names, input schemas, output schemas, or business behavior.
 
-_validate_committed_record_material(
-    record,
-    request,
-    package,
-    expected_version_id=None,
-    expected_snapshot_id=None,
-    resolved_snapshot=None,
+If a confirmed bug is discovered in a frozen file, STOP and report it to Planner with reproduction. Do not fix it inside SI-1.
+
+---
+
+## 3. SI-1 architecture
+
+Use the existing MCP application injection point:
+
+`create_mcp_server(runtime=..., evidence_runtime=...)`
+
+Target shape:
+
+```
+deployment / external provider package
+            |
+            v
+     AI4S-ED system bootstrap
+            |
+            +--> Curator dependencies
+            |      - KnowledgeRepository
+            |      - OntologyService
+            |      - MechanismValidator
+            |
+            +--> Evidence dependencies
+                   - EvidenceRetrievalService
+                   - optional MechanismValidator
+            |
+            v
+     CuratorRuntime / EvidenceRuntime
+            |
+            v
+       create_mcp_server(...)
+            |
+            v
+          stdio MCP
+```
+
+Do not put composition policy into Knowledge Curator core.
+
+---
+
+## 4. Required new system package
+
+Create a new top-level Python package:
+
+`system/`
+
+Minimum recommended files:
+
+```
+system/
+  __init__.py
+  composition.py
+  provider_loader.py
+  mcp_stdio.py
+```
+
+Names may be adjusted slightly if needed, but keep responsibilities separated.
+
+### 4.1 `system/composition.py`
+
+Define internal system-level dependency containers.
+
+At minimum represent:
+
+### curator dependencies
+
+- `KnowledgeRepository`
+- `OntologyService`
+- `MechanismValidator`
+- human-readable adapter/provider identity
+
+### evidence dependencies
+
+- optional `EvidenceRetrievalService`
+- optional `MechanismValidator`
+- human-readable adapter/provider identity
+
+Create a composed system runtime that yields:
+
+- `CuratorRuntime`
+- `EvidenceRuntime`
+
+Do not duplicate curation or retrieval algorithms.
+
+---
+
+## 5. Narrow runtime constructors
+
+Allowed modifications:
+
+- `knowledge_curator/mcp_server/runtime.py`
+- `knowledge_curator/mcp_server/evidence_runtime.py`
+
+### 5.1 Curator runtime constructor
+
+Add a narrow constructor that accepts externally supplied implementations of the existing ports.
+
+Example intent only:
+
+```python
+create_curator_runtime(
+    repository=...,
+    ontology=...,
+    mechanism_validator=...,
+    adapter_note=...,
 )
+```
 
-It must validate:
+It must construct the existing `KnowledgeCurator`.
 
-### record identity
-- ref_id == request.source.ref_id;
-- source_fingerprint == request.source.source_fingerprint.
+The current `create_default_runtime()` integration behavior must remain available for existing tests.
 
-### admitted material
-- exact assertion ID set;
-- exact canonical scientific assertion material;
-- action;
-- confidence;
-- visibility.
+Do not make the default integration runtime silently become production.
 
-### metadata
-- record.metadata_hash == exact expected metadata hash when record is publication-staged/published;
-- missing metadata_hash on a PUBLISHED record => conflict/fail closed.
+### 5.2 Evidence production constructor
 
-### manifest
-For PUBLISHED record:
-- manifest must exist;
-- manifest.ref_id/fingerprint/metadata_hash exact;
-- sorted manifest.assertion_hashes == sorted mirrored frozen assertion hashes from record.admitted;
-- sorted manifest.decision_hashes == sorted mirrored frozen decision hashes from record.admitted.
+Add a narrow constructor for a real/injected retrieval service.
 
-If expected version/snapshot supplied:
-- record.version_id == expected_version_id;
-- record.snapshot_id == expected_snapshot_id.
+Example intent only:
 
-If resolved_snapshot supplied:
-- manifest.content_hash == resolved_snapshot.manifest.content_hash;
-- manifest stable publication fields equal resolved snapshot manifest.
+```python
+create_production_evidence_runtime(
+    retrieval=...,
+    mechanism_validator=...,
+    adapter_note=...,
+)
+```
 
-## 6. Pre-existing commit guard
+Required properties:
 
-_existing_commit_guard may allow a genuinely early resumable record that has not yet produced admitted/manifest material.
+- `integration_fixture=False`
+- `retrieval_available=True`
+- no synthetic fixture
+- no hidden fallback to `build_fixture_evidence_service()`
 
-But:
-- if phase == PUBLISHED, full committed-record validator is mandatory;
-- a PUBLISHED record with empty admitted material while package target is non-empty => CONFLICT;
-- PUBLISHED record without manifest => CONFLICT.
+The current fail-closed production-default behavior must remain unchanged.
 
-For partial pre-publish records, allow the frozen DocumentCommitCoordinator to resume only if no contradictory material is already present.
+The current explicit integration fixture mode must remain available for tests.
 
-## 7. Post-target success must find authoritative store record
+---
 
-After await commit returns PUBLISHED or IDEMPOTENT_HIT:
+## 6. Provider loading
 
-- self._commit_store must be configured;
-- find_by_key(new.ref_id, new.source_fingerprint) must succeed;
-- returned record must NOT be None.
+Create an internal provider-loading boundary under `system/`.
 
-If None:
-- set last_error = "post-commit store record missing" or equivalent;
-- return FAILED;
-- journal remains PREPARED;
-- do not run lifecycle;
-- do not bind SourceVersion.
+Recommended deployment contract:
 
-## 8. Post-target terminal agreement
+`AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function`
 
-For the returned store record require:
+The exact environment-variable name may be changed only if documented consistently.
 
-- phase == PUBLISHED;
-- version_id == commit result.version_id;
-- snapshot_id == commit result.snapshot_id;
-- manifest exists;
-- full committed-record material validator passes;
-- resolved VersionStore snapshot exists;
-- record.manifest.content_hash == snapshot.manifest.content_hash;
-- record.manifest stable payload equals snapshot.manifest stable payload for all frozen content fields.
+The factory should return the system dependency bundle required by `composition.py`.
 
-Only then:
-journal.phase = TARGET_PUBLISHED.
+Rules:
 
-## 9. Manifest tamper regressions
+- missing provider factory in production mode => hard fail before MCP server starts;
+- invalid import => hard fail;
+- non-callable factory => hard fail;
+- invalid returned dependency shape => hard fail;
+- factory exception => hard fail;
+- do not fall back to InMemory/Fake adapters;
+- never log environment secrets or the entire environment;
+- error messages may include provider module/function identity but not secret values.
 
-Add tests where an otherwise valid published record has:
+Dynamic import is an internal deployment mechanism, not a public cross-team scientific contract.
 
-1. assertion_hashes tampered;
-2. decision_hashes tampered;
-3. metadata_hash tampered;
-4. manifest.content_hash tampered;
-5. manifest missing.
+---
 
-Each must block lifecycle.
+## 7. Production-vs-integration isolation
 
-## 10. Missing store regressions
+Production composition must never silently use the checked-in test adapters.
 
-Add tests:
+At minimum reject known integration/test implementations from:
 
-1. document_commit_store=None -> publication fails before target side effect;
-2. commit returns PUBLISHED but find_by_key returns None -> fail closed;
-3. commit returns IDEMPOTENT_HIT but find_by_key returns None -> fail closed;
-4. store read throws -> fail closed.
+- `knowledge_curator.adapters.in_memory_repository`
+- `knowledge_curator.adapters.in_memory_commit`
+- `knowledge_curator.adapters.in_memory_lifecycle`
+- `knowledge_curator.adapters.in_memory_source_versions`
+- `knowledge_curator.adapters.in_memory_revision_publication`
+- `knowledge_curator.adapters.in_memory_retrieval`
+- `knowledge_curator.adapters.in_memory_evidence`
 
-## 11. Preserve real E2E
+Also reject:
 
-Real P2J E2E using real DocumentCommitCoordinator + real store must still finalize:
+- `FakeMechanismValidator`
+- `SimpleOntologyService`
+- explicit integration evidence fixture as a production runtime
 
-- V_target real;
-- V_final real;
-- new SourceVersion -> V_final;
-- prior superseded/currently ineligible;
-- journal FINALIZED.
+The validation should be narrow and deterministic.
 
-Exact replay still idempotent.
-Post-bind recovery still works.
+Do not attempt to prove that an arbitrary third-party adapter is scientifically correct; SI-1 only prevents known test adapters from masquerading as production.
 
-## 12. Baselines
+---
 
-Maintain:
-- knowledge_curator >= 499 passed / 0 failed;
-- integration/dsh >= 90 passed / 0 failed.
+## 8. Production bootstrap
 
-## 13. Deliverable
+Implement a system-level MCP stdio bootstrap.
+
+Recommended entry point:
+
+`python -m system.mcp_stdio`
+
+Behavior:
+
+1. load configured production provider;
+2. validate dependency bundle;
+3. compose `CuratorRuntime`;
+4. compose `EvidenceRuntime`;
+5. call existing `create_mcp_server(...)`;
+6. start stdio server.
+
+If evidence retrieval is intentionally not configured by the provider, it is acceptable to compose:
+
+- production curator runtime;
+- fail-closed unavailable evidence runtime.
+
+Do not substitute a fixture.
+
+---
+
+## 9. Do NOT change the current DSH preset in SI-1
+
+Do not modify:
+
+`dsh/knowledge-curator/cordis.patch.yml`
+
+to use the new system entry point yet.
+
+Reason:
+
+SI-1 must first prove that the composition/bootstrap layer works independently.
+
+DSH migration belongs to a later accepted system-integration phase.
+
+---
+
+## 10. No orchestrator in SI-1
+
+Do not create:
+
+- CurationWorkflow;
+- RevisionWorkflow;
+- QAEvidenceWorkflow;
+- DocumentCommit workflow;
+- lifecycle workflow;
+- Agent Factory;
+- global Orchestrator.
+
+Do not call:
+
+- `DocumentCommitCoordinator`
+- `RevisionPublicationCoordinator`
+- `LifecycleRevisionCoordinator`
+
+from the new system package in SI-1.
+
+Those belong to the next phase after SI-1 acceptance.
+
+---
+
+## 11. Tests
+
+Add system-level tests.
+
+Preferred location:
+
+`integration/system/tests/`
+
+Create the package if absent.
+
+Minimum required tests:
+
+### production provider loading
+
+1. missing provider config fails closed;
+2. invalid module fails closed;
+3. missing factory attribute fails closed;
+4. non-callable factory fails closed;
+5. factory exception fails closed;
+6. invalid bundle fails closed.
+
+### adapter isolation
+
+7. production composition rejects `InMemoryKnowledgeRepository`;
+8. rejects `SimpleOntologyService`;
+9. rejects `FakeMechanismValidator`;
+10. rejects in-memory retrieval adapters / integration fixture as production evidence.
+
+### valid injected composition
+
+11. protocol-compatible test provider bundle can compose a curator runtime;
+12. injected curator runtime can execute one curation round-trip without using the default in-memory factory;
+13. injected production evidence service creates `integration_fixture=False`;
+14. evidence omitted intentionally => retrieval remains explicitly unavailable;
+15. provider identity is visible through existing health metadata/adapter note without changing health schema.
+
+### MCP contract preservation
+
+16. tool names remain exactly the existing four tools;
+17. no new public MCP business tool;
+18. existing MCP input/output behavior remains compatible.
+
+### isolation
+
+19. `system/**` does not get imported by frozen Knowledge Curator core modules;
+20. production bootstrap does not read `KC_EVIDENCE_INTEGRATION_FIXTURE` as a way to create production evidence.
+
+Use deterministic local stubs inside tests only.
+
+No network calls.
+
+---
+
+## 12. Regression suites
+
+All previously accepted tests must remain green.
+
+Required evidence:
+
+```
+pytest knowledge_curator/tests
+pytest integration/dsh/tests
+pytest integration/system/tests
+```
+
+Expected previous baselines:
+
+- knowledge_curator: 522 passed / 0 skipped / 0 failed
+- integration/dsh: 90 passed / 0 failed
+
+New system test count is additive.
+
+Do not weaken or delete prior tests.
+
+---
+
+## 13. Freeze verification
+
+Before completion, explicitly verify no modifications occurred under:
+
+```
+knowledge_curator/core/
+knowledge_curator/schemas/
+knowledge_curator/ports/
+knowledge_curator/retrieval/
+planner/CONTRACT_GAPS.md
+```
+
+Also confirm:
+
+- `knowledge_curator/mcp_server/app.py` unchanged;
+- DSH preset unchanged;
+- no public MCP tool added.
+
+---
+
+## 14. Required documentation
 
 Create:
-results/phase-05-3-r3-executor-report.md
+
+`results/phase-si-1-executor-report.md`
 
 Report exactly:
 
-Phase 5.3-R3 implementation CODE SHA:
+```
+Phase SI-1 implementation CODE SHA:
 
-authoritative commit-store required:
+production provider loader:
 PASS / FAILED
 
-frozen assertion-hash mirror:
+production missing-provider fail-closed:
 PASS / FAILED
 
-frozen decision-hash mirror:
+known test adapters rejected in production:
 PASS / FAILED
 
-published manifest material guard:
+external curator dependency injection:
 PASS / FAILED
 
-post-target missing-record fail-closed:
+external evidence dependency injection:
 PASS / FAILED
 
-post-target manifest/snapshot agreement:
+evidence unavailable remains fail-closed:
 PASS / FAILED
 
-real P2J E2E:
+integration fixture isolated from production:
 PASS / FAILED
 
-full replay idempotency:
+MCP public tool contract unchanged:
 PASS / FAILED
 
-post-bind recovery:
+DSH preset unchanged:
 PASS / FAILED
 
-integration tests:
-X passed / 0 failed
+orchestrator/workflow added:
+NO
+
+frozen knowledge_curator core changed:
+NO
+
+CONTRACT_GAPS changed:
+NO
 
 knowledge_curator tests:
-X passed / Y skipped / 0 failed
+X passed / Y skipped / Z failed
 
-public contracts changed:
-NO
+integration/dsh tests:
+X passed / Z failed
+
+integration/system tests:
+X passed / Z failed
 
 origin/main SHA:
 
-新增/修改 CONTRACT_GAPS:
-YES / NO
+deviations:
+NONE / describe
+```
 
-## 14. Completion
+---
 
-Update status.json:
-- phase = 5.3-R3
-- actor = executor
-- state = executor_complete
-- latest_commit = actual CODE SHA
-- result_expected = results/phase-05-3-r3-executor-report.md
+## 15. status.json
 
-Push main and STOP.
+At completion set:
 
-Do not create Phase 5.4.
-Planner performs immediate final freeze after review.
+- module = `system_integration`
+- phase = `SI-1`
+- actor = `executor`
+- state = `executor_complete`
+- current_plan = `planner/latest_plan.md`
+- result_expected = `results/phase-si-1-executor-report.md`
+- latest_commit = actual SI-1 CODE SHA
+
+Preserve an explicit constraint that Knowledge Curator remains frozen at:
+
+`42e39121af5f6120174e088a521c9ad014abdcda`
+
+---
+
+## 16. Completion rule
+
+Push all SI-1 implementation, tests, report, and status to `main`.
+
+Then STOP.
+
+Do not begin SI-2.
+
+Do not implement an orchestrator.
+
+Do not wire curation to commit.
+
+Do not change the DSH preset.
+
+Planner will review SI-1 before authorizing the next phase.
