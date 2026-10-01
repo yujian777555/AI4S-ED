@@ -1,4 +1,4 @@
-# Phase SI-1 Plan — Production Runtime Composition
+# Phase SI-1-R1 Plan — Production Composition Hardening
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,13 +6,17 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Create the **system-level production runtime composition boundary** for AI4S-ED without reopening the frozen `knowledge_curator` implementation.
+Close the remaining SI-1 production-composition integrity gaps identified in:
 
-SI-1 must make it possible for a deployment to provide real implementations of the existing Knowledge Curator ports and to construct an MCP server from those dependencies through the already-existing runtime injection points.
+`planner/phase-si-1-review.md`
 
-This phase is **composition/bootstrap only**.
+This is a **narrow R1 hardening pass**.
 
-Do not implement workflow orchestration yet.
+Do not begin SI-2.
+
+Do not add orchestrator/workflows.
+
+Do not change frozen Knowledge Curator core behavior.
 
 ---
 
@@ -28,19 +32,17 @@ Frozen implementation CODE SHA:
 
 `42e39121af5f6120174e088a521c9ad014abdcda`
 
-System integration audit:
+Reviewed SI-1 implementation CODE SHA:
 
-`planner/system-integration-audit.md`
+`e5ccf224def859357ac0f9f14605817829815a06`
 
-Planner audit review:
+Current R1 review:
 
-`planner/system-integration-audit-review.md`
-
-No Phase 5.4 is authorized.
+`planner/phase-si-1-review.md`
 
 ---
 
-## 2. Files/directories that MUST remain semantically frozen
+## 2. Frozen files/directories
 
 Do not modify:
 
@@ -49,258 +51,236 @@ Do not modify:
 - `knowledge_curator/ports/**`
 - `knowledge_curator/retrieval/**`
 - `knowledge_curator/mcp_server/app.py`
+- `knowledge_curator/mcp_server/runtime.py`
+- `knowledge_curator/mcp_server/evidence_runtime.py`
 - `planner/CONTRACT_GAPS.md`
+- `dsh/knowledge-curator/cordis.patch.yml`
 
-Do not change public MCP tool names, input schemas, output schemas, or business behavior.
-
-If a confirmed bug is discovered in a frozen file, STOP and report it to Planner with reproduction. Do not fix it inside SI-1.
-
----
-
-## 3. SI-1 architecture
-
-Use the existing MCP application injection point:
-
-`create_mcp_server(runtime=..., evidence_runtime=...)`
-
-Target shape:
-
-```
-deployment / external provider package
-            |
-            v
-     AI4S-ED system bootstrap
-            |
-            +--> Curator dependencies
-            |      - KnowledgeRepository
-            |      - OntologyService
-            |      - MechanismValidator
-            |
-            +--> Evidence dependencies
-                   - EvidenceRetrievalService
-                   - optional MechanismValidator
-            |
-            v
-     CuratorRuntime / EvidenceRuntime
-            |
-            v
-       create_mcp_server(...)
-            |
-            v
-          stdio MCP
-```
-
-Do not put composition policy into Knowledge Curator core.
+R1 should be implemented entirely in the system composition/bootstrap layer and system integration tests.
 
 ---
 
-## 4. Required new system package
+## 3. R1-01 — Reject nested test adapters inside EvidenceRetrievalService
 
-Create a new top-level Python package:
+The production guard must not only inspect the outer evidence object.
 
-`system/`
+A production provider may supply an `EvidenceRetrievalService` whose nested components are test adapters.
 
-Minimum recommended files:
+For a configured production `EvidenceRetrievalService`, inspect its configured backend dependencies at minimum:
 
-```
-system/
-  __init__.py
-  composition.py
-  provider_loader.py
-  mcp_stdio.py
-```
+- vector backend;
+- keyword backend;
+- reranker.
 
-Names may be adjusted slightly if needed, but keep responsibilities separated.
+Apply the existing deterministic forbidden-adapter rule to those nested objects.
 
-### 4.1 `system/composition.py`
+The checked-in integration fixture produced by:
 
-Define internal system-level dependency containers.
+`knowledge_curator.mcp_server.evidence_runtime.build_fixture_evidence_service()`
 
-At minimum represent:
+MUST be rejected by production composition.
 
-### curator dependencies
+Do not change `EvidenceRetrievalService`.
+
+Do not use heuristic scientific-quality checks.
+
+Only prevent known test/integration adapters from masquerading as production.
+
+### Required tests
+
+1. `build_fixture_evidence_service()` is rejected by production composition;
+2. an `EvidenceRetrievalService` containing `InMemoryVectorSearch` is rejected;
+3. containing `InMemoryKeywordSearch` is rejected;
+4. containing `FakeReranker` is rejected;
+5. a service built from non-test protocol-compatible stubs is accepted.
+
+---
+
+## 4. R1-02 — Validate production dependencies against existing frozen contracts
+
+Use the existing runtime-checkable frozen Ports to validate curator dependency shape before MCP startup.
+
+Required curator contracts:
 
 - `KnowledgeRepository`
 - `OntologyService`
 - `MechanismValidator`
-- human-readable adapter/provider identity
 
-### evidence dependencies
+Production composition must reject dependencies that do not satisfy those Ports.
 
-- optional `EvidenceRetrievalService`
-- optional `MechanismValidator`
-- human-readable adapter/provider identity
+For evidence:
 
-Create a composed system runtime that yields:
+- configured retrieval must be an `EvidenceRetrievalService`;
+- optional evidence mechanism validator must satisfy `MechanismValidator`;
+- nested evidence backends must pass R1-01 isolation checks.
 
-- `CuratorRuntime`
-- `EvidenceRuntime`
+Do not modify the Port definitions.
 
-Do not duplicate curation or retrieval algorithms.
+### Required negative tests
+
+Reject before `create_mcp_server(...)`:
+
+- `repository=object()`;
+- `ontology=object()`;
+- `mechanism_validator=object()`;
+- `retrieval=object()`;
+- evidence `mechanism_validator=object()`.
+
+### Required positive tests
+
+Use complete external stubs that satisfy the existing Protocols.
+
+The positive curator stub must implement all methods required by the frozen Port, not merely the method reached by one happy-path test.
 
 ---
 
-## 5. Narrow runtime constructors
+## 5. R1-03 — Sanitize external provider exceptions
 
-Allowed modifications:
+In `system/provider_loader.py`, external provider/import exception text must not be copied verbatim into user-visible errors.
 
-- `knowledge_curator/mcp_server/runtime.py`
-- `knowledge_curator/mcp_server/evidence_runtime.py`
+Forbidden pattern:
 
-### 5.1 Curator runtime constructor
+`... {exc}`
 
-Add a narrow constructor that accepts externally supplied implementations of the existing ports.
+for arbitrary provider/import execution exceptions.
 
-Example intent only:
+Allowed diagnostic material:
 
-```python
-create_curator_runtime(
-    repository=...,
-    ontology=...,
-    mechanism_validator=...,
-    adapter_note=...,
-)
+- provider module name;
+- factory attribute name;
+- exception class/type;
+- stable category such as `provider_module_import_failed` or `provider_factory_failed`.
+
+Preserve the original exception as the chained cause:
+
+`raise ProviderLoadError(...) from exc`
+
+but do not expose `str(exc)` in the outer message.
+
+### Required tests
+
+Create deterministic external test modules/factories that raise with:
+
+`TOP_SECRET_SENTINEL`
+
+Verify:
+
+- load fails;
+- exposed `ProviderLoadError` string does not contain the sentinel.
+
+Cover both:
+
+- module import execution failure where practical;
+- factory execution failure.
+
+At minimum factory failure sentinel coverage is mandatory.
+
+---
+
+## 6. R1-04 — Mandatory MCP checks must run, not skip
+
+The SI-1 report showed:
+
+`19 passed / 2 skipped / 0 failed`
+
+The two MCP contract tests are mandatory acceptance checks.
+
+Do not use `pytest.importorskip("mcp")` for mandatory SI-1 MCP tests.
+
+Run `integration/system/tests` in the MCP-qualified environment used by the DSH suite.
+
+Final SI-1-R1 system suite must report:
+
+- **0 skipped**
+
+unless an unrelated pre-existing non-mandatory test is explicitly documented and approved by Planner.
+
+---
+
+## 7. Add real system-bootstrap MCP test
+
+Add a test that exercises the actual SI-1 path:
+
+```
+provider factory
+  -> load_provider_bundle
+  -> _extract_deps
+  -> compose_system_runtime
+  -> create_mcp_server
 ```
 
-It must construct the existing `KnowledgeCurator`.
+Use:
 
-The current `create_default_runtime()` integration behavior must remain available for existing tests.
+`system.mcp_stdio.build_system_mcp_server(...)`
 
-Do not make the default integration runtime silently become production.
+with a valid protocol-compatible provider.
 
-### 5.2 Evidence production constructor
+Then verify using the MCP server API:
 
-Add a narrow constructor for a real/injected retrieval service.
+exact tool set:
 
-Example intent only:
+- `curate_assertion_set`
+- `knowledge_curator_health`
+- `retrieve_evidence`
+- `validate_retrieved_claims`
 
-```python
-create_production_evidence_runtime(
-    retrieval=...,
-    mechanism_validator=...,
-    adapter_note=...,
-)
-```
+No fifth tool is allowed.
 
-Required properties:
+Call `knowledge_curator_health` and verify existing response fields expose:
 
-- `integration_fixture=False`
-- `retrieval_available=True`
-- no synthetic fixture
-- no hidden fallback to `build_fixture_evidence_service()`
+- curator production adapter note/provider identity;
+- evidence production adapter note or explicit unavailable state.
 
-The current fail-closed production-default behavior must remain unchanged.
+Do not add or change health response schema.
 
-The current explicit integration fixture mode must remain available for tests.
+No network call.
 
 ---
 
-## 6. Provider loading
+## 8. Provider bundle validation semantics
 
-Create an internal provider-loading boundary under `system/`.
+It is acceptable for `provider_loader._validate_bundle()` to perform only structural top-level validation if `compose_system_runtime()` performs the complete dependency validation immediately afterward.
 
-Recommended deployment contract:
+The invariant is:
 
-`AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function`
+**invalid dependencies must fail before the MCP server is returned/started.**
 
-The exact environment-variable name may be changed only if documented consistently.
-
-The factory should return the system dependency bundle required by `composition.py`.
-
-Rules:
-
-- missing provider factory in production mode => hard fail before MCP server starts;
-- invalid import => hard fail;
-- non-callable factory => hard fail;
-- invalid returned dependency shape => hard fail;
-- factory exception => hard fail;
-- do not fall back to InMemory/Fake adapters;
-- never log environment secrets or the entire environment;
-- error messages may include provider module/function identity but not secret values.
-
-Dynamic import is an internal deployment mechanism, not a public cross-team scientific contract.
+No lazy failure only when a scientific tool is later invoked.
 
 ---
 
-## 7. Production-vs-integration isolation
+## 9. Production fail-closed invariants
 
-Production composition must never silently use the checked-in test adapters.
+After R1, all of these must remain true:
 
-At minimum reject known integration/test implementations from:
-
-- `knowledge_curator.adapters.in_memory_repository`
-- `knowledge_curator.adapters.in_memory_commit`
-- `knowledge_curator.adapters.in_memory_lifecycle`
-- `knowledge_curator.adapters.in_memory_source_versions`
-- `knowledge_curator.adapters.in_memory_revision_publication`
-- `knowledge_curator.adapters.in_memory_retrieval`
-- `knowledge_curator.adapters.in_memory_evidence`
-
-Also reject:
-
-- `FakeMechanismValidator`
-- `SimpleOntologyService`
-- explicit integration evidence fixture as a production runtime
-
-The validation should be narrow and deterministic.
-
-Do not attempt to prove that an arbitrary third-party adapter is scientifically correct; SI-1 only prevents known test adapters from masquerading as production.
+- no configured provider => hard fail;
+- invalid provider import => hard fail;
+- invalid factory => hard fail;
+- provider exception => hard fail;
+- invalid dependency shape => hard fail;
+- known integration/test adapters => hard fail;
+- nested fixture retrieval adapters => hard fail;
+- missing evidence retrieval => explicit `retrieval_unavailable`, not fixture fallback;
+- no secret-bearing external exception text copied into stderr-facing errors;
+- no default fallback to InMemory/Fake.
 
 ---
 
-## 8. Production bootstrap
+## 10. Scope limits
 
-Implement a system-level MCP stdio bootstrap.
+Do not create or implement:
 
-Recommended entry point:
-
-`python -m system.mcp_stdio`
-
-Behavior:
-
-1. load configured production provider;
-2. validate dependency bundle;
-3. compose `CuratorRuntime`;
-4. compose `EvidenceRuntime`;
-5. call existing `create_mcp_server(...)`;
-6. start stdio server.
-
-If evidence retrieval is intentionally not configured by the provider, it is acceptable to compose:
-
-- production curator runtime;
-- fail-closed unavailable evidence runtime.
-
-Do not substitute a fixture.
-
----
-
-## 9. Do NOT change the current DSH preset in SI-1
-
-Do not modify:
-
-`dsh/knowledge-curator/cordis.patch.yml`
-
-to use the new system entry point yet.
-
-Reason:
-
-SI-1 must first prove that the composition/bootstrap layer works independently.
-
-DSH migration belongs to a later accepted system-integration phase.
-
----
-
-## 10. No orchestrator in SI-1
-
-Do not create:
-
+- Agent Factory;
+- Orchestrator;
 - CurationWorkflow;
 - RevisionWorkflow;
 - QAEvidenceWorkflow;
-- DocumentCommit workflow;
-- lifecycle workflow;
-- Agent Factory;
-- global Orchestrator.
+- commit/lifecycle wiring;
+- new production database implementation;
+- new vector database implementation;
+- new ontology implementation;
+- new public MCP tool;
+- DSH preset migration.
 
 Do not call:
 
@@ -308,150 +288,124 @@ Do not call:
 - `RevisionPublicationCoordinator`
 - `LifecycleRevisionCoordinator`
 
-from the new system package in SI-1.
-
-Those belong to the next phase after SI-1 acceptance.
+from `system/**`.
 
 ---
 
 ## 11. Tests
 
-Add system-level tests.
+Required:
 
-Preferred location:
-
-`integration/system/tests/`
-
-Create the package if absent.
-
-Minimum required tests:
-
-### production provider loading
-
-1. missing provider config fails closed;
-2. invalid module fails closed;
-3. missing factory attribute fails closed;
-4. non-callable factory fails closed;
-5. factory exception fails closed;
-6. invalid bundle fails closed.
-
-### adapter isolation
-
-7. production composition rejects `InMemoryKnowledgeRepository`;
-8. rejects `SimpleOntologyService`;
-9. rejects `FakeMechanismValidator`;
-10. rejects in-memory retrieval adapters / integration fixture as production evidence.
-
-### valid injected composition
-
-11. protocol-compatible test provider bundle can compose a curator runtime;
-12. injected curator runtime can execute one curation round-trip without using the default in-memory factory;
-13. injected production evidence service creates `integration_fixture=False`;
-14. evidence omitted intentionally => retrieval remains explicitly unavailable;
-15. provider identity is visible through existing health metadata/adapter note without changing health schema.
-
-### MCP contract preservation
-
-16. tool names remain exactly the existing four tools;
-17. no new public MCP business tool;
-18. existing MCP input/output behavior remains compatible.
-
-### isolation
-
-19. `system/**` does not get imported by frozen Knowledge Curator core modules;
-20. production bootstrap does not read `KC_EVIDENCE_INTEGRATION_FIXTURE` as a way to create production evidence.
-
-Use deterministic local stubs inside tests only.
-
-No network calls.
-
----
-
-## 12. Regression suites
-
-All previously accepted tests must remain green.
-
-Required evidence:
-
-```
+```bash
 pytest knowledge_curator/tests
 pytest integration/dsh/tests
 pytest integration/system/tests
 ```
 
-Expected previous baselines:
+Acceptance targets:
 
-- knowledge_curator: 522 passed / 0 skipped / 0 failed
-- integration/dsh: 90 passed / 0 failed
+### knowledge_curator
 
-New system test count is additive.
+At least frozen baseline:
 
-Do not weaken or delete prior tests.
+`522 passed / 0 skipped / 0 failed`
 
----
+### integration/dsh
 
-## 13. Freeze verification
+At least frozen baseline:
 
-Before completion, explicitly verify no modifications occurred under:
+`90 passed / 0 failed`
 
-```
-knowledge_curator/core/
-knowledge_curator/schemas/
-knowledge_curator/ports/
-knowledge_curator/retrieval/
-planner/CONTRACT_GAPS.md
-```
+### integration/system
 
-Also confirm:
+All mandatory SI-1/SI-1-R1 tests pass.
 
-- `knowledge_curator/mcp_server/app.py` unchanged;
-- DSH preset unchanged;
-- no public MCP tool added.
+**0 skipped.**
+
+No network.
+
+Do not remove or weaken existing SI-1 tests.
 
 ---
 
-## 14. Required documentation
+## 12. Freeze verification
 
-Create:
+Before completion compare the final tree against the pre-SI-1 frozen baseline and explicitly report no changes under:
+
+- `knowledge_curator/core/**`
+- `knowledge_curator/schemas/**`
+- `knowledge_curator/ports/**`
+- `knowledge_curator/retrieval/**`
+- `knowledge_curator/mcp_server/app.py`
+- `planner/CONTRACT_GAPS.md`
+- `dsh/knowledge-curator/cordis.patch.yml`
+
+Also report whether either SI-1 runtime constructor file changed during R1:
+
+- `knowledge_curator/mcp_server/runtime.py`
+- `knowledge_curator/mcp_server/evidence_runtime.py`
+
+Expected: **NO**.
+
+---
+
+## 13. Deliverable
+
+Update:
 
 `results/phase-si-1-executor-report.md`
 
-Report exactly:
+with an R1 section containing exactly:
 
 ```
-Phase SI-1 implementation CODE SHA:
+Phase SI-1-R1 implementation CODE SHA:
 
-production provider loader:
+checked-in integration fixture rejected as production:
+PASS / FAILED
+
+nested InMemory vector rejected:
+PASS / FAILED
+
+nested InMemory keyword rejected:
+PASS / FAILED
+
+nested Fake reranker rejected:
+PASS / FAILED
+
+production curator Port validation:
+PASS / FAILED
+
+production evidence type/Port validation:
+PASS / FAILED
+
+external protocol-compatible composition:
+PASS / FAILED
+
+provider exception secret redaction:
+PASS / FAILED
+
+system bootstrap exact four-tool contract:
+PASS / FAILED
+
+health production adapter identity:
 PASS / FAILED
 
 production missing-provider fail-closed:
 PASS / FAILED
 
-known test adapters rejected in production:
-PASS / FAILED
-
-external curator dependency injection:
-PASS / FAILED
-
-external evidence dependency injection:
-PASS / FAILED
-
 evidence unavailable remains fail-closed:
-PASS / FAILED
-
-integration fixture isolated from production:
-PASS / FAILED
-
-MCP public tool contract unchanged:
-PASS / FAILED
-
-DSH preset unchanged:
 PASS / FAILED
 
 orchestrator/workflow added:
 NO
 
-frozen knowledge_curator core changed:
+DSH preset changed:
+NO
+
+frozen knowledge_curator tree changed:
+NO
+
+SI-1 runtime constructor files changed during R1:
 NO
 
 CONTRACT_GAPS changed:
@@ -464,7 +418,7 @@ integration/dsh tests:
 X passed / Z failed
 
 integration/system tests:
-X passed / Z failed
+X passed / 0 skipped / Z failed
 
 origin/main SHA:
 
@@ -474,36 +428,30 @@ NONE / describe
 
 ---
 
-## 15. status.json
+## 14. status.json
 
-At completion set:
+At completion:
 
 - module = `system_integration`
-- phase = `SI-1`
+- phase = `SI-1-R1`
 - actor = `executor`
 - state = `executor_complete`
 - current_plan = `planner/latest_plan.md`
 - result_expected = `results/phase-si-1-executor-report.md`
-- latest_commit = actual SI-1 CODE SHA
+- latest_commit = actual R1 implementation CODE SHA
 
-Preserve an explicit constraint that Knowledge Curator remains frozen at:
+Preserve:
 
-`42e39121af5f6120174e088a521c9ad014abdcda`
+`knowledge_curator_freeze.implementation_code_sha = 42e39121af5f6120174e088a521c9ad014abdcda`
 
 ---
 
-## 16. Completion rule
+## 15. Completion rule
 
-Push all SI-1 implementation, tests, report, and status to `main`.
+Push SI-1-R1 implementation, tests, updated report, and status to `main`.
 
 Then STOP.
 
 Do not begin SI-2.
 
-Do not implement an orchestrator.
-
-Do not wire curation to commit.
-
-Do not change the DSH preset.
-
-Planner will review SI-1 before authorizing the next phase.
+Planner will perform final SI-1 acceptance review after R1.
