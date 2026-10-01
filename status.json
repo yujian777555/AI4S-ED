@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-1-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -17,15 +17,16 @@
     "GitHub origin/main is the source of truth",
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
     "no Phase 5.4",
-    "SI-1 is composition/bootstrap only",
-    "do not add orchestrator/workflows in SI-1",
-    "do not wire curation to commit in SI-1",
-    "do not migrate the DSH preset in SI-1",
+    "SI-1-R1 is a narrow production composition hardening pass",
+    "do not begin SI-2",
+    "do not add orchestrator/workflows",
+    "do not wire curation to commit",
+    "do not migrate the DSH preset",
     "do not change public MCP tool contracts",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "e5ccf224def859357ac0f9f14605817829815a06",
-  "planner_review": "planner/system-integration-audit-review.md",
+  "latest_commit": "f8a74e27744e1f9421376384387dfc90e0de6abf",
+  "planner_review": "planner/phase-si-1-review.md",
   "system_integration_audit": "planner/system-integration-audit.md",
   "knowledge_curator_final_acceptance": "planner/KNOWLEDGE_CURATOR_FINAL_ACCEPTANCE.md",
   "knowledge_curator_freeze": {
@@ -33,5 +34,16 @@
     "frozen": true,
     "deliverable": true,
     "implementation_code_sha": "42e39121af5f6120174e088a521c9ad014abdcda"
+  },
+  "si1_review": {
+    "verdict": "R1_REQUIRED",
+    "reviewed_code_sha": "e5ccf224def859357ac0f9f14605817829815a06",
+    "reviewed_executor_head": "2acefe5ca02e57ae805e574d4c1c783c5a91063c",
+    "required_fixes": [
+      "reject nested integration fixture/test retrieval adapters",
+      "validate production dependencies against frozen runtime-checkable ports",
+      "sanitize external provider exception text",
+      "run mandatory system MCP checks with zero skips"
+    ]
   }
 }
