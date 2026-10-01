@@ -1,9 +1,9 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-1.5-R2",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-1.5",
+  "actor": "planner",
+  "state": "accepted_frozen",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -12,21 +12,20 @@
   ],
   "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-1-5-executor-report.md",
+  "result_expected": null,
   "constraints": [
     "GitHub origin/main is the source of truth",
     "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
     "Phase SI-1 remains ACCEPTED / FROZEN at CODE SHA 073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
-    "SI-1.5-R2 closes mounted DSH qualification-path mismatches",
-    "do not begin SI-2",
-    "do not add orchestrator/workflows",
-    "do not wire curation to commit",
-    "do not modify frozen Knowledge Curator or SI-1 production composition",
-    "do not modify the accepted product preset during R2",
+    "Phase SI-1.5 is ACCEPTED / FROZEN",
+    "DSH knowledge-curator launches system.mcp_stdio",
+    "production startup requires AI4S_SYSTEM_ADAPTER_FACTORY",
+    "do not begin SI-2 until Planner publishes a separate plan",
+    "do not add orchestrator/workflows without a separate approved phase",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "0f014f0",
-  "planner_review": "planner/phase-si-1-5-r2-review.md",
+  "latest_commit": "0f014f0a3aad75a6cada18874fead10414469d6b",
+  "planner_review": "planner/phase-si-1-5-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
     "frozen": true,
@@ -38,16 +37,19 @@
     "frozen": true,
     "implementation_code_sha": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7"
   },
-  "si15_review": {
-    "verdict": "R2_REQUIRED",
-    "reviewed_code_sha": "c2f2cb24580689b82551bb8f3971d1e75d07da3e",
-    "reviewed_executor_head": "b758ed9def4ee357a83eb5e316b9cd5d8ca8d331",
-    "required_fixes": [
-      "correct production-vs-direct integration_fixture semantics in lane325",
-      "align integration provider evidence corpus with direct reference using test-local adapters",
-      "wire run_lane325 and lane324 baseline to AI4S_SYSTEM_ADAPTER_FACTORY",
-      "wire mcp_smoke to an explicit provider contract",
-      "update stale generated-patch template documentation"
-    ]
+  "si15_acceptance": {
+    "verdict": "ACCEPTED",
+    "frozen": true,
+    "initial_wiring_sha": "fd000223b308b209b02f3163e2eee72a6637aab2",
+    "r1_sha": "c2f2cb24580689b82551bb8f3971d1e75d07da3e",
+    "final_r2_sha": "0f014f0a3aad75a6cada18874fead10414469d6b",
+    "executor_bookkeeping_sha": "6921bcf730503b41184c6810d599cdb65952a0f2",
+    "planner_report_correction_sha": "1029f95125ce7fad8525ed34f8a29f23ed52b2ef",
+    "knowledge_curator_tests": "522 passed / 0 skipped / 0 failed",
+    "integration_system_tests": "78 passed / 0 skipped / 0 failed",
+    "integration_dsh_tests": "90 passed / 0 skipped / 0 failed",
+    "mounted_dsh_live_model_roundtrip": "NOT_RUN_ENV",
+    "known_deterministic_live_mismatch_remaining": false,
+    "frozen_tree_changed": false
   }
 }
