@@ -1,4 +1,4 @@
-# Phase SI-1.5 Plan — DSH Production Bootstrap Wiring
+# Phase SI-1.5-R1 Plan — DSH Wiring Closure
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,42 +6,21 @@ State: READY_FOR_EXECUTOR
 
 ## 0. Goal
 
-Wire the accepted SI-1 production runtime composition into the existing DSH `knowledge-curator` preset.
+Close the remaining DSH production-bootstrap wiring gaps identified in:
 
-This phase changes **only the DSH launch path and its integration verification**.
+`planner/phase-si-1-5-review.md`
 
-Current path:
+This is a narrow closure pass.
 
-```
-DSH knowledge-curator preset
-  -> python -m knowledge_curator.mcp_server
-  -> integration/default runtime
-```
+Do not begin SI-2.
 
-Target path:
-
-```
-DSH knowledge-curator preset
-  -> python -m system.mcp_stdio
-  -> AI4S_SYSTEM_ADAPTER_FACTORY
-  -> production provider bundle
-  -> system.composition
-  -> CuratorRuntime / EvidenceRuntime
-  -> existing create_mcp_server(...)
-  -> existing four MCP tools
-```
-
-Do not implement SI-2.
-
-Do not add an orchestrator.
-
-Do not wire curation to commit.
+Do not modify frozen Knowledge Curator or SI-1 production composition.
 
 ---
 
 ## 1. Frozen baselines
 
-Knowledge Curator final implementation:
+Knowledge Curator:
 
 `42e39121af5f6120174e088a521c9ad014abdcda`
 
@@ -49,7 +28,7 @@ Status:
 
 **ACCEPTED / FROZEN / DELIVERABLE**
 
-SI-1 production composition implementation:
+SI-1 production composition:
 
 `073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7`
 
@@ -57,275 +36,228 @@ Status:
 
 **ACCEPTED / FROZEN**
 
-SI-1 final Planner acceptance:
+Reviewed SI-1.5 implementation:
 
-`planner/phase-si-1-final-acceptance.md`
+`fd000223b308b209b02f3163e2eee72a6637aab2`
 
-No Phase 5.4 is authorized.
+Planner review:
 
----
-
-## 2. Scope
-
-SI-1.5 is **DSH production bootstrap wiring only**.
-
-Allowed work:
-
-- change the DSH knowledge-curator MCP subprocess entry point;
-- pass production provider configuration through environment;
-- add/update DSH integration tests;
-- add deterministic test provider fixtures under integration-only paths;
-- verify exact four-tool discovery through the DSH/MCP path;
-- verify startup fails when production provider configuration is absent/invalid;
-- document deployment environment variables.
-
-Do not implement new scientific behavior.
+`planner/phase-si-1-5-review.md`
 
 ---
 
-## 3. Required DSH preset change
+## 2. Frozen files/directories
 
-Modify:
+Do not modify:
 
-`dsh/knowledge-curator/cordis.patch.yml`
+- `knowledge_curator/**`
+- `system/composition.py`
+- `system/provider_loader.py`
+- `system/mcp_stdio.py`
+- `planner/CONTRACT_GAPS.md`
 
-Current:
-
-```yaml
-args:
-  - -m
-  - knowledge_curator.mcp_server
-```
-
-Target:
-
-```yaml
-args:
-  - -m
-  - system.mcp_stdio
-```
-
-Keep:
-
-- stdio transport;
-- `AI4S_KC_PYTHON`;
-- `AI4S_KC_WORKSPACE`;
-- `failOnStartupError: true`;
-- current timeout unless a demonstrated test requirement exists.
-
-Do not hard-code a provider module into the production preset.
-
-The production provider remains configured via:
-
-`AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function`
-
-Do not add secrets to the YAML.
+Do not add orchestration/workflow behavior.
 
 ---
 
-## 4. Production startup semantics
+## 3. R1-01 — Fix mounted DSH lane provider wiring
 
-When DSH launches the preset:
+Update:
 
-### provider configured and valid
+`integration/dsh/lane325_kc_evidence_roundtrip.e2e.ts`
 
-Startup proceeds through:
-
-`system.mcp_stdio -> provider_loader -> composition -> create_mcp_server`
-
-### provider missing
-
-Startup MUST fail.
-
-Because the DSH preset has:
-
-`failOnStartupError: true`
-
-the Agent/MCP mount must not silently become an integration runtime.
-
-### provider invalid
-
-Startup MUST fail.
-
-### evidence omitted by valid provider
-
-This is allowed.
-
-The MCP server starts with:
-
-- production curator adapters;
-- evidence tools present;
-- evidence retrieval explicitly unavailable/fail-closed.
-
-Do not fall back to the integration fixture.
-
----
-
-## 5. Integration-only DSH provider fixture
-
-DSH CI/smoke tests need a valid deterministic provider without relying on real production infrastructure.
-
-Add an **integration-only external provider fixture** under a clearly test-only path, for example:
-
-`integration/system/fixtures/dsh_provider.py`
-
-or equivalent.
-
-It must:
-
-- satisfy the frozen curator Ports;
-- use test-local stub classes, not Knowledge Curator InMemory/Fake adapters;
-- optionally expose a deterministic EvidenceRetrievalService built from test-local protocol-compatible backends;
-- never be selected by production preset automatically;
-- only be selected when test environment explicitly sets `AI4S_SYSTEM_ADAPTER_FACTORY`.
-
-Do not put this fixture under `system/` production code.
-
----
-
-## 6. DSH integration test environment
-
-Any DSH test that actually launches the `knowledge-curator` preset must explicitly provide a valid integration-only provider factory.
-
-Example intent:
+The DSH MCP server launched from the product preset must receive:
 
 ```
 AI4S_SYSTEM_ADAPTER_FACTORY=
 integration.system.fixtures.dsh_provider:create_provider_bundle
 ```
 
-Do not modify production code to detect pytest or DSH test mode.
+The mounted DSH path must no longer rely on:
 
-Do not introduce a hidden fallback when the variable is absent.
+`KC_EVIDENCE_INTEGRATION_FIXTURE=1`
+
+to configure the MCP server.
+
+If `directRef(...)` still needs the old integration fixture for direct-result comparison, it may set `KC_EVIDENCE_INTEGRATION_FIXTURE=1` only inside that separate direct-reference subprocess.
+
+The mounted DSH Agent's MCP child must use the provider factory.
+
+Add assertions/comments making this distinction explicit.
 
 ---
 
-## 7. Mandatory end-to-end DSH/MCP verification
+## 4. R1-02 — Migrate generated DSH MCP patch
 
-Add/modify tests to prove the actual DSH-configured subprocess path uses:
+Update:
+
+`integration/dsh/mcp_patch.py`
+
+Generated MCP subprocess args must become:
+
+```python
+["-m", "system.mcp_stdio"]
+```
+
+Do not generate the old:
+
+`knowledge_curator.mcp_server`
+
+entry point.
+
+Qualification/smoke callers using this generated patch must provide a valid explicit provider environment.
+
+Do not hard-code a deployment production provider into the reusable patch payload.
+
+---
+
+## 5. Qualification/smoke environment
+
+Any integration/qualification runner that starts the system MCP server must explicitly set:
+
+```
+AI4S_SYSTEM_ADAPTER_FACTORY=
+integration.system.fixtures.dsh_provider:create_provider_bundle
+```
+
+when using the integration-only provider.
+
+Do not auto-detect pytest.
+
+Do not add production fallback behavior.
+
+Do not use `KC_EVIDENCE_INTEGRATION_FIXTURE` as the system MCP provider mechanism.
+
+---
+
+## 6. R1-03 — Product DSH documentation
+
+Update:
+
+`dsh/knowledge-curator/README.md`
+
+Document the actual child process:
 
 `python -m system.mcp_stdio`
 
-and not:
+Document required deployment variables:
 
-`python -m knowledge_curator.mcp_server`
+- `AI4S_KC_PYTHON`
+- `AI4S_KC_WORKSPACE`
+- `AI4S_SYSTEM_ADAPTER_FACTORY`
 
-At minimum verify:
+Required explanation:
 
-1. preset command/args point to `system.mcp_stdio`;
-2. no provider => subprocess startup fails closed;
-3. invalid provider => startup fails closed;
-4. valid integration-only provider => subprocess initializes successfully;
-5. MCP tool discovery returns exactly:
+### AI4S_SYSTEM_ADAPTER_FACTORY
+
+Format:
+
+`package.module:factory_function`
+
+It identifies a deployment-owned dependency factory.
+
+It is not itself a secret.
+
+Adapter-specific credentials remain deployment-owned environment/configuration.
+
+Never commit adapter credentials.
+
+Missing/invalid provider => startup fails closed.
+
+No production fallback to InMemory/Fake or the checked-in integration fixture.
+
+Do not recommend the integration test provider as a production provider.
+
+---
+
+## 7. R1-04 — Real stdio subprocess acceptance
+
+Add a deterministic keyless test that launches the actual process:
+
+```
+python -m system.mcp_stdio
+```
+
+using official MCP stdio client transport.
+
+Valid-provider subprocess environment:
+
+```
+AI4S_SYSTEM_ADAPTER_FACTORY=
+integration.system.fixtures.dsh_provider:create_provider_bundle
+PYTHONPATH=<repo root>
+```
+
+Then initialize an MCP ClientSession and verify:
+
+1. process initializes successfully;
+2. exactly four tools are discovered:
    - `curate_assertion_set`
    - `knowledge_curator_health`
    - `retrieve_evidence`
    - `validate_retrieved_claims`
-6. health reports a production-style adapter note/provider identity from the injected provider;
-7. curation tool completes one deterministic round-trip through the new system bootstrap;
-8. if test provider includes evidence retrieval, one evidence retrieval round-trip succeeds;
-9. if provider omits evidence retrieval, evidence tool returns explicit `retrieval_unavailable`;
-10. no fixture is auto-enabled by `KC_EVIDENCE_INTEGRATION_FIXTURE`.
+3. health reports the injected integration-test provider through existing metadata;
+4. one `curate_assertion_set` call succeeds.
 
-No external network call is required.
+No DeepSeek credential is required.
 
----
+### Negative subprocess case
 
-## 8. Preserve MCP public contract
+Launch the same:
 
-Do not change:
+`python -m system.mcp_stdio`
 
-- tool names;
-- input schemas;
-- output schemas;
-- health response schema;
-- CurationReport semantics;
-- EvidenceBundle semantics;
-- claim-guard semantics.
+without `AI4S_SYSTEM_ADAPTER_FACTORY`.
 
-The DSH Agent should see the same four tools as before.
+Prove startup exits/fails closed.
 
-Only the runtime underneath changes from integration/default composition to production composition.
+Do not accept silent empty tool discovery as a pass.
 
 ---
 
-## 9. Frozen files/directories
+## 8. DSH path assertion
 
-Do not modify:
+Add/update keyless DSH contract tests proving:
 
-- `knowledge_curator/core/**`
-- `knowledge_curator/schemas/**`
-- `knowledge_curator/ports/**`
-- `knowledge_curator/retrieval/**`
-- `knowledge_curator/mcp_server/app.py`
-- `knowledge_curator/mcp_server/runtime.py`
-- `knowledge_curator/mcp_server/evidence_runtime.py`
-- `system/composition.py`
-- `system/provider_loader.py`
-- `system/mcp_stdio.py`
-- `planner/CONTRACT_GAPS.md`
-
-SI-1 and Knowledge Curator remain frozen.
-
-If a real defect is found in these files, STOP and report it instead of fixing it inside SI-1.5.
+- product preset points to `system.mcp_stdio`;
+- generated `mcp_patch.py` points to `system.mcp_stdio`;
+- mounted lane sets `AI4S_SYSTEM_ADAPTER_FACTORY`;
+- mounted lane does not set `KC_EVIDENCE_INTEGRATION_FIXTURE` for the MCP child composition path;
+- product README documents the provider contract.
 
 ---
 
-## 10. No orchestrator / no commit workflow
+## 9. Evidence qualification semantics
 
-SI-1.5 must not add:
+The integration-only DSH provider may include its deterministic protocol-compatible EvidenceRetrievalService.
+
+That provider is allowed only because tests select it explicitly.
+
+Do not change `integration/system/fixtures/dsh_provider.py` into production code.
+
+Do not import it from `system/**`.
+
+---
+
+## 10. No workflow changes
+
+Do not create or implement:
 
 - Agent Factory;
-- system Orchestrator;
+- Orchestrator;
 - CurationWorkflow;
 - RevisionWorkflow;
 - QAEvidenceWorkflow;
-- commit workflow;
+- DocumentCommit workflow;
 - lifecycle workflow.
 
-Do not call from new SI-1.5 code:
-
-- `DocumentCommitCoordinator`
-- `RevisionPublicationCoordinator`
-- `LifecycleRevisionCoordinator`.
-
-The purpose of SI-1.5 is only:
-
-**DSH -> production MCP bootstrap**
-
-not:
-
-**DSH -> whole application workflow**.
+Do not add curation-to-commit behavior.
 
 ---
 
-## 11. Documentation
+## 11. Tests
 
-Update the relevant DSH integration README/documentation so operators know:
-
-Required production variables:
-
-```
-AI4S_KC_PYTHON
-AI4S_KC_WORKSPACE
-AI4S_SYSTEM_ADAPTER_FACTORY
-```
-
-Clarify:
-
-- `AI4S_SYSTEM_ADAPTER_FACTORY` identifies a deployment-owned production dependency factory;
-- it is not a secret;
-- secrets needed by adapters remain deployment-specific environment/configuration and must not be committed;
-- missing provider causes fail-closed startup;
-- no default integration fixture is used in production.
-
-Do not document the integration test provider as a production recommendation.
-
----
-
-## 12. Tests
-
-Run:
+Run at minimum:
 
 ```bash
 pytest knowledge_curator/tests
@@ -333,7 +265,7 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Acceptance minimums:
+Acceptance baselines:
 
 ### knowledge_curator
 
@@ -341,104 +273,108 @@ Acceptance minimums:
 
 ### integration/system
 
-Existing accepted baseline:
+At least:
 
-`38 passed / 0 skipped / 0 failed`
-
-All must remain green.
+`52 passed / 0 skipped / 0 failed`
 
 ### integration/dsh
 
-Existing accepted baseline:
+At least:
 
-`90 passed / 0 failed`
+`90 passed / 0 skipped / 0 failed`
 
-New SI-1.5 tests are additive.
+New tests are additive.
 
-Mandatory SI-1.5 tests must have **0 skipped**.
+Mandatory SI-1.5-R1 tests:
 
-No network requirement.
+**0 skipped**
+
+No external network required.
+
+If the TypeScript mounted lane cannot be run keylessly because actual DSH source/runtime is unavailable, the real stdio subprocess acceptance above is mandatory and must pass. Report the mounted-live lane environment limitation explicitly rather than claiming it ran.
 
 ---
 
-## 13. Freeze verification
+## 12. Freeze verification
 
-Before completion, compare against the SI-1 accepted tree and verify no changes under:
+Before completion compare final tree against SI-1.5-R1 handoff.
 
-- frozen Knowledge Curator paths listed above;
-- frozen SI-1 `system/*.py` production composition/bootstrap files;
-- `planner/CONTRACT_GAPS.md`.
+Explicitly verify no changes under:
 
-The intended code/config changes should be limited to:
+- `knowledge_curator/**`
+- `system/composition.py`
+- `system/provider_loader.py`
+- `system/mcp_stdio.py`
+- `planner/CONTRACT_GAPS.md`
 
-- `dsh/knowledge-curator/cordis.patch.yml`;
+Expected: no changes.
+
+Allowed implementation scope:
+
+- `dsh/knowledge-curator/README.md`;
 - `integration/dsh/**`;
-- optionally integration-only fixture under `integration/system/**`;
-- integration documentation;
-- executor report/status bookkeeping.
+- `integration/system/tests/**` only if needed;
+- report/status bookkeeping.
 
 ---
 
-## 14. Required report
+## 13. Required report
 
-Create:
+Update/create:
 
 `results/phase-si-1-5-executor-report.md`
 
-Report exactly:
+Add R1 section:
 
 ```
-Phase SI-1.5 implementation CODE SHA:
+Phase SI-1.5-R1 implementation CODE SHA:
 
-DSH preset uses system.mcp_stdio:
+product preset uses system.mcp_stdio:
 PASS / FAILED
 
-AI4S_SYSTEM_ADAPTER_FACTORY required:
+generated DSH mcp_patch uses system.mcp_stdio:
 PASS / FAILED
 
-missing provider DSH startup fail-closed:
+mounted DSH lane supplies AI4S_SYSTEM_ADAPTER_FACTORY:
 PASS / FAILED
 
-invalid provider DSH startup fail-closed:
+mounted DSH MCP composition no longer relies on KC_EVIDENCE_INTEGRATION_FIXTURE:
 PASS / FAILED
 
-valid integration-only provider DSH startup:
+product README documents AI4S_SYSTEM_ADAPTER_FACTORY:
 PASS / FAILED
 
-system bootstrap exact four-tool discovery via DSH path:
+real stdio subprocess valid-provider startup:
 PASS / FAILED
 
-health production adapter identity via DSH path:
+real stdio subprocess exact four-tool discovery:
 PASS / FAILED
 
-curation round-trip via DSH/system bootstrap:
+real stdio subprocess health provider identity:
 PASS / FAILED
 
-evidence configured round-trip via DSH/system bootstrap:
-PASS / FAILED / NOT CONFIGURED IN TEST PROVIDER
-
-evidence omitted remains retrieval_unavailable:
+real stdio subprocess curation round-trip:
 PASS / FAILED
 
-KC_EVIDENCE_INTEGRATION_FIXTURE cannot bypass production composition:
+real stdio subprocess missing-provider fail-closed:
 PASS / FAILED
 
-public MCP contract changed:
+actual mounted DSH live lane executed:
+PASS / NOT_RUN_ENV / FAILED
+
+knowledge_curator frozen tree changed:
+NO
+
+SI-1 frozen production composition changed:
+NO
+
+CONTRACT_GAPS changed:
 NO
 
 orchestrator/workflow added:
 NO
 
 curation-to-commit wiring added:
-NO
-
-knowledge_curator frozen tree changed:
-NO
-
-SI-1 frozen system composition changed:
-NO
-
-CONTRACT_GAPS changed:
 NO
 
 knowledge_curator tests:
@@ -456,21 +392,22 @@ deviations:
 NONE / describe
 ```
 
+Do not mark actual mounted DSH live lane PASS unless it was actually executed.
+
 ---
 
-## 15. status.json
+## 14. status.json
 
 At completion set:
 
 - module = `system_integration`
-- phase = `SI-1.5`
+- phase = `SI-1.5-R1`
 - actor = `executor`
 - state = `executor_complete`
-- current_plan = `planner/latest_plan.md`
 - result_expected = `results/phase-si-1-5-executor-report.md`
-- latest_commit = actual SI-1.5 CODE SHA
+- latest_commit = actual R1 implementation CODE SHA
 
-Preserve both freezes:
+Preserve freezes:
 
 ### Knowledge Curator
 
@@ -482,12 +419,12 @@ Preserve both freezes:
 
 ---
 
-## 16. Completion rule
+## 15. Completion
 
-Push implementation, integration tests, report, and status to `main`.
+Push implementation/tests/report/status to `main`.
 
 Then STOP.
 
 Do not begin SI-2.
 
-Planner will review the DSH production bootstrap wiring before authorizing any orchestrator/workflow work.
+Planner performs final SI-1.5 acceptance review after R1.
