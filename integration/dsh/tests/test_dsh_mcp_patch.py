@@ -30,7 +30,7 @@ def test_patch_shape_and_no_committed_absolute_path():
     assert cfg["serverName"] == SERVER_NAME
     assert cfg["transport"] == "stdio"
     assert cfg["command"] == "/runtime/injected/python"
-    assert cfg["args"] == ["-m", "knowledge_curator.mcp_server"]
+    assert cfg["args"] == ["-m", "system.mcp_stdio"]
     assert cfg["failOnStartupError"] is True
     assert cfg["toolCallTimeoutMs"] >= 1000
 

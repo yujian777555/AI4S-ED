@@ -8,7 +8,7 @@ AI4S-ED `knowledge_curator` 的 **DSH Agent Preset product bundle**（configurat
 
 - `id = knowledge-curator`
 - 名称：AI4S-ED Knowledge Curator
-- 职责：§5 证据完备性 / 冲突检测 / 质量置信评估 / 可信入库门禁
+- 职责：证据完整性 / 冲突检测 / 质量置信评估 / 可信入库门禁
 
 **禁止**在此 bundle 中放入：
 
@@ -22,13 +22,13 @@ AI4S-ED `knowledge_curator` 的 **DSH Agent Preset product bundle**（configurat
 
 | Plugin | 作用 |
 |---|---|
-| `@deepseek-ai/dsh-persona` | 短 persona：knowledge_curator 角色边界 |
-| `@deepseek-ai/dsh-mcp-client` | stdio MCP → `python -m knowledge_curator.mcp_server` |
+| `@deepseek-ai/dsh-persona` | 知识 persona：knowledge_curator 角色边界 |
+| `@deepseek-ai/dsh-mcp-client` | stdio MCP → `python -m system.mcp_stdio` |
 
-MCP public tool：
+## MCP 启动入口
 
 ```text
-mcp__knowledge_curator__curate_assertion_set
+python -m system.mcp_stdio
 ```
 
 ## 运行时配置（非密钥）
@@ -37,9 +37,30 @@ mcp__knowledge_curator__curate_assertion_set
 |---|---|
 | `AI4S_KC_PYTHON` | Python 可执行文件；未设置时 fallback `python` |
 | `AI4S_KC_WORKSPACE` | MCP 工作目录；未设置时 `process.cwd()` |
+| `AI4S_SYSTEM_ADAPTER_FACTORY` | **必需。** 生产依赖工厂标识，格式 `package.module:factory_function` |
 
-**不要**向 MCP subprocess 传递 `DEEPSEEK_API_KEY`（MCP server 不需要模型 Key）。
-**不要**把用户机器绝对路径写进本仓库。
+### AI4S_SYSTEM_ADAPTER_FACTORY
+
+这是一个 **部署方拥有的标识符**，不是密钥。
+
+- 缺失或无效 → MCP 启动 **fail-closed**（进程失败，不回退 InMemory/Fake）
+- adapter 需要的密钥/凭证由部署方自行配置，**不得提交到仓库**
+- 生产环境 **不会** 自动启用 `KC_EVIDENCE_INTEGRATION_FIXTURE`
+
+示例（集成测试专用，非生产推荐）：
+
+```text
+AI4S_SYSTEM_ADAPTER_FACTORY=integration.system.fixtures.dsh_provider:create_provider_bundle
+```
+
+## MCP public tools
+
+```text
+mcp__knowledge_curator__curate_assertion_set
+mcp__knowledge_curator__knowledge_curator_health
+mcp__knowledge_curator__retrieve_evidence
+mcp__knowledge_curator__validate_retrieved_claims
+```
 
 ## 目标 DSH 版本
 

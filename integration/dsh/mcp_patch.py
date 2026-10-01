@@ -38,7 +38,7 @@ def build_patch(
                         "serverName": SERVER_NAME,
                         "transport": "stdio",
                         "command": py,
-                        "args": ["-m", "knowledge_curator.mcp_server"],
+                        "args": ["-m", "system.mcp_stdio"],
                         "cwd": cwd,
                         "failOnStartupError": True,
                         "toolCallTimeoutMs": timeout_ms,

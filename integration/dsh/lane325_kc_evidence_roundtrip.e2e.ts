@@ -136,7 +136,9 @@ it('strict mounted Agent evidence live acceptance', async () => {
     const ctx: any = web.ctx
     process.env.AI4S_KC_PYTHON = process.env.AI4S_KC_PYTHON || 'python'
     process.env.AI4S_KC_WORKSPACE = process.env.AI4S_KC_WORKSPACE || AI4S_ED_ROOT
-    process.env.KC_EVIDENCE_INTEGRATION_FIXTURE = '1'
+    // SI-1.5-R1: production bootstrap uses AI4S_SYSTEM_ADAPTER_FACTORY
+    process.env.AI4S_SYSTEM_ADAPTER_FACTORY =
+      'integration.system.fixtures.dsh_provider:create_provider_bundle'
 
     const handle = await ctx.agents.create({
       sessionId: `kc-evidence-strict-${Date.now()}`,

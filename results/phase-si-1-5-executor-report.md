@@ -2,76 +2,57 @@
 
 **Executor:** MiMo  
 **Date:** 2026-10-01  
-**Phase:** SI-1.5  
+**Phase:** SI-1.5 / SI-1.5-R1  
 **Module:** system_integration  
 
 ---
 
-## Phase SI-1.5 implementation CODE SHA
+## Phase SI-1.5-R1 implementation CODE SHA
 
 （见 commit）
 
 ---
 
-DSH preset uses system.mcp_stdio:
+product preset uses system.mcp_stdio:
 PASS
 
-AI4S_SYSTEM_ADAPTER_FACTORY required:
+generated mcp_patch uses system.mcp_stdio:
 PASS
 
-missing provider DSH startup fail-closed:
+mounted DSH lane supplies AI4S_SYSTEM_ADAPTER_FACTORY:
 PASS
 
-invalid provider DSH startup fail-closed:
+mounted DSH no longer relies on KC_EVIDENCE_INTEGRATION_FIXTURE for MCP composition:
 PASS
 
-valid integration-only provider DSH startup:
+README provider docs:
 PASS
 
-system bootstrap exact four-tool discovery via DSH path:
+real stdio valid-provider startup:
 PASS
 
-health production adapter identity via DSH path:
+exact four-tool discovery:
 PASS
 
-curation round-trip via DSH/system bootstrap:
+health provider identity:
 PASS
 
-evidence configured round-trip via DSH/system bootstrap:
+curation round-trip:
 PASS
 
-evidence omitted remains retrieval_unavailable:
+missing-provider fail-closed:
 PASS
 
-KC_EVIDENCE_INTEGRATION_FIXTURE cannot bypass production composition:
-PASS
+actual mounted DSH live lane executed:
+NOT_RUN_ENV（需 DeepSeek credential，本次未执行 live model round-trip；structural/bootstrap 验证已通过）
 
-public MCP contract changed:
+frozen trees changed?
 NO
 
-orchestrator/workflow added:
-NO
-
-curation-to-commit wiring added:
-NO
-
-knowledge_curator frozen tree changed:
-NO
-
-SI-1 frozen system composition changed:
-NO
-
-CONTRACT_GAPS changed:
-NO
-
-knowledge_curator tests:
-522 passed / 0 skipped / 0 failed
-
-integration/system tests:
-52 passed / 0 skipped / 0 failed
-
-integration/dsh tests:
-90 passed / 0 skipped / 0 failed
+test results:
+- knowledge_curator: 522 passed / 0 skipped / 0 failed
+- integration/system: 58 passed / 0 skipped / 0 failed
+- integration/dsh: 90 passed / 0 skipped / 0 failed
 
 origin/main SHA:
 （见 push 后）
@@ -81,13 +62,13 @@ NONE
 
 ---
 
-## 修改文件
+## R1 修改文件
 
-- `dsh/knowledge-curator/cordis.patch.yml` — args 改为 `system.mcp_stdio`
-- `integration/dsh/tests/test_dsh_bundle_contract.py` — 更新入口断言
-- `integration/dsh/tests/test_phase431_dsh_preset.py` — 更新入口断言
-- `integration/system/fixtures/dsh_provider.py` — 新增集成测试 provider
-- `integration/system/tests/test_si15_dsh_bootstrap.py` — 新增 SI-1.5 测试
+- `dsh/knowledge-curator/README.md` — 重写，文档化 system.mcp_stdio + AI4S_SYSTEM_ADAPTER_FACTORY
+- `integration/dsh/lane325_kc_evidence_roundtrip.e2e.ts` — 添加 AI4S_SYSTEM_ADAPTER_FACTORY，移除 KC_EVIDENCE_INTEGRATION_FIXTURE 对 MCP 的依赖
+- `integration/dsh/mcp_patch.py` — args 改为 `system.mcp_stdio`
+- `integration/dsh/tests/test_dsh_mcp_patch.py` — 更新入口断言
+- `integration/system/tests/test_si15_r1_stdio_subprocess.py` — 新增真实 stdio subprocess 测试
 
 ## 未修改
 
