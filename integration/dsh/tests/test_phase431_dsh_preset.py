@@ -23,7 +23,7 @@ def test_preset_still_uses_stdio_mcp_server():
     preset = (ROOT / "dsh" / "knowledge-curator" / "cordis.patch.yml").read_text(
         encoding="utf-8"
     )
-    assert "knowledge_curator.mcp_server" in preset
+    assert "system.mcp_stdio" in preset
     assert "@deepseek-ai/dsh-mcp-client" in preset
 
 

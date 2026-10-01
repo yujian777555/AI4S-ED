@@ -28,7 +28,7 @@
               command: !!js process.env.AI4S_KC_PYTHON || 'python'
               args:
                 - -m
-                - knowledge_curator.mcp_server
+                - system.mcp_stdio
               cwd: !!js process.env.AI4S_KC_WORKSPACE || process.cwd()
               failOnStartupError: true
               toolCallTimeoutMs: 60000

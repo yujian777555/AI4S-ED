@@ -85,7 +85,7 @@ def test_mcp_child_config():
     assert "@deepseek-ai/dsh-mcp-client" in text
     assert "serverName: knowledge_curator" in text
     assert "transport: stdio" in text
-    assert "knowledge_curator.mcp_server" in text
+    assert "system.mcp_stdio" in text
     assert "failOnStartupError: true" in text
     assert "toolCallTimeoutMs" in text
 
