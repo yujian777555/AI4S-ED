@@ -1,26 +1,28 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-4-R3",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-4-R4",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-4-r3-executor-report.md",
+  "result_expected": "results/phase-si-4-r4-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
     "Deliver only the DSH Knowledge Curator Agent for document 03 sections 5, 6, and 7",
-    "SI-4-R2 a171d71 is not accepted; R3 DSH-native product closure is required",
-    "Real DSH qualification must execute pinned DSH 0.2.0-rc.1, not inspect YAML strings",
-    "Mounted DSH Agent must actually reach CuratorAgentBridge and the accepted §5/§7 workflows",
-    "Section 6 candidate claims and final answers must contain evidence-derived validated scientific content",
-    "Every PASS in the R3 report must cite a concrete committed test, command, or frozen qualification",
+    "SI-4-R3 54b2c22 is not accepted; R4 production bridge closure is required",
+    "Shipped runtime must not import integration test fixtures and must use deployment AI4S_SYSTEM_ADAPTER_FACTORY",
+    "Production bridge must configure both CurationCommitWorkflow and RevisionPublicationWorkflow",
+    "Mounted acceptance must invoke the actual shipped DSH-native plugin/tool path, not direct Python CuratorAgentBridge",
+    "Use the exact supported pinned DSH tool API and prove plugin registration/execution in runtime",
+    "No temporary generated _bridge_call.py transport; use a committed structured bridge entrypoint",
+    "Hydrate JSON payloads into frozen typed schemas before workflow invocation",
+    "Section 6 must abstain when evidence lacks scientific content or anchors mismatch",
     "Public MCP remains exactly four tools",
     "Do not modify frozen core/workflows or depend on generic workflow_orchestration/task_planner detours",
-    "STOP and report BLOCKER if DSH cannot support an internal bridge under the frozen MCP constraint",
-    "STOP after SI-4-R3 completion"
+    "STOP after SI-4-R4 completion"
   ],
-  "latest_commit": "54b2c22"
+  "latest_commit": "3f985e08e3130bb596d5c63f0e20f2d64ab3e130"
 }
