@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R4 implementation CODE SHA
 
-（见 commit）
+3e8d69c
 
 production bridge contains no integration fixture import:
 PASS
