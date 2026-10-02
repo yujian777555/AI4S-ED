@@ -1,27 +1,26 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-4-R5",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-4-R6",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-4-r5-executor-report.md",
+  "result_expected": "results/phase-si-4-r6-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
     "Deliver only the DSH Knowledge Curator Agent for document 03 sections 5, 6, and 7",
-    "SI-4-R4 3e8d69c is not accepted; R5 executable plugin closure is required",
-    "Fix async JS-to-Python stdin transport; execFile input option is not a valid async stdin mechanism",
-    "Use the exact pinned DSH defineTool/output/execute contract and real plugin lifecycle",
-    "Native §5/§7 acceptance must execute registered tools through ctx.tools, not direct Python",
-    "Hydration must be strict fail-closed; never coerce invalid approval/action/relation/confidence enums",
-    "Missing revision provider capability must fail closed or be explicitly disabled, never silently advertised",
-    "Commit a real R5 DSH qualification artifact",
+    "SI-4-R5 18937db is not accepted; R6 actual pinned DSH execution closure is required",
+    "bridge-plugin.js must actually import/use pinned @deepseek-ai/dsh-tools defineTool",
+    "Acceptance must start real pinned DSH/Cordis context and execute both native tools through actual ctx.tools",
+    "Direct Python subprocess or source-string tests cannot be labeled native/mounted DSH evidence",
+    "Finish strict hydration: revision target assertion enums, required IDs, and curation completeness/report must not be fabricated/defaulted",
+    "Commit results/phase-si-4-r6-dsh-qualification.md with real command/output evidence",
     "Public MCP remains exactly four tools",
     "Do not modify frozen core/workflows or depend on workflow_orchestration/task_planner",
-    "STOP after SI-4-R5 completion"
+    "STOP after SI-4-R6 completion"
   ],
-  "latest_commit": "18937db"
+  "latest_commit": "8c803e123b173a233b05cf0533f47f3958ce6257"
 }
