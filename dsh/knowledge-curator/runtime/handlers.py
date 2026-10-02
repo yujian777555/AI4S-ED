@@ -132,16 +132,23 @@ class EvidenceQAHandler:
                 "trace_id": context.trace_id,
             }
 
-        # Step 2: Build candidate claims from EVIDENCE CONTENT (not question)
+        # Step 2: Build candidate claims from EVIDENCE CONTENT (R4: fail-closed)
         candidate_claims = []
+        retrieved_ids = set()
         for r in records[:3]:
-            # Derive claim text from actual evidence record content
+            retrieved_ids.add(r.get("chunk_id"))
+            retrieved_ids.add(r.get("ref_id"))
+            # Only use real evidence content fields
             claim_text = r.get("payload_excerpt") or r.get("sentence_or_cell") or r.get("text") or ""
             if not claim_text:
-                # Use structured evidence fields if available
-                ref = r.get("ref_id", "")
-                conf = r.get("confidence", "")
-                claim_text = f"Evidence from {ref} (confidence: {conf})"
+                # R4: no usable scientific content -> ABSTAIN
+                return {
+                    "status": "abstain",
+                    "answer": "ABSTAIN: evidence records lack scientific content for claim synthesis.",
+                    "evidence_count": len(records),
+                    "call_order": call_order,
+                    "trace_id": context.trace_id,
+                }
             candidate_claims.append({
                 "claim_id": f"C{len(candidate_claims) + 1}",
                 "text": claim_text,
@@ -169,6 +176,18 @@ class EvidenceQAHandler:
             abstain = (cr.get("abstain") or {}).get("abstain", True)
             if policy == "factual_allowed" and not abstain:
                 validated_claims.append(cr)
+
+        # R4: verify resolved anchors belong to retrieved evidence
+        for cr in validated_claims:
+            anchors = cr.get("resolved_anchors") or []
+            for a in anchors:
+                if a.get("ref_id") not in retrieved_ids and a.get("chunk_id") not in retrieved_ids:
+                    return {
+                        "status": "abstain",
+                        "answer": "ABSTAIN: validated anchor not in retrieved evidence.",
+                        "call_order": call_order,
+                        "trace_id": context.trace_id,
+                    }
 
         # If no claims passed validation -> ABSTAIN
         if not validated_claims:
