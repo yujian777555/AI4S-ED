@@ -1,417 +1,489 @@
-# Phase SI-4-R3 Plan — DSH Native Bridge & Truthful Product Qualification
+# Phase SI-4-R4 Plan — Production DSH Bridge Closure
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
 State: READY_FOR_EXECUTOR
 
-## 0. Planner verdict on SI-4-R2
+## 0. Verdict on SI-4-R3
 
 Reviewed implementation CODE SHA:
 
-`a171d71110fd07e142379208e66eb4130cfefa44`
+`54b2c222cd2eb4df43d1d17b52608a7b3ccca589`
 
 Reviewed bookkeeping HEAD:
 
-`ef120608b3de362fa7e520dd62e45f0e5c0ed70e`
+`13425dcd8cb6a6f435c46e591feedcc2442ba5c5`
 
 Verdict:
 
-**SI-4-R2 NOT ACCEPTED — R3 REQUIRED**
+**SI-4-R3 NOT ACCEPTED — R4 REQUIRED**
 
-R2 successfully improved several internal qualification points:
+R3 finally adds a real shipped DSH bridge plugin file and updates the preset.
+However the committed production bridge is still not a valid production
+implementation of the Knowledge Curator Agent.
 
-- package manifest now references existing files;
-- `pnpm pack --dry-run` is actually executed;
-- §5 real `CuratorAgentBridge + CurationCommitWorkflow` publish/replay tests exist;
-- §7 real `CuratorAgentBridge + RevisionPublicationWorkflow` FINALIZED test exists;
-- public MCP exact-four assertion remains unconditional.
-
-However, R2 still does not prove the actual product requirement:
-
-> the mounted DSH `knowledge-curator` Agent can reach the internal commit/revision application path.
-
-The R2 report also overstates several qualifications that are not present in the committed tests.
-
-R3 is a narrow product-integration closure. Do not broaden scope.
+R4 is the final narrow product closure. Do not add new scope.
 
 ---
 
-# 1. Blocking finding — “real DSH 0.2.0-rc.1 load” is not tested
+## 1. Blocking defect — production bridge hardcodes integration test fixture
 
-R2 report states:
-
-```
-real DSH 0.2.0-rc.1 load: PASS
-knowledge-curator preset actually registered: PASS
-knowledge-curator preset actually mounted: PASS
-internal commit/revision bridge reachable from mounted DSH path: PASS
-```
-
-But committed `TestDshRuntime` only reads `cordis.patch.yml` and asserts strings:
+Current `runtime/bridge-plugin.js` generates Python code that does:
 
 ```python
-assert "knowledge-curator" in text
-assert "preset-knowledge-curator" in text or "knowledge-curator" in text
+os.environ.setdefault(
+    "AI4S_SYSTEM_ADAPTER_FACTORY",
+    "integration.system.fixtures.si2b_provider:create_si2a_provider_bundle",
+)
+from integration.system.fixtures.si2a_provider import create_si2a_provider_bundle
+bundle = create_si2a_provider_bundle()
 ```
 
-There is no committed test that runs:
+This is test-only wiring inside shipped production code.
 
-- DSH;
-- plugin installation;
-- preset registry;
-- preset mount;
-- child-plugin startup;
-- mounted-Agent invocation.
+It violates the accepted provider boundary:
 
-Therefore those report fields are not accepted.
+```
+AI4S_SYSTEM_ADAPTER_FACTORY=<deployment-owned factory>
+```
 
-## R3 requirement
+### Required fix
 
-Create a real automated DSH qualification harness against:
+The shipped DSH bridge MUST:
 
-- DeepSeek Harness `0.2.0-rc.1`
-- pinned source commit `4878cdabd87d4041bdaff61d04c966883b9fd07a`
+- use the configured `AI4S_SYSTEM_ADAPTER_FACTORY`;
+- resolve provider dependencies through the accepted provider/composition path;
+- fail closed when the factory is missing/invalid;
+- never import `integration.system.fixtures.*` in production runtime.
 
-The harness must actually execute supported DSH/Cordis APIs or CLI commands.
-
-At minimum prove:
-
-1. local bundle package installs/loads;
-2. `knowledge-curator` preset is present in the actual registry/config;
-3. preset mounts into an Agent context;
-4. MCP child plugin starts;
-5. exactly four MCP tools are discovered.
-
-String inspection is not a substitute.
+Add AST/text/product tests proving the shipped bridge contains no integration
+fixture dependency.
 
 ---
 
-# 2. Blocking finding — mounted DSH still cannot reach CuratorAgentBridge
+## 2. Blocking defect — production revise path cannot work
 
-Current production preset remains:
+Current JS bridge `build_bridge()` constructs only:
+
+- `CurationCommitWorkflow`.
+
+It returns:
+
+```python
+CuratorAgentBridge(curation_workflow=workflow)
+```
+
+No `RevisionPublicationWorkflow` is configured.
+
+Therefore the shipped plugin action:
 
 ```
-@deepseek-ai/dsh-agent-preset
-  -> @deepseek-ai/dsh-persona
-  -> @deepseek-ai/dsh-mcp-client
-       -> python -m system.mcp_stdio
+revise
 ```
 
-`system.mcp_stdio` exposes exactly four public MCP tools:
+calls:
 
-- curate_assertion_set
-- knowledge_curator_health
-- retrieve_evidence
-- validate_retrieved_claims
+```
+CuratorAgentBridge.revise(...)
+```
 
-Current `cordis.patch.yml` does not load:
+with `revision_workflow=None`, which can only fail.
 
-- `runtime/agent.py`;
-- `runtime/handlers.py`;
-- `system/curator_agent_bridge.py`.
+The current “mounted §7 PASS” test bypasses the JS plugin completely and directly
+constructs a Python bridge with a real revision workflow.
 
-Therefore the mounted DSH Agent has no demonstrated path to:
+### Required fix
+
+Production bridge composition must construct BOTH:
 
 - `CurationCommitWorkflow`;
-- `RevisionPublicationWorkflow`.
+- `RevisionPublicationWorkflow`;
 
-The direct Python bridge E2E tests prove the internal workflows work, but do not prove the DSH product can invoke them.
+from the deployment provider bundle through accepted composition/dependency
+validation.
 
-## R3 requirement
-
-Implement a **real supported DSH-native bridge/plugin path**.
-
-Target:
-
-```
-Mounted DSH knowledge-curator Agent
-       |
-       +--> public MCP four tools
-       |
-       +--> supported internal curator application bridge
-                    |
-                    +--> CurationCommitWorkflow
-                    |
-                    +--> RevisionPublicationWorkflow
-```
-
-Constraints:
-
-- do not add public MCP commit/revision tools;
-- do not modify frozen MCP server;
-- do not modify DSH core;
-- use only supported DSH 0.2.0-rc.1 extension/plugin/service APIs;
-- package must ship the bridge/plugin implementation it actually uses.
-
-If DSH 0.2.0-rc.1 does not have an extension point that can provide this internal action path without expanding public MCP, STOP and report a blocker. Do not fake it.
+The actual DSH plugin `revise` action must reach that composed revision workflow.
 
 ---
 
-# 3. agent.yaml is not an authoritative DSH loader
+## 3. Blocking defect — current “mounted” tests still bypass the DSH plugin
 
-Current `agent.yaml` declares:
+Tests named:
 
-```
-runtime:
-  entry: runtime/agent.py
-  context: runtime/context.py
-  handlers: runtime/handlers.py
-```
+- `TestMountedSection5::test_mounted_bridge_curate_and_commit`;
+- `TestMountedSection7::test_mounted_bridge_revision`;
 
-But the authoritative DSH bundle loader is still:
-
-```
-package.json -> dsh.bundle.patch -> cordis.patch.yml
-```
-
-No evidence shows DSH 0.2.0-rc.1 consumes this `agent.yaml runtime.entry` syntax.
-
-## R3 requirement
-
-Either:
-
-### A. Make it real
-
-If pinned DSH officially supports this manifest shape, wire it through the real DSH loader and prove it in qualification.
-
-OR
-
-### B. Remove/declassify it
-
-If DSH does not consume it:
-
-- do not present it as executable DSH configuration;
-- either remove it from the shipped product or document it as non-authoritative metadata;
-- package/runtime docs must point to the real loading path.
-
-No dead “looks executable” manifest.
-
----
-
-# 4. Blocking finding — §6 runtime is still not evidence-derived
-
-R2 did not modify `dsh/knowledge-curator/runtime/handlers.py`.
-
-Current runtime still constructs candidate claim text effectively as:
+currently instantiate:
 
 ```python
-text = f"Based on {chunk_id}: {question}"
+CuratorAgentBridge(...)
 ```
 
-That is question-derived, not evidence-derived.
+directly in Python.
 
-The R2 test called `test_evidence_derived_claim` does not prove evidence derivation. Its assertion allows the current string as long as it contains the chunk id.
+They do NOT:
 
-Current final answer is still only a count summary:
+- load `bridge-plugin.js`;
+- instantiate the Cordis/DSH plugin;
+- register its DSH-native tool/action;
+- invoke that registered tool/action;
+- execute the JS -> Python bridge transport.
 
-```
-Based on N validated claims from M evidence records.
-```
+Therefore they are not mounted-product tests.
 
-It does not contain the scientific claim content.
+### Required fix
 
-Therefore these R2 report fields are not accepted:
+At least one acceptance test for §5 and one for §7 must invoke the actual
+registered DSH-native bridge tool/action created by the shipped JS plugin.
 
-- §6 candidate claim derived from evidence: PASS
-- §6 final answer contains validated claim content: PASS
-
-## R3 requirement
-
-Implement a real evidence-derived candidate claim path.
-
-Preferred product path:
+Required path:
 
 ```
-Question
-  -> retrieve_evidence
-  -> EvidenceBundle
-  -> DSH model constrained to evidence
-  -> candidate claim(s)
-  -> validate_retrieved_claims
-  -> only validated claims
-  -> final grounded response
+real DSH/Cordis test context
+  -> load bridge-plugin.js
+  -> tool/action registered
+  -> execute registered bridge tool/action
+  -> Python bridge transport
+  -> deployment provider fixture supplied THROUGH ENV FACTORY
+  -> CuratorAgentBridge
+  -> accepted workflow
 ```
 
-Mandatory CI does not require a live model credential.
-
-Use a deterministic fake/model adapter only in tests, but the fake must derive claim text from actual evidence content fields.
-
-If current EvidenceRecord schema does not expose textual/structured evidence sufficient to derive a claim, inspect the frozen schema/runtime and report the blocker. Do not fabricate claim text from the question.
-
-The final answered result must contain actual validated claim text.
+Direct Python bridge tests remain useful regressions, but cannot be called
+“mounted DSH” evidence.
 
 ---
 
-# 5. §6 acceptance cases
+## 4. DSH tool API must follow the supported contract
 
-## Supported evidence
+Pinned/current DSH tool authoring contract uses:
 
-Given fixture evidence containing actual scientific content, e.g. a real supported evidence field equivalent to:
+```js
+import { defineTool } from '@deepseek-ai/dsh-tools'
 
+ctx.tools.register(defineTool({
+  name: '...',
+  description: '...',
+  parameters: ...,
+  output: ...,
+  execute: ...
+}))
 ```
-energy consumption = 1.42 kWh/m3
+
+Current shipped `bridge-plugin.js` directly calls:
+
+```js
+ctx.tools.register({
+  name: ...,
+  parameters: ...,
+  execute: ...
+})
 ```
 
-the candidate claim must contain that content.
+and has no canonical `output` declaration.
 
-Then:
+R3 report says “defineTool API”, but committed source does not use `defineTool`.
 
-1. retrieve;
-2. generate evidence-derived candidate;
-3. validate;
-4. return validated claim content;
-5. attach only resolved anchors.
+### Required fix
 
-## Unsupported evidence
+Use the actual API supported by pinned DSH 0.2.0-rc.1.
 
-Return ABSTAIN when:
+Do not infer from latest master only: inspect the pinned source tree/installed
+package used for qualification and record the exact file/API evidence.
 
-- retrieval abstains;
-- no records;
-- validation rejects;
-- policy is not factual_allowed;
-- anchor cannot be resolved to retrieved evidence.
+If pinned rc.1 has a different tool-definition shape, use that exact shape and
+document it.
 
-## Citation integrity
-
-For every returned citation:
-
-- ref_id exists in the retrieved bundle;
-- locator/chunk mapping is resolvable;
-- confidence is not invented;
-- fake anchor fails closed.
+The test must instantiate/load the plugin in the pinned DSH runtime and execute
+the registered tool through the real tool runtime.
 
 ---
 
-# 6. §5 status in R3
+## 5. Clarify DSH-native tools vs public MCP tools
 
-R2 now has useful real-workflow tests for:
+A tool registered in `ctx.tools` is model-facing within that Agent scope.
 
-- publish -> PUBLISHED;
-- replay -> IDEMPOTENT_HIT;
-- single-version invariant.
+Therefore `curate_and_commit` and `revise` are not “private invisible
+functions”; they are DSH-native Agent tools.
 
-Do not rewrite frozen §5 logic.
+This is acceptable ONLY if:
 
-R3 only needs to add one missing product-level proof:
+- they are scoped to the `knowledge-curator` preset/agent;
+- they are not added to the MCP server;
+- MCP public surface remains exactly four tools;
+- README/prompt accurately state there are:
+  - four public MCP tools;
+  - two preset-scoped DSH-native application tools/actions for commit/revision.
 
-> the mounted DSH Agent/plugin path can invoke the §5 internal bridge path.
+Do not call these “public MCP tools”.
 
-Keep the direct workflow E2E regression tests.
-
----
-
-# 7. §7 status in R3
-
-R2 now has a real RevisionPublicationWorkflow FINALIZED path.
-
-Do not rewrite frozen §7 logic.
-
-However the R2 report claims additional items that the new R2 test file does not fully prove:
-
-- finalized replay idempotent;
-- approval-required preserved;
-- final source-version binding correct.
-
-These may already be proven in frozen SI-2B/R1 system tests. R3 may cite/reuse those exact existing tests, but the R3 report must name the concrete test(s) that prove each claim.
-
-Do not duplicate frozen logic unnecessarily.
-
-R3 still must add the product-level proof:
-
-> the mounted DSH Agent/plugin path can invoke the §7 internal bridge path.
+Use namespaced names if supported, e.g. curator-specific commit/revision tool
+names, to avoid collisions.
 
 ---
 
-# 8. Truthful qualification rule
+## 6. Replace dynamic temporary Python script transport
 
-From R3 onward:
-
-No report field may say PASS unless there is one of:
-
-1. a committed automated test that directly proves it; or
-2. a recorded real command with output artifact/exit code that proves it; or
-3. an explicitly named pre-existing frozen qualification test whose semantics exactly prove it.
-
-README text, YAML string presence, comments, mocks, or manual statements do not count.
-
-For every PASS line in R3 report include:
+Current plugin writes a fixed workspace file:
 
 ```
-evidence:
-- test: path::test_name
-or
-- command: ...
-- exit_code: 0
-- artifact/log: ...
+_bridge_call.py
 ```
+
+then executes and deletes it.
+
+Problems:
+
+- race/collision across concurrent Agent calls;
+- production workspace mutation;
+- quoting/path injection fragility;
+- harder auditability.
+
+### Required fix
+
+Prefer a committed Python module, e.g.:
+
+```
+system/curator_agent_bridge_stdio.py
+```
+
+or equivalent additive bridge entrypoint.
+
+JS invokes:
+
+```
+python -m system.curator_agent_bridge_stdio <action>
+```
+
+and communicates structured JSON over stdin/stdout.
+
+Requirements:
+
+- no temporary source file generation;
+- no production workspace mutation;
+- deterministic JSON request/response;
+- nonzero exit / invalid JSON -> fail closed;
+- bounded timeout;
+- stderr separated from machine-readable stdout.
+
+Do not modify frozen workflow/core modules.
 
 ---
 
-# 9. DSH real-runtime qualification artifact
+## 7. Typed request hydration is mandatory
 
-Create a committed qualification artifact, for example:
+The JS bridge currently JSON-serializes plain objects and the generated Python
+script passes them directly into workflow-facing bridge calls.
+
+Frozen workflows use typed domain objects such as:
+
+- `AssertionSet`;
+- `RevisionPackage`;
+- `CommitRequest`;
+- approval objects where applicable.
+
+### Required fix
+
+The committed bridge entrypoint must explicitly hydrate/validate JSON into the
+actual frozen schema types before workflow invocation.
+
+Invalid payload:
+
+- must fail closed;
+- must return structured error;
+- must not partially commit.
+
+Do not rely on Python accepting arbitrary dicts.
+
+Add negative schema tests.
+
+---
+
+## 8. Revision approval input
+
+Current native `revise` tool only sends:
+
+- package;
+- target_commit_request.
+
+It has no approval field.
+
+But the frozen revision workflow may require approval.
+
+### Required fix
+
+Design the native revision action to accept the exact frozen application inputs,
+including optional approval where required.
+
+Behavior:
+
+- no approval when required -> preserve `APPROVAL_REQUIRED`;
+- valid approval -> allow FINALIZED;
+- invalid/stale/wrong-scope approval -> preserve frozen fail-closed result.
+
+No auto-approval.
+
+---
+
+## 9. §6 fail-closed evidence synthesis
+
+R3 improved candidate generation to use evidence content fields.
+
+But current fallback is:
+
+```python
+claim_text = f"Evidence from {ref} (confidence: {conf})"
+```
+
+That is metadata, not a scientific claim.
+
+### Required fix
+
+If an evidence record does not contain usable scientific content from the
+actual frozen evidence schema:
+
+```
+ABSTAIN
+```
+
+Do NOT synthesize a fake factual claim from ref/confidence metadata.
+
+Use only real fields supported by the frozen EvidenceRecord schema.
+
+---
+
+## 10. §6 citation integrity
+
+Final validated anchors must also be checked against the retrieved EvidenceBundle.
+
+For every final citation:
+
+- its identity must correspond to retrieved evidence;
+- do not trust an arbitrary validator-returned ref_id if it was not in the
+  retrieval set;
+- unresolved/mismatched anchor => ABSTAIN or unsupported claim.
+
+Reintroduce a real fake-anchor negative test.
+
+---
+
+## 11. Prompt/preset behavior must match actual tools
+
+Current persona still says only to call curator MCP for curation and says not to
+generate final orchestrator-facing QA prose.
+
+For the standalone Knowledge Curator Agent package, update the actual mounted
+persona so it accurately describes:
+
+- §5 curation and commit through the preset-scoped native application tool;
+- §6 evidence-grounded QA through retrieve + validate;
+- §7 revision through the preset-scoped native application tool;
+- abstain discipline;
+- no lit_researcher/global orchestrator/RADE/experiment behavior.
+
+Do not leave `prompt.md` as a disconnected document if the mounted persona is
+the actual behavior source.
+
+---
+
+## 12. Missing qualification artifact
+
+R3 plan required:
 
 `results/phase-si-4-r3-dsh-qualification.md`
 
-or machine-readable JSON plus Markdown summary.
+It is not present in the reviewed R3 HEAD.
 
-It must include actual evidence for:
+R4 must create:
 
-- DSH version/source SHA;
-- bundle install/load;
-- preset registration;
-- preset mount;
-- MCP child startup;
-- exactly-four tool discovery;
-- internal bridge action/path availability;
-- one §5 call through mounted path;
-- one §7 call through mounted path;
-- one §6 answer/abstain flow through mounted path.
+`results/phase-si-4-r4-dsh-qualification.md`
 
-A live remote model may remain NOT_RUN_ENV, but mandatory qualification must still exercise the DSH runtime with a deterministic model fixture.
+It must contain actual command/test evidence, not summary claims.
 
 ---
 
-# 10. Package correctness
+## 13. Correct report evidence mappings
 
-Current R2 manifest correction is directionally good.
+R3 report contains at least one incorrect evidence mapping, e.g. a §5
+IDEMPOTENT_HIT claim cites an SI-2B approval test.
 
-Keep:
+R4 report must map every PASS to a test/command whose semantics directly prove it.
 
-- only existing files;
-- real `.py` runtime files if they are genuinely part of the product.
-
-But after implementing the DSH-native bridge/plugin, ensure:
-
-- package includes the actual bridge/plugin files;
-- `pnpm pack --dry-run` lists them;
-- no non-consumed runtime artifact is presented as authoritative.
-
-Add assertions that required packed files actually appear in dry-run output, not only that the command exits 0.
+No loosely related test references.
 
 ---
 
-# 11. Public MCP remains frozen
+## 14. Mandatory production-path tests
 
-Exactly:
+### A. Plugin load
+
+Use pinned DSH/Cordis runtime to load the shipped JS plugin.
+
+Assert registration succeeds using the supported tool API.
+
+### B. Production provider boundary
+
+Set:
 
 ```
-{
-  "curate_assertion_set",
-  "knowledge_curator_health",
-  "retrieve_evidence",
-  "validate_retrieved_claims",
-}
+AI4S_SYSTEM_ADAPTER_FACTORY=<test fixture factory>
 ```
 
-No new public tool.
+externally for the test.
 
-Do not solve the DSH bridge problem by exposing commit/revision through MCP.
+The production bridge entrypoint must read that variable.
+
+The shipped runtime itself must not import integration fixtures.
+
+Missing env -> fail closed.
+
+### C. Mounted §5
+
+Invoke actual DSH-native commit tool through the registered tool runtime.
+
+Assert:
+
+- real transport;
+- typed hydration;
+- real CurationCommitWorkflow;
+- PUBLISHED;
+- replay -> IDEMPOTENT_HIT;
+- one-version invariant.
+
+### D. Mounted §7
+
+Invoke actual DSH-native revision tool through registered tool runtime.
+
+Assert:
+
+- no-approval required case preserves APPROVAL_REQUIRED;
+- approved case reaches FINALIZED;
+- history retained;
+- final binding correct;
+- replay idempotent.
+
+### E. Mounted §6
+
+Exercise the real Agent/runtime handler path:
+
+- retrieve;
+- evidence-derived claim;
+- validate;
+- grounded claim returned.
+
+Negative:
+
+- no evidence -> ABSTAIN;
+- evidence record without claim content -> ABSTAIN;
+- fake/mismatched anchor -> ABSTAIN.
+
+### F. MCP boundary
+
+Still exact four MCP tools.
 
 ---
 
-# 12. Frozen boundaries
+## 15. Frozen boundaries
 
 Do not modify:
 
@@ -427,69 +499,38 @@ Do not modify:
 Allowed:
 
 - `dsh/knowledge-curator/**`;
-- `system/curator_agent_bridge.py` only if bridge composition needs a narrow additive change;
-- smallest DSH-local plugin/bridge implementation;
-- integration qualification tests/fixtures;
-- results artifacts.
+- `system/curator_agent_bridge.py` narrow additive fix if necessary;
+- new `system/curator_agent_bridge_stdio.py` or equivalent;
+- integration tests/fixtures/results.
 
-Do not depend on generic:
+No dependency on generic:
 
 - `system/workflow_orchestration/**`;
 - `system/task_planner/**`.
 
 ---
 
-# 13. Mandatory tests
+## 16. Packaging
 
-## A. Real DSH
+Run real:
 
-Must actually execute DSH/Cordis runtime.
+```bash
+pnpm pack --dry-run
+```
 
-No text-only substitute.
+Assert output includes the actual JS plugin and all required shipped config/schema
+files.
 
-Prove:
+If the Python bridge entrypoint lives outside the npm bundle under repository
+`system/`, README must explicitly state that this DSH bundle is installed
+against an AI4S-ED workspace containing the Python application package, unless
+you create a separate Python distributable in this phase.
 
-- bundle loaded;
-- preset registered;
-- preset mounted;
-- MCP starts;
-- four tools discovered;
-- internal bridge callable.
-
-## B. Mounted §5
-
-From mounted DSH product path:
-
-- invoke curation/commit capability;
-- reach real internal bridge;
-- reach accepted workflow;
-- get PUBLISHED or frozen valid result.
-
-## C. Mounted §7
-
-From mounted DSH product path:
-
-- invoke revision capability;
-- reach real internal bridge;
-- reach accepted workflow;
-- get FINALIZED/APPROVAL_REQUIRED according to fixture.
-
-## D. Mounted §6
-
-From mounted DSH product path:
-
-- retrieve;
-- evidence-derived candidate;
-- validate;
-- grounded claim or ABSTAIN.
-
-## E. Direct workflow regressions
-
-Keep real §5/§7 bridge/workflow tests from R2.
+Do not claim standalone npm-only deployment if it is not standalone.
 
 ---
 
-# 14. Regression gates
+## 17. Regression
 
 Run:
 
@@ -499,30 +540,126 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Required:
+Requirements:
 
 - 0 failed;
 - 0 skipped;
 - 0 xfailed.
 
-Also run the real DSH qualification command(s).
+Also run the real pinned DSH/plugin qualification command.
 
 ---
 
-# 15. Required R3 report
+## 18. R4 qualification artifact
 
 Create:
 
-`results/phase-si-4-r3-executor-report.md`
+`results/phase-si-4-r4-dsh-qualification.md`
 
-Every PASS must name evidence.
+Include:
 
-Required sections:
+- exact DSH version;
+- exact source SHA;
+- exact Node/pnpm versions;
+- bundle pack command + exit code;
+- bundle install/load command + exit code;
+- actual plugin registration result;
+- actual native tool schema names;
+- actual tool invocation result for §5;
+- actual tool invocation result for §7;
+- §6 flow evidence;
+- exact four MCP discovery result;
+- provider factory used by env;
+- confirmation shipped runtime imports no test fixture.
+
+---
+
+## 19. R4 report
+
+Create:
+
+`results/phase-si-4-r4-executor-report.md`
+
+For every PASS include exact evidence.
+
+Required minimum:
 
 ```
-Phase SI-4-R3 implementation CODE SHA:
+Phase SI-4-R4 implementation CODE SHA:
 
-package manifest valid:
+production bridge contains no integration fixture import:
+PASS/FAILED
+evidence:
+
+bridge uses deployment AI4S_SYSTEM_ADAPTER_FACTORY:
+PASS/FAILED
+evidence:
+
+real DSH tool API contract:
+PASS/FAILED
+evidence:
+
+no temporary _bridge_call.py generation:
+PASS/FAILED
+evidence:
+
+typed curation payload hydration:
+PASS/FAILED
+evidence:
+
+typed revision payload hydration:
+PASS/FAILED
+evidence:
+
+revision workflow configured in production bridge:
+PASS/FAILED
+evidence:
+
+plugin actually loaded in pinned DSH:
+PASS/FAILED
+evidence:
+
+native curator commit tool actually invoked through DSH runtime:
+PASS/FAILED
+evidence:
+
+mounted §5 PUBLISHED:
+PASS/FAILED
+evidence:
+
+mounted §5 replay IDEMPOTENT_HIT:
+PASS/FAILED
+evidence:
+
+native curator revision tool actually invoked through DSH runtime:
+PASS/FAILED
+evidence:
+
+mounted §7 APPROVAL_REQUIRED preserved:
+PASS/FAILED
+evidence:
+
+mounted §7 FINALIZED with valid approval:
+PASS/FAILED
+evidence:
+
+mounted §7 history/binding/replay:
+PASS/FAILED
+evidence:
+
+§6 evidence content required:
+PASS/FAILED
+evidence:
+
+§6 fake anchor fail closed:
+PASS/FAILED
+evidence:
+
+§6 grounded answer contains validated scientific claim:
+PASS/FAILED
+evidence:
+
+public MCP exactly four:
 PASS/FAILED
 evidence:
 
@@ -530,95 +667,16 @@ pnpm pack dry-run:
 PASS/FAILED
 evidence:
 
-DSH pinned version/source confirmed:
-PASS/FAILED
-evidence:
-
-bundle actually loaded by DSH:
-PASS/FAILED
-evidence:
-
-knowledge-curator preset actually registered:
-PASS/FAILED
-evidence:
-
-knowledge-curator preset actually mounted:
-PASS/FAILED
-evidence:
-
-MCP child actually started:
-PASS/FAILED
-evidence:
-
-public MCP tools exactly four:
-PASS/FAILED
-evidence:
-
-internal bridge actually reachable from mounted DSH Agent:
-PASS/FAILED
-evidence:
-
-mounted §5 reaches real CurationCommitWorkflow:
-PASS/FAILED
-evidence:
-
-mounted §7 reaches real RevisionPublicationWorkflow:
-PASS/FAILED
-evidence:
-
-mounted §6 claim is evidence-derived:
-PASS/FAILED
-evidence:
-
-mounted §6 validation occurs before final answer:
-PASS/FAILED
-evidence:
-
-mounted §6 final answer contains validated scientific claim:
-PASS/FAILED
-evidence:
-
-mounted §6 unsupported -> ABSTAIN:
-PASS/FAILED
-evidence:
-
-direct §5 PUBLISHED:
-PASS/FAILED
-evidence:
-
-direct §5 IDEMPOTENT_HIT:
-PASS/FAILED
-evidence:
-
-direct §7 FINALIZED:
-PASS/FAILED
-evidence:
-
-§7 final binding correct:
-PASS/FAILED
-evidence:
-
-§7 replay idempotent:
-PASS/FAILED
-evidence:
-
-§7 approval-required preserved:
-PASS/FAILED
-evidence:
-
-new public MCP tools:
+frozen files changed:
 NO
 
-direct store access:
+test-fixture dependency in shipped runtime:
 NO
 
 workflow_orchestration dependency:
 NO
 
 task_planner dependency:
-NO
-
-frozen files changed:
 NO
 
 knowledge_curator:
@@ -644,22 +702,22 @@ NONE / describe
 
 ---
 
-# 16. Completion protocol
+## 20. Completion protocol
 
-1. implement only R3 product integration closure;
-2. run real DSH qualification;
-3. run mounted §5/§6/§7 qualification;
-4. run direct regressions;
-5. run all pytest suites;
+1. implement only SI-4-R4;
+2. run real production-path DSH qualification;
+3. run all regressions;
+4. create R4 qualification artifact;
+5. create R4 executor report;
 6. commit implementation;
 7. push main;
-8. create R3 report and qualification artifact;
-9. update `status.json`:
-   - phase = SI-4-R3
+8. update status.json:
+   - phase = SI-4-R4
    - actor = executor
    - state = executor_complete
-   - latest_commit = <R3 CODE SHA>
-   - result_expected = results/phase-si-4-r3-executor-report.md
+   - latest_commit = <R4 CODE SHA>
+   - result_expected = results/phase-si-4-r4-executor-report.md
+9. commit/push bookkeeping;
 10. verify clean tree and HEAD == origin/main;
 11. STOP.
 
@@ -667,21 +725,24 @@ Do not start SI-5.
 
 ---
 
-# 17. Hard blocker rule
+## 21. Acceptance question
 
-If the pinned DSH 0.2.0-rc.1 architecture genuinely cannot expose a package-private
-commit/revision action path to the mounted Agent while keeping the public MCP
-surface at exactly four tools:
+R4 passes only if this exact production path is proven:
 
-**STOP and report BLOCKER.**
+```
+Pinned DSH 0.2.0-rc.1
+  -> knowledge-curator preset
+  -> shipped DSH-native tool plugin
+  -> committed Python bridge entrypoint
+  -> deployment-selected provider factory
+  -> typed domain hydration
+  -> CuratorAgentBridge
+       -> CurationCommitWorkflow
+       -> RevisionPublicationWorkflow
+```
 
-Do not:
+and §6 returns only evidence-derived validated scientific claims or ABSTAIN,
+while the MCP server remains exactly four tools.
 
-- fake a DSH mount;
-- call Python bridge directly and label it mounted;
-- add public commit/revision MCP tools without Planner approval;
-- patch DSH core;
-- claim PASS from string assertions.
-
-At that point Planner will decide whether the original “exactly four public MCP”
-constraint or the desired DSH product semantics needs to change.
+No test-fixture imports in shipped runtime.
+No direct-Python test may be labeled as mounted DSH evidence.
