@@ -1,4 +1,4 @@
-﻿"""Agent execution context for Knowledge Curator."""
+"""Agent execution context for Knowledge Curator."""
 
 from __future__ import annotations
 

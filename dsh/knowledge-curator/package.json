@@ -1,17 +1,33 @@
 {
   "name": "@ai4s-ed/knowledge-curator-dsh",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "AI4S-ED knowledge_curator DSH Agent Preset bundle (configuration-only)",
+  "description": "AI4S-ED Knowledge Curator DSH Agent Package (curation, evidence QA, revision)",
   "license": "UNLICENSED",
   "exports": {
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./prompt.md": "./prompt.md",
+    "./tools.yaml": "./tools.yaml",
+    "./agent.yaml": "./agent.yaml",
+    "./runtime/agent.js": "./runtime/agent.js",
+    "./runtime/handlers.js": "./runtime/handlers.js",
+    "./runtime/context.js": "./runtime/context.js"
   },
   "files": [
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "prompt.md",
+    "tools.yaml",
+    "agent.yaml",
+    "schemas/curation_request.json",
+    "schemas/evidence_query.json",
+    "schemas/revision_request.json",
+    "runtime/agent.js",
+    "runtime/handlers.js",
+    "runtime/context.js",
+    "runtime/bridge.js"
   ],
   "dsh": {
     "bundle": {

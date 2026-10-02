@@ -1,14 +1,13 @@
-﻿"""AI4S Knowledge Curator Agent — DSH runtime entry.
+"""AI4S Knowledge Curator Agent — DSH runtime entry.
 
-Provides unified agent interface for:
-1. Knowledge Curation (Section 5)
-2. Evidence QA (Section 6)
-3. Lifecycle Governance (Section 7)
+Section 5: Curation + Commit (via internal bridge -> CurationCommitWorkflow)
+Section 6: Evidence-first QA (retrieve -> validate -> answer/abstain)
+Section 7: Revision lifecycle (via internal bridge -> RevisionPublicationWorkflow)
 
 Boundaries:
-- Agent -> Workflow -> Coordinator -> Store
+- Agent -> Bridge -> Workflow -> Coordinator -> Store
 - No direct store/database access
-- Delegates to existing MCP tools and workflows
+- Public MCP: exactly four tools
 """
 
 from __future__ import annotations
@@ -22,35 +21,42 @@ from runtime.handlers import CurationHandler, EvidenceQAHandler, RevisionHandler
 class KnowledgeCuratorAgent:
     """DSH Knowledge Curator Agent."""
 
-    def __init__(self, tool_invoker: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        tool_invoker: Optional[Any] = None,
+        bridge: Optional[Any] = None,
+    ) -> None:
         self._tool_invoker = tool_invoker
+        self._bridge = bridge
 
     async def curate(
         self,
         assertion_set: dict[str, Any],
         context: Optional[CuratorContext] = None,
     ) -> dict[str, Any]:
-        """Section 5: Curate an AssertionSet."""
+        """Section 5: Curate and commit."""
         ctx = context or CuratorContext()
-        return await CurationHandler.handle(assertion_set, ctx, self._tool_invoker)
+        return await CurationHandler.handle(assertion_set, ctx, self._tool_invoker, self._bridge)
 
     async def answer(
         self,
         question: str,
         context: Optional[CuratorContext] = None,
     ) -> dict[str, Any]:
-        """Section 6: Evidence-first QA with abstain."""
+        """Section 6: Evidence-first QA with mandatory validation."""
         ctx = context or CuratorContext(user_query=question)
         return await EvidenceQAHandler.handle(question, ctx, self._tool_invoker)
 
     async def revise(
         self,
-        new_knowledge: dict[str, Any],
+        revision_package: Any,
+        target_commit_request: Any,
         context: Optional[CuratorContext] = None,
+        approval: Optional[Any] = None,
     ) -> dict[str, Any]:
-        """Section 7: Knowledge revision and lifecycle governance."""
+        """Section 7: Revision lifecycle."""
         ctx = context or CuratorContext()
-        return await RevisionHandler.handle(new_knowledge, ctx, self._tool_invoker)
+        return await RevisionHandler.handle(revision_package, target_commit_request, ctx, self._bridge, approval)
 
     async def health(self) -> dict[str, Any]:
         """Health check via existing MCP tool."""
