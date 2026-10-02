@@ -9,7 +9,7 @@
 
 ## Phase SI-2B-R1 implementation CODE SHA
 
-（见 commit）
+8296611
 
 approval_required exact assertion:
 PASS

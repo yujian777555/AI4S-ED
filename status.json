@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-2B-R1",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "authoritative_docs": [
@@ -26,7 +26,7 @@
     "do not modify the DSH knowledge-curator preset",
     "planner/CONTRACT_GAPS.md remains frozen"
   ],
-  "latest_commit": "f8a052e1884505ae42767cee9788e8f70359a008",
+  "latest_commit": "8296611",
   "planner_review": "planner/phase-si-2a-final-acceptance.md",
   "knowledge_curator_freeze": {
     "verdict": "ACCEPTED",
