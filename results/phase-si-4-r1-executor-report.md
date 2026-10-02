@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R1 implementation CODE SHA
 
-（见 commit）
+1442531
 
 DSH package includes all runtime/config/schema files:
 PASS
