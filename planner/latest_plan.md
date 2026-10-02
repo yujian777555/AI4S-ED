@@ -1,4 +1,4 @@
-# Phase SI-3A Plan — Agent Runtime Skeleton
+# Phase SI-3B Plan — Scientific Task Planner
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,120 +6,125 @@ State: READY_FOR_EXECUTOR
 
 ## Goal
 
-Build the first product-level Agent Runtime layer on top of the accepted AI4S-ED system.
+Extend the accepted SI-3A Agent Runtime with a deterministic Scientific Task Planner layer.
 
-Current accepted capabilities:
+SI-3B adds task understanding and workflow selection only. Do not redesign Agent Runtime, workflows, MCP, or DSH.
 
-- Knowledge Curator MCP tools
-- CurationCommitWorkflow
-- RevisionPublicationWorkflow
-- Production composition boundaries
+## Architecture
 
-SI-3A does not redesign frozen components. It only creates the runtime entry layer.
+```
+User Task
+    |
+    v
+ScientificTaskPlanner
+    |
+    v
+TaskPlan
+    |
+    v
+AI4SAgent Runtime
+    |
+    v
+WorkflowRegistry
+    |
+    +----------------+
+    |                |
+    v                v
+CurationCommit   RevisionPublication
+Workflow         Workflow
+```
 
 ## Scope
 
 Create:
 
 ```
-system/agent_runtime/
+system/task_planner/
     __init__.py
-    agent.py
-    task_router.py
-    workflow_registry.py
-    execution_context.py
-    result_protocol.py
+    planner.py
+    task_classifier.py
+    plan_protocol.py
     errors.py
 ```
 
 ## Required capabilities
 
-### 1. Execution Context
+### TaskClassifier
 
-Provide unified propagation:
+First version deterministic only.
 
-- task_id
-- trace_id
-- provenance_id
-- metadata
+Support:
 
-### 2. Workflow Registry
-
-Register existing workflows:
-
-- curation_commit
-- revision_publication
-
-Agent must access workflows through registry.
-
-### 3. Task Router
-
-Initial version uses explicit task types only.
-
-Required:
-
+- RETRIEVE
 - CURATION_COMMIT
 - REVISION_PUBLICATION
 
-No LLM planner in SI-3A.
+No LLM planner.
 
-### 4. AI4S Agent Runtime
+### TaskPlan Protocol
 
-Expose:
+Must contain:
 
-```python
-agent.run(task, context)
+- task_id
+- task_type
+- workflow_name
+- parameters
+- trace_id
+- provenance_id
+
+### Runtime integration
+
+Extend flow:
+
+```
+AI4SAgent
+    |
+ScientificTaskPlanner
+    |
+TaskRouter
+    |
+WorkflowRegistry
+    |
+Workflow
 ```
 
-Flow:
-
-Agent
- -> Router
- -> Registry
- -> Workflow
- -> Result Protocol
-
-Agent must not directly access stores or coordinators.
-
-### 5. Result Protocol
-
-Provide unified AgentResult containing:
-
-- status
-- workflow
-- trace_id
-- artifacts
-- knowledge_changes
-- error
-
-## Tests
-
-Add integration/system tests proving:
-
-- valid runtime bootstrap
-- missing provider fail closed
-- invalid provider fail closed
-- curation task dispatch
-- revision task dispatch
-- no direct store access
-- existing MCP contract unchanged
-- DSH preset unchanged
-
-## Frozen boundaries
+## Forbidden
 
 Do not modify:
 
 - knowledge_curator/**
-- system/composition.py
-- system/provider_loader.py
-- system/mcp_stdio.py
-- system/application_composition.py
 - system/workflows/curation_commit.py
 - system/workflows/revision_publication.py
 - dsh/knowledge-curator/**
-- planner/CONTRACT_GAPS.md
 
-## Regression gates
+Do not add:
+
+- new MCP tools
+- DSH changes
+- multi-agent system
+- autonomous research loop
+
+## Tests
+
+Add:
+
+```
+integration/system/tests/test_task_planner.py
+```
+
+Verify:
+
+- retrieve classification
+- curation classification
+- revision classification
+- invalid task fail closed
+- provenance preservation
+- Agent Runtime consumes TaskPlan
+- WorkflowRegistry boundary preserved
+- MCP unchanged
+- DSH unchanged
+
+## Regression
 
 Run:
 
@@ -129,47 +134,20 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-## Completion report
+## Completion
 
-Executor must report:
+Update status.json:
 
 ```
-Phase SI-3A implementation CODE SHA:
-
-Agent Runtime created:
-PASS
-Workflow Registry:
-PASS
-Task Router:
-PASS
-Execution Context:
-PASS
-Agent API:
-PASS
-CurationCommit integration:
-PASS
-RevisionPublication integration:
-PASS
-Provider fail-closed:
-PASS
-No direct store access:
-PASS
-MCP changed:
-NO
-DSH changed:
-NO
-Frozen files changed:
-NO
-
-knowledge_curator:
-...
-integration/system:
-...
-integration/dsh:
-...
-
-deviations:
-NONE / describe
+phase: SI-3B
+actor: executor
+state: executor_complete
 ```
 
-STOP after completion. Do not start SI-3B.
+Create:
+
+```
+results/phase-si-3b-executor-report.md
+```
+
+STOP after completion. Do not start SI-4 without Planner review.
