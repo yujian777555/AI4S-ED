@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R2 implementation CODE SHA
 
-（见 commit）
+a171d71
 
 package manifest references only existing files:
 PASS
