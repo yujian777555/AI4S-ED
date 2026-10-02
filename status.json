@@ -11,16 +11,16 @@
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
-    "Deliver only the DSH Knowledge Curator Agent for document 03 sections 5, 6, and 7",
-    "SI-4-R5 18937db is not accepted; R6 actual pinned DSH execution closure is required",
-    "bridge-plugin.js must actually import/use pinned @deepseek-ai/dsh-tools defineTool",
-    "Acceptance must start real pinned DSH/Cordis context and execute both native tools through actual ctx.tools",
-    "Direct Python subprocess or source-string tests cannot be labeled native/mounted DSH evidence",
-    "Finish strict hydration: revision target assertion enums, required IDs, and curation completeness/report must not be fabricated/defaulted",
-    "Commit results/phase-si-4-r6-dsh-qualification.md with real command/output evidence",
+    "MANDATORY: read planner/SI4_R6_DSH_SOURCE_GUIDE.md before implementing R6; it is grounded in pinned DSH 0.2.0-rc.1 source",
+    "Use actual @deepseek-ai/dsh-tools defineTool and its pinned ParameterSchemaSpec/ValueSchemaSpec contract",
+    "Fix curator-bridge preset child wiring: do not rely on ./runtime/bridge-plugin.js inside config.plugins; qualify the installed package-subpath resolution",
+    "Acceptance must use a real pinned ToolRuntime/AgentPresetRegistry and ctx.tools.execute(..., agent), following the official DSH test harness pattern",
+    "Direct Python subprocess and source-string checks remain regressions only, not native DSH acceptance evidence",
+    "Finish strict hydration without fabricated enum/default/completeness values",
+    "Commit results/phase-si-4-r6-dsh-qualification.md with real commands/results",
     "Public MCP remains exactly four tools",
     "Do not modify frozen core/workflows or depend on workflow_orchestration/task_planner",
     "STOP after SI-4-R6 completion"
   ],
-  "latest_commit": "8c803e123b173a233b05cf0533f47f3958ce6257"
+  "latest_commit": "9c2cff4d7092129c4664819ca8738c8f7fd9c988"
 }
