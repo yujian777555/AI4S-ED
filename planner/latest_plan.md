@@ -1,666 +1,266 @@
-# Phase SI-2B Plan — Revision Publication Application Workflow
+# Phase SI-2B-R1 Plan — Revision Publication Qualification Closure
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
 State: READY_FOR_EXECUTOR
 
-## 0. Goal
+## 0. Why R1 is required
 
-Integrate the already frozen revision/lifecycle publication saga into the system application layer for **same-work source-version upgrades**, such as:
+SI-2B implementation CODE SHA:
 
-- preprint -> journal;
-- corrected version;
-- explicit same-work revision.
+`d2d69f63550d2ece3d74d3b02be41614ba78250f`
 
-Target:
+Executor merge HEAD reviewed:
+
+`f61a5e05804e1967f4e6c3b8a452318478eca751`
+
+The production design is directionally correct, but Planner review found the committed qualification does **not** yet prove several mandatory SI-2B acceptance claims.
+
+Therefore SI-2B is **NOT YET ACCEPTED/FROZEN**.
+
+R1 is a narrow closure phase. Do not redesign the architecture.
+
+---
+
+## 1. Findings to close
+
+### R1-01 — Mandatory workflow scenarios are missing
+
+`integration/system/tests/test_si2b_workflow.py` currently contains only 8 test functions.
+
+Missing mandatory SI-2B workflow qualification includes:
+
+- lifecycle pending surfaced without hidden retry;
+- lifecycle retry recovery;
+- post-bind / pre-journal-finalization recovery;
+- material conflict fail-closed;
+- stale/wrong approval scope conflict;
+- historical version/snapshot resolvability;
+- curation gate integrity;
+- trace/provenance propagation into lifecycle/publication artifacts where frozen semantics support it.
+
+Executor report claimed these items PASS, but committed tests do not prove them.
+
+Add explicit tests.
+
+### R1-02 — Approval tests are too permissive
+
+Current approval tests accept broad status sets such as:
 
 ```
-RevisionPackage + target CommitRequest + optional RevisionApproval
-                         |
-                         v
-              RevisionPublicationWorkflow
-                         |
-                         v
-            RevisionPublicationCoordinator
-                         |
-          +--------------+---------------+
-          |                              |
-          v                              v
-DocumentCommitCoordinator      LifecycleRevisionCoordinator
-          |                              |
-          v                              v
-target KB version              lifecycle KB version
-          \______________________________/
-                         |
-                         v
-             SourceVersionRegistry bind
-                         |
-                         v
-            RevisionPublicationResult
+("approval_required", "finalized", "failed", "conflict")
 ```
 
-This phase is **application composition + transport-independent workflow only**.
-
-Do not implement the global AI4S-ED Orchestrator.
-
-Do not expose publication as a new public MCP tool.
-
-Do not implement direct external retraction orchestration in SI-2B.
-
----
-
-## 1. Frozen baselines
-
-### Knowledge Curator
-
-CODE SHA:
-
-`42e39121af5f6120174e088a521c9ad014abdcda`
-
-Status:
-
-**ACCEPTED / FROZEN / DELIVERABLE**
-
-### SI-1 production composition
-
-CODE SHA:
-
-`073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7`
-
-Status:
-
-**ACCEPTED / FROZEN**
-
-### SI-1.5 DSH production wiring
-
-Closure SHA:
-
-`0f014f0a3aad75a6cada18874fead10414469d6b`
-
-Status:
-
-**ACCEPTED / FROZEN**
-
-### SI-2A curation -> commit application workflow
-
-CODE SHA:
-
-`95d55e71390a2e7266b2084243161101c5aff60a`
-
-Planner acceptance:
-
-`planner/phase-si-2a-final-acceptance.md`
-
-Status:
-
-**ACCEPTED / FROZEN**
-
-Do not modify frozen SI-2A production files.
-
----
-
-## 2. Authoritative frozen revision behavior
-
-Do not reimplement logic already owned by:
-
-- `knowledge_curator.core.revision_publication.RevisionPublicationCoordinator`
-- `knowledge_curator.core.lifecycle.LifecycleRevisionCoordinator`
-- `knowledge_curator.core.version_delta.RevisionPackageBuilder`
-- `knowledge_curator.core.source_identity.IncrementalIntakeService`
-
-The frozen `RevisionPublicationCoordinator` already owns the recoverable saga:
-
-1. validate RevisionPackage / lineage / target CommitRequest;
-2. enforce package review gate;
-3. enforce explicit approval when the lifecycle draft requires manual adjudication;
-4. bind approval scope to the real target CommitRequest;
-5. invoke `DocumentCommitCoordinator` for target knowledge publication;
-6. surface target pending states;
-7. invoke `LifecycleRevisionCoordinator.apply_revision()`;
-8. publish a new immutable lifecycle version;
-9. bind the new source version to final KB version/snapshot;
-10. journal phases and resume safely after partial failures;
-11. detect request/material conflicts;
-12. return authoritative `RevisionPublicationStatus` semantics.
-
-Do not reproduce this state machine in `system/**`.
-
----
-
-## 3. SI-2B scope
-
-SI-2B covers only source-version revision publication where a frozen `RevisionPackage` already exists.
-
-Examples:
-
-- PREPRINT_TO_JOURNAL;
-- REVISION_OF;
-- CORRECTED_VERSION;
-- EXPLICIT_SAME_WORK.
-
-The application caller supplies:
-
-- a frozen `RevisionPackage`;
-- the matching target `CommitRequest`;
-- optional frozen internal `RevisionApproval`.
-
-SI-2B does **not** own PDF/XML parsing, content alignment, delta extraction, assertion extraction, or manual review UI.
-
-The higher-level orchestrator remains future work.
-
----
-
-## 4. Explicitly out of scope
-
-Do not implement in SI-2B:
-
-- global System Orchestrator;
-- Agent Factory;
-- public workflow API over HTTP;
-- new MCP tools;
-- DSH changes;
-- parser/extractor;
-- source discovery/crawling;
-- automatic construction of public WorkIdentity contracts;
-- automatic manual-approval UI or approval service;
-- direct RETRACTION external-trigger workflow;
-- direct standalone CORRIGENDUM trigger workflow outside RevisionPackage flow;
-- event-bus delivery consumer;
-- real database/vector/ontology adapters;
-- packaging/release extraction.
-
-Direct retraction/corrigendum trigger orchestration belongs to a later lifecycle integration phase.
-
----
-
-## 5. New production application files
-
-Recommended minimum:
+and:
 
 ```
-system/revision_application_composition.py
-system/workflows/revision_publication.py
+("approval_rejected", "finalized", "failed", "conflict")
 ```
 
-Existing:
+This does not prove approval behavior.
 
-`system/workflows/__init__.py`
+Build deterministic fixtures that require manual adjudication and assert exactly:
 
-may be updated only to export the new workflow if needed.
+- no approval -> `PublicationStatus.APPROVAL_REQUIRED`;
+- rejected approval -> `PublicationStatus.APPROVAL_REJECTED`;
+- no target commit/version side effect.
 
-Do not modify:
+### R1-03 — Mandatory tests contain skip escape hatches
 
-- `system/application_composition.py`;
-- `system/workflows/curation_commit.py`.
+Current full-publication/replay tests contain conditional `pytest.skip(...)`.
 
-Those are frozen SI-2A implementation.
+Remove these escape hatches from mandatory SI-2B tests.
 
----
+Required behavior must be asserted exactly:
 
-## 6. Provider bundle contract
+- full publication -> `FINALIZED`;
+- replay -> `FINALIZED`, `idempotent=True`, `resumed=True`.
 
-Reuse:
+A regression must fail, not skip.
 
-`AI4S_SYSTEM_ADAPTER_FACTORY=package.module:factory_function`
+### R1-04 — Target pending test does not prove status or recovery
 
-Do not create another environment variable.
+Strengthen the target pending test.
 
-The provider may now contain:
+First invocation with injected commit pending failure must assert:
 
-```python
-{
-    "curator": {...},        # existing required loader group
-    "evidence": {...},       # existing optional group
-    "commit": {              # accepted SI-2A group
-        "commit_store": ...,
-        "structural_store": ...,
-        "vector_index": ...,
-        "usdo_store": ...,
-        "version_store": ...,
-        "provider_identity": "...",
-    },
-    "revision": {
-        "source_registry": ...,
-        "lifecycle_store": ...,
-        "event_outbox": ...,
-        "publication_store": ...,
-        "provider_identity": "...",
-    },
-}
-```
+- result.status == `PublicationStatus.TARGET_PENDING`;
+- publication coordinator invoked exactly once;
+- workflow has no hidden retry.
 
-The `revision` group MUST NOT own a second version store or a second document commit store.
+After clearing failure, second identical invocation must assert:
 
-SI-2B composition must reuse the exact `commit.version_store` and `commit.commit_store` instances so the target-commit and lifecycle-publication sides cannot split into different persistence universes.
+- result.status == `PublicationStatus.FINALIZED`;
+- saga resumes rather than restarts destructively;
+- no duplicate target/final versions.
 
-If the revision group attempts to provide alternate `version_store` or `commit_store` / `document_commit_store`, fail closed rather than silently ignoring a split-brain configuration.
+### R1-05 — Lifecycle pending / recovery must be proven
 
----
+Inject a deterministic lifecycle failure after target publication.
 
-## 7. Revision dependency Ports
+First invocation must assert:
 
-Validate the revision group before returning the application runtime.
-
-Required runtime-checkable Ports:
-
-- `SourceVersionRegistry`
-- `LifecycleStore`
-- `EventOutbox`
-- `RevisionPublicationStore`
-
-The version store comes from the accepted SI-2A `commit` group.
-
-The document commit store comes from the accepted SI-2A `commit` group.
-
-Reuse SI-2A commit dependency extraction/validation where practical without modifying SI-2A files.
-
----
-
-## 8. Forbidden production adapters
-
-SI-2B production composition must reject the known checked-in test/in-memory lifecycle adapters, including at minimum:
-
-- `InMemoryLifecycleStore`
-- `InMemoryEventOutbox`
-- `InMemoryRevisionPublicationStore`
-- `InMemorySourceVersionRegistry`
-
-and objects originating from their known checked-in in-memory adapter modules.
-
-Continue to rely on SI-2A commit validation to reject:
-
-- InMemoryDocumentCommitStore;
-- InMemoryStructuralKnowledgeStore;
-- InMemoryVectorIndex;
-- InMemoryUSDOStore;
-- InMemoryVersionStore.
-
-Validation must remain narrow and deterministic.
-
----
-
-## 9. Application composition
-
-Implement:
-
-`system.revision_application_composition.compose_revision_publication_application(...)`
-
-Suggested runtime object:
-
-`RevisionPublicationApplicationRuntime`
-
-containing at minimum:
-
-- `document_commit_coordinator`;
-- `lifecycle_coordinator`;
-- `revision_publication_coordinator`;
-- `source_registry`;
-- provider identity/diagnostics.
-
-Optional:
-
-- `revision_package_builder`
-
-may be exposed if built directly from the same validated `source_registry`, but SI-2B workflow tests must use a prebuilt RevisionPackage as the workflow boundary.
-
-### Required construction
-
-Using one loaded provider bundle:
-
-1. extract and validate existing SI-2A commit dependencies;
-2. construct/reuse a `DocumentCommitCoordinator` over those exact dependencies;
-3. validate revision dependencies;
-4. construct `LifecycleRevisionCoordinator` with:
-   - validated lifecycle_store;
-   - validated event_outbox;
-   - **the exact commit.version_store instance**;
-5. construct `RevisionPublicationCoordinator` with:
-   - validated publication_store;
-   - validated source_registry;
-   - **the exact commit.version_store instance**;
-   - the LifecycleRevisionCoordinator above;
-   - the DocumentCommitCoordinator above;
-   - **the exact commit.commit_store instance**.
-
-Do not load the provider factory twice during one composition call.
-
-A provider factory is allowed to create stateful adapters; double loading could create split state and is forbidden.
-
----
-
-## 10. Workflow API
-
-Implement:
-
-`system.workflows.revision_publication.RevisionPublicationWorkflow`
-
-Recommended API:
-
-```python
-result = await workflow.run(
-    package=revision_package,
-    target_commit_request=commit_request,
-    approval=revision_approval_or_none,
-)
-```
-
-The workflow should be deliberately thin.
-
-It MUST delegate authoritative semantics to:
-
-`RevisionPublicationCoordinator.publish(...)`
-
-exactly once per workflow invocation.
-
-Return the frozen `RevisionPublicationResult` directly unless a wrapper is absolutely necessary.
-
-Do not invent another publication-status enum.
-
----
-
-## 11. No automatic approval
-
-The workflow MUST NOT:
-
-- synthesize a `RevisionApproval`;
-- mark manual adjudication as passed;
-- generate a fake approver;
-- rewrite the package to bypass review;
-- mutate approval scope hashes.
-
-If the frozen coordinator returns:
-
-- `APPROVAL_REQUIRED`;
-- `APPROVAL_REJECTED`;
-- `PACKAGE_REVIEW_REQUIRED`;
-
-return that result immediately.
-
-CG-021 remains an external/public contract gap.
-
-SI-2B uses the existing internal frozen `RevisionApproval` model only for application integration tests and internal callers.
-
-Do not present it as a newly frozen cross-team public approval API.
-
----
-
-## 12. No hidden retries
-
-The workflow MUST NOT internally retry:
-
-- `TARGET_PENDING`;
-- `LIFECYCLE_PENDING`;
-- `FAILED`;
-- `CONFLICT`.
-
-Return immediately.
-
-Recovery occurs when the caller invokes the workflow again with materially identical:
-
-- RevisionPackage;
-- target CommitRequest;
-- RevisionApproval, if required.
-
-The frozen publication journal/coordinators own resume/idempotency.
-
----
-
-## 13. Authoritative publication statuses
-
-SI-2B must preserve the frozen statuses without translation:
-
-- `APPROVAL_REQUIRED`
-- `APPROVAL_REJECTED`
-- `PACKAGE_REVIEW_REQUIRED`
-- `TARGET_PENDING`
-- `LIFECYCLE_PENDING`
-- `CONFLICT`
-- `FAILED`
-- `FINALIZED`
-
-Do not collapse them into generic success/failure booleans.
-
----
-
-## 14. Approval scope behavior
-
-The approval scope is bound to the actual:
-
-- RevisionPackage;
-- target CommitRequest.
-
-Use the frozen:
-
-`compute_publication_scope_hash(...)`
-
-when integration tests need to construct a valid `RevisionApproval`.
-
-The workflow itself should not silently recalculate and overwrite an approval's scope.
-
-A changed package/request with an old approval must surface `CONFLICT`.
-
----
-
-## 15. Integration-only SI-2B provider fixture
-
-Add:
-
-`integration/system/fixtures/si2b_provider.py`
-
-It may reuse/import the accepted SI-2A **test-local fixture** to obtain the five test-local commit dependencies.
-
-Add test-local protocol-compatible implementations for:
-
-- SourceVersionRegistry;
-- LifecycleStore;
-- EventOutbox;
-- RevisionPublicationStore.
-
-It MUST NOT import/instantiate/subclass/wrap/delegate to:
-
-- `knowledge_curator.adapters.in_memory_lifecycle.*`;
-- `knowledge_curator.adapters.in_memory_revision_publication.*`;
-- `knowledge_curator.adapters.in_memory_source_versions.*`.
-
-Production `system/**` must never import this fixture.
-
-Failure injection is encouraged for:
-
-- target commit;
-- lifecycle publication;
-- publication journal finalization.
-
----
-
-## 16. Required composition tests
-
-Add:
-
-`integration/system/tests/test_si2b_composition.py`
-
-At minimum prove:
-
-1. missing `revision` group fails closed;
-2. missing source_registry fails;
-3. missing lifecycle_store fails;
-4. missing event_outbox fails;
-5. missing publication_store fails;
-6. malformed source_registry fails Port validation;
-7. malformed lifecycle_store fails;
-8. malformed event_outbox fails;
-9. malformed publication_store fails;
-10. known checked-in InMemory lifecycle/source/publication adapters are rejected;
-11. valid test-local dependency set composes;
-12. resulting runtime contains existing `DocumentCommitCoordinator`;
-13. resulting runtime contains existing `LifecycleRevisionCoordinator`;
-14. resulting runtime contains existing `RevisionPublicationCoordinator`;
-15. lifecycle coordinator and publication coordinator use the **same VersionStore instance** as the commit group;
-16. publication coordinator uses the **same DocumentCommitStore instance** as the commit group;
-17. provider factory is invoked once per composition;
-18. an extra `revision` group does not change the existing MCP surface;
-19. public Knowledge Curator MCP tools remain exactly four.
-
-No skipped SI-2B composition tests.
-
----
-
-## 17. Required workflow tests
-
-Add:
-
-`integration/system/tests/test_si2b_workflow.py`
-
-Use a realistic same-work revision fixture, preferably PREPRINT_TO_JOURNAL because the frozen core already has explicit lineage semantics for it.
-
-### A. approval required
-
-For a draft requiring manual adjudication:
-
-- call workflow without approval;
-- result = `APPROVAL_REQUIRED`;
-- document commit coordinator not called;
-- no new KB version.
-
-### B. rejected approval
-
-- valid scope, decision REJECTED;
-- result = `APPROVAL_REJECTED`;
-- no target commit.
-
-### C. package review required
-
-- `package.requires_manual_review=True`;
-- result = `PACKAGE_REVIEW_REQUIRED`;
-- no target commit.
-
-### D. full publication
-
-With valid package/request/approval where required:
-
-- result = `FINALIZED`;
-- target commit publishes a target version;
-- lifecycle publishes the final lifecycle version;
-- final version is distinct from target version;
-- final version prior points to target version as required by frozen semantics;
-- new source version is bound to final version/snapshot;
-- publication journal phase = FINALIZED.
-
-### E. final replay
-
-Run the same material again:
-
-- result = `FINALIZED`;
-- `idempotent=True`;
-- `resumed=True`;
-- no additional target/final versions;
-- no duplicate lifecycle records/events.
-
-### F. target pending
-
-Inject a transient target commit failure that yields:
-
-- `PENDING_VECTOR` or `PENDING_FINALIZE` at the commit layer;
-- application result = `TARGET_PENDING`;
-- workflow invokes publication coordinator once only;
+- `LIFECYCLE_PENDING` (or the exact frozen documented status if the frozen coordinator uses another specific fail-closed status for that injected failure);
+- one workflow->publication delegation;
+- target publication remains persisted;
 - no hidden retry.
 
-Clear the failure and invoke workflow again:
+After clearing the failure:
 
-- publication resumes;
-- result = `FINALIZED`;
-- no duplicate target/final publication.
+- second invocation reaches `FINALIZED`;
+- target version is reused, not duplicated;
+- final lifecycle version is created once.
 
-### G. lifecycle pending
+Do not modify frozen lifecycle/revision coordinators.
 
-Inject lifecycle failure after target publication:
+### R1-06 — Post-bind journal recovery must be proven
 
-- first result = `LIFECYCLE_PENDING` (or frozen documented failure form where appropriate);
-- no hidden retry;
-- target publication is not duplicated.
+Inject failure after source-version bind succeeds but before publication journal acknowledges `FINALIZED`.
 
-Clear failure and invoke again:
+Verify:
 
-- result = `FINALIZED`;
-- saga resumes from journal state.
+- first call returns the frozen failure result;
+- source version is already bound to the expected final version/snapshot;
+- second materially identical call detects the already-correct binding;
+- journal reaches `FINALIZED`;
+- result = `FINALIZED`, `idempotent=True`, `resumed=True`;
+- no extra KB versions.
 
-### H. post-bind journal recovery
+### R1-07 — Conflict qualification must be explicit
 
-Inject failure after source-version bind but before journal FINALIZED acknowledgement.
+Add tests for at least:
 
-First invocation may return FAILED.
-
-Second identical invocation must:
-
-- detect already-correct source binding;
-- finalize journal idempotently;
-- return `FINALIZED`;
-- not create additional versions.
-
-### I. material/scope conflict
-
-Change target assertion material or CommitRequest material while reusing an existing publication/package identity.
+1. changed target assertion / CommitRequest material under same publication identity;
+2. stale/wrong `RevisionApproval.scope_hash`.
 
 Expected:
 
-- `CONFLICT` or frozen fail-closed result;
-- no silent overwrite.
+- `PublicationStatus.CONFLICT` or the exact frozen fail-closed status required by the coordinator;
+- never silently overwrite prior material;
+- no unauthorized publication.
 
-Use an approval with stale/wrong scope hash:
+Prefer exact `CONFLICT` where frozen coordinator explicitly returns it.
 
-- expected `CONFLICT`;
-- no side effects beyond already-existing safe state.
+### R1-08 — Historical safety must be asserted
 
-### J. curation gate integrity
+For a successful PREPRINT_TO_JOURNAL publication:
 
-A target CommitRequest containing non-publishable curation decisions must not be promoted by the application workflow.
+- capture prior KB version/snapshot;
+- capture target commit version/snapshot;
+- capture final lifecycle version/snapshot;
+- assert all historical versions/snapshots remain resolvable;
+- assert final version is distinct from target;
+- assert final version's `prior_version_id == target_version_id`;
+- assert the new source version binds only to final version/snapshot.
 
-The frozen coordinator must reject/fail closed.
+No destructive update/delete semantics.
 
-### K. trace/provenance
+### R1-09 — Curation gate integrity must be asserted
 
-For a valid flow, verify the existing trace/provenance fields survive into publication/lifecycle records/events where frozen core semantics provide them.
+Create a target `CommitRequest` whose curation report contains a non-publishable decision (for example REJECT).
 
----
+Invoke the SI-2B workflow.
 
-## 18. Historical/version safety
+Assert the frozen coordinator fails closed and no final publication is produced.
 
-SI-2B must prove at integration level that publication:
+The workflow must not mutate decisions or promote them.
 
-- creates new immutable versions;
-- does not physically delete prior versions;
-- keeps prior snapshots resolvable;
-- binds the new source version only to the final lifecycle version;
-- does not rebind an already-bound source version to conflicting material.
+### R1-10 — Trace/provenance qualification
 
-Do not introduce destructive update semantics.
+Use non-empty package/request/approval trace/provenance IDs.
 
----
+After successful publication, inspect the frozen artifacts available through the test-local stores and prove trace/provenance are preserved wherever frozen core semantics specify them, including lifecycle records/events and publication journal fields when applicable.
 
-## 19. MCP / DSH boundary
+Do not invent new trace semantics.
 
-Do not add:
+### R1-11 — MCP/DSH boundary regression tests are missing
 
-- `publish_revision`;
-- `apply_revision`;
-- `retract_document`;
-- `approve_revision`;
+The SI-2B plan required proof that adding a `revision` provider group does not alter the existing MCP surface.
 
-or any other public MCP tool.
-
-Existing public Knowledge Curator tools remain exactly:
+Add integration/system or integration/dsh qualification that constructs the existing MCP server with a provider bundle containing `commit` + `revision` and asserts the public Knowledge Curator tool names remain exactly:
 
 - `curate_assertion_set`
 - `knowledge_curator_health`
 - `retrieve_evidence`
 - `validate_retrieved_claims`
 
-Do not modify the DSH preset.
+No new publication/lifecycle tool.
 
-The current DSH 0.2.0-rc.1 Web runtime validation is independent of SI-2B.
+DSH preset must remain unchanged.
+
+### R1-12 — Object-shaped revision split-brain bypass
+
+`system/revision_application_composition._extract_revision_deps()` accepts dict-shaped and object-shaped revision groups.
+
+However current `_reject_split_brain()` only checks forbidden store keys for a dict-shaped revision group.
+
+Close this asymmetry.
+
+For object-shaped revision groups, if any non-None attribute exists for:
+
+- `version_store`
+- `commit_store`
+- `document_commit_store`
+
+composition must fail closed exactly as for dict-shaped groups.
+
+Add regression tests for object-shaped split-brain attempts.
+
+Do not broaden the blacklist beyond the specified store ownership boundary.
+
+### R1-13 — Test-local LifecycleStore is not fully Port-compatible
+
+Fix only the SI-2B integration fixture.
+
+Current mismatches include:
+
+- `append_assertion_records(...)` should return the appended record list as the Port specifies;
+- `latest_document_state(ref_id, at_version_id=None)` must accept the Port argument shape;
+- `latest_assertion_state(assertion_id, ref_id, at_version_id=None)` must use the Port argument order/signature.
+
+Also ensure test-local append semantics are sufficiently idempotent to validate retry behavior:
+
+- lifecycle document records: deterministic identity must not silently create duplicates;
+- lifecycle assertion records: replay must not duplicate the same lifecycle/assertion identity;
+- EventOutbox: append must be idempotent by `event_id`.
+
+Do not import or delegate to frozen checked-in InMemory adapters.
+
+### R1-14 — Test-local append-only registry safety
+
+The SI-2B fixture is described as protocol-compatible and append-only.
+
+Harden same-ID replay behavior for test-local `SourceVersionRegistry` / publication journal sufficiently so tests cannot silently overwrite contradictory material and still pass.
+
+Do not build a second production state machine; this is test-fixture integrity only.
 
 ---
 
-## 20. Frozen files/directories
+## 2. Production code allowed to change
+
+Only if needed for the confirmed R1 finding:
+
+- `system/revision_application_composition.py`
+
+Specifically the object-shaped split-brain check.
+
+`system/workflows/revision_publication.py` should remain unchanged unless a concrete defect is discovered and reported.
+
+---
+
+## 3. Integration code allowed to change
+
+- `integration/system/fixtures/si2b_provider.py`
+- `integration/system/tests/test_si2b_composition.py`
+- `integration/system/tests/test_si2b_workflow.py`
+
+Optional additive test file is allowed if it keeps tests clearer.
+
+Do not weaken or delete existing tests.
+
+---
+
+## 4. Frozen boundaries — MUST remain unchanged
 
 Do not modify:
 
@@ -673,43 +273,40 @@ Do not modify:
 - `dsh/knowledge-curator/**`
 - `planner/CONTRACT_GAPS.md`
 
-If a confirmed defect in frozen code blocks SI-2B:
+Knowledge Curator freeze:
 
-**STOP and report it.**
+`42e39121af5f6120174e088a521c9ad014abdcda`
 
-Do not patch frozen code inside this phase.
+SI-1 freeze:
 
----
+`073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7`
 
-## 21. Architectural dependency direction
+SI-1.5 freeze:
 
-Allowed:
+`0f014f0a3aad75a6cada18874fead10414469d6b`
 
-```
-system/workflows/revision_publication
-       |
-       v
-system/revision_application_composition
-       |
-       +--> system/application_composition internal validation helpers
-       |
-       +--> frozen knowledge_curator coordinators / schemas / Ports
-```
+SI-2A freeze:
 
-Forbidden:
+`95d55e71390a2e7266b2084243161101c5aff60a`
 
-```
-knowledge_curator -> system
-knowledge_curator -> DSH
-system/workflows -> DSH
-system/workflows -> MCP transport
-```
-
-The workflow remains transport-independent.
+If closing R1 appears to require changing frozen code, STOP and report the blocker.
 
 ---
 
-## 22. Regression gates
+## 5. Test-quality rules
+
+Mandatory R1 acceptance tests:
+
+- MUST use exact expected statuses where the frozen coordinator defines them;
+- MUST NOT use broad "one of success/failure/conflict" assertions merely to keep tests green;
+- MUST NOT contain `pytest.skip`, `xfail`, conditional early return, or equivalent escape hatches;
+- MUST prove side-effect counts/state, not only returned status;
+- MUST prove no hidden workflow retry;
+- MUST prove retry/resume does not duplicate versions/lifecycle/events.
+
+---
+
+## 6. Regression gates
 
 Run:
 
@@ -719,102 +316,93 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Accepted baseline before SI-2B:
+Pre-R1 reported baseline:
 
-- knowledge_curator: **522 passed / 0 skipped / 0 failed**
-- integration/system: **107 passed / 0 skipped / 0 failed**
-- integration/dsh: **90 passed / 0 skipped / 0 failed**
+- knowledge_curator: 522 passed / 0 skipped / 0 failed
+- integration/system: 134 passed / 0 skipped / 0 failed
+- integration/dsh: 90 passed / 0 skipped / 0 failed
 
-All new SI-2B mandatory tests:
+All new and existing SI-2B/R1 mandatory tests:
 
-**0 skipped**
+**0 skipped / 0 xfailed**
 
-No network dependency.
-
-Do not weaken/delete/skip earlier tests.
+Do not weaken previous suites.
 
 ---
 
-## 23. Freeze verification
+## 7. Freeze comparison
 
-Compare final tree against the SI-2B Planner handoff commit.
+Use SI-2B-R1 Planner handoff HEAD as comparison base.
 
-Explicitly verify no changes under the frozen boundaries listed in §20.
+Before completion prove zero changes under all frozen boundaries in §4.
 
-Also verify:
-
-- exactly four public MCP tools;
-- DSH bundle unchanged;
-- SI-2A files unchanged.
+Also report whether `system/workflows/revision_publication.py` changed. Expected: NO unless a confirmed defect is discovered.
 
 ---
 
-## 24. Required executor report
+## 8. Required R1 report
 
 Create:
 
-`results/phase-si-2b-executor-report.md`
+`results/phase-si-2b-r1-executor-report.md`
 
-Report at minimum:
+Report:
 
 ```
-Phase SI-2B implementation CODE SHA:
+Phase SI-2B-R1 implementation CODE SHA:
 
-revision application composition:
+approval_required exact assertion:
 PASS / FAILED
 
-revision provider group fail-closed:
+approval_rejected exact assertion:
 PASS / FAILED
 
-four revision Ports validated:
+mandatory pytest.skip/xfail removed:
 PASS / FAILED
 
-known InMemory lifecycle/revision/source adapters rejected:
+target pending exact status:
 PASS / FAILED
 
-single provider load / no split-brain:
+target recovery to FINALIZED:
 PASS / FAILED
 
-shared commit/version store identity:
+lifecycle pending exact status:
 PASS / FAILED
 
-RevisionPublicationWorkflow delegates exactly once:
-PASS / FAILED
-
-approval required:
-PASS / FAILED
-
-approval rejected:
-PASS / FAILED
-
-package review required:
-PASS / FAILED
-
-full revision publication FINALIZED:
-PASS / FAILED
-
-target pending surfaced without hidden retry:
-PASS / FAILED
-
-target retry recovery:
-PASS / FAILED
-
-lifecycle pending surfaced without hidden retry:
-PASS / FAILED
-
-lifecycle retry recovery:
+lifecycle recovery to FINALIZED:
 PASS / FAILED
 
 post-bind journal recovery:
 PASS / FAILED
 
-idempotent finalized replay:
+material conflict:
 PASS / FAILED
 
-material/scope conflict fail-closed:
+approval scope conflict:
 PASS / FAILED
 
-historical versions remain resolvable:
+historical versions/snapshots resolvable:
+PASS / FAILED
+
+curation gate integrity:
+PASS / FAILED
+
+trace/provenance preservation:
+PASS / FAILED
+
+MCP surface remains exactly four:
+PASS / FAILED
+
+object-shaped split-brain rejected:
+PASS / FAILED
+
+SI-2B test fixture Port signatures corrected:
+PASS / FAILED
+
+lifecycle/outbox replay idempotency in fixture:
+PASS / FAILED
+
+source/publication fixture contradictory overwrite prevented:
 PASS / FAILED
 
 new public MCP tool added:
@@ -823,20 +411,26 @@ NO
 DSH preset changed:
 NO
 
-SI-2A frozen production files changed:
+system/workflows/revision_publication.py changed:
+NO / YES + reason
+
+frozen upstream files changed:
 NO
 
-Knowledge Curator / SI-1 / SI-1.5 frozen tree changed:
-NO
-
-knowledge_curator tests:
+knowledge_curator:
 ...
 
-integration/system tests:
+integration/system:
 ...
 
-integration/dsh tests:
+integration/dsh:
 ...
+
+mandatory SI-2B/R1 skips:
+0
+
+mandatory SI-2B/R1 xfails:
+0
 
 deviations:
 NONE / describe
@@ -844,33 +438,33 @@ NONE / describe
 
 ---
 
-## 25. Executor completion protocol
+## 9. Completion protocol
 
-When implementation and tests are complete:
-
-1. commit all SI-2B implementation/test/report changes;
-2. push `main`;
-3. update `status.json`:
-   - `phase = "SI-2B"`
+1. implement R1 closure only;
+2. run all regression gates;
+3. create R1 report;
+4. commit and push main;
+5. update `status.json`:
+   - `phase = "SI-2B-R1"`
    - `actor = "executor"`
    - `state = "executor_complete"`
-   - `latest_commit = <actual SI-2B CODE SHA>`
-   - `result_expected = "results/phase-si-2b-executor-report.md"`;
-4. STOP;
-5. do not start the next phase;
-6. wait for Planner review.
+   - `latest_commit = <actual R1 CODE SHA>`
+   - `result_expected = "results/phase-si-2b-r1-executor-report.md"`;
+6. STOP;
+7. do not start any next phase.
 
-## 26. Acceptance principle
+## 10. Acceptance principle
 
-The point of SI-2B is not to invent another revision engine.
+SI-2B-R1 is a qualification closure, not a redesign.
 
-The point is to prove that the already frozen revision/publication/lifecycle machinery can be safely composed with production-style injected dependencies at the system application layer, while preserving:
+The goal is to make the committed evidence match the claims:
 
-- approval boundaries;
-- atomic target commit semantics;
-- lifecycle version evolution;
-- resumability;
-- idempotency;
-- lineage binding;
+- exact approval boundaries;
+- exact pending/recovery semantics;
+- recoverable publication saga;
+- no split-brain;
 - historical safety;
-- existing DSH/MCP contracts.
+- real idempotency;
+- exact four-tool MCP boundary.
+
+Only after this evidence is committed will Planner consider SI-2B for ACCEPTED / FROZEN status.
