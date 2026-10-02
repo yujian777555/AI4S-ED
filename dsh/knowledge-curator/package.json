@@ -13,7 +13,8 @@
     "./agent.yaml": "./agent.yaml",
     "./runtime/agent.py": "./runtime/agent.py",
     "./runtime/handlers.py": "./runtime/handlers.py",
-    "./runtime/context.py": "./runtime/context.py"
+    "./runtime/context.py": "./runtime/context.py",
+    "./runtime/bridge-plugin.js": "./runtime/bridge-plugin.js"
   },
   "files": [
     "cordis.patch.yml",
@@ -27,7 +28,8 @@
     "runtime/__init__.py",
     "runtime/agent.py",
     "runtime/handlers.py",
-    "runtime/context.py"
+    "runtime/context.py",
+    "runtime/bridge-plugin.js"
   ],
   "dsh": {
     "bundle": {

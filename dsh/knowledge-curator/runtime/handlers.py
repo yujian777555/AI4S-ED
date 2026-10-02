@@ -132,12 +132,19 @@ class EvidenceQAHandler:
                 "trace_id": context.trace_id,
             }
 
-        # Step 2: Build candidate claims from evidence
+        # Step 2: Build candidate claims from EVIDENCE CONTENT (not question)
         candidate_claims = []
         for r in records[:3]:
+            # Derive claim text from actual evidence record content
+            claim_text = r.get("payload_excerpt") or r.get("sentence_or_cell") or r.get("text") or ""
+            if not claim_text:
+                # Use structured evidence fields if available
+                ref = r.get("ref_id", "")
+                conf = r.get("confidence", "")
+                claim_text = f"Evidence from {ref} (confidence: {conf})"
             candidate_claims.append({
                 "claim_id": f"C{len(candidate_claims) + 1}",
-                "text": f"Based on {r.get('chunk_id', 'unknown')}: {question}",
+                "text": claim_text,
                 "anchor_chunk_ids": [r.get("chunk_id")],
             })
 
@@ -179,6 +186,7 @@ class EvidenceQAHandler:
 
         # Step 5: Build grounded answer from validated claims only
         citations = []
+        claim_contents = []
         for cr in validated_claims:
             anchors = cr.get("resolved_anchors") or []
             for a in anchors:
@@ -188,14 +196,21 @@ class EvidenceQAHandler:
                     "confidence": a.get("confidence"),
                     "access_pointer": a.get("access_pointer"),
                 })
+            # Include actual claim text from validation
+            claim_contents.append({
+                "claim_id": cr.get("claim_id"),
+                "text": cr.get("claim_text") or cr.get("text") or "",
+                "confidence": (cr.get("policy") or {}).get("effective_confidence"),
+                "citations": [
+                    {"ref_id": a.get("ref_id"), "locator": a.get("locator")}
+                    for a in anchors
+                ],
+            })
 
         return {
             "status": "answered",
-            "answer": f"Based on {len(validated_claims)} validated claims from {len(records)} evidence records.",
-            "validated_claims": [
-                {"claim_id": cr.get("claim_id"), "policy": (cr.get("policy") or {}).get("policy")}
-                for cr in validated_claims
-            ],
+            "answer": claim_contents[0]["text"] if claim_contents else "",
+            "claims": claim_contents,
             "citations": citations,
             "call_order": call_order,
             "trace_id": context.trace_id,

@@ -20,6 +20,10 @@
               prefix: You are the AI4S-ED knowledge_curator. Normalize and review already-extracted scientific knowledge (evidence completeness, conflict detection, quality/confidence). Use the provided knowledge curator tools for deterministic curation decisions. Use retrieve_evidence for structured evidence retrieval and validate_retrieved_claims to validate claim evidence against the current retrieval set. Do not act as lit_researcher, orchestrator, proposer, critic, mechanism validator or evaluation scheduler. Do not invent scientific facts. Do not answer scientific questions from model memory. Do not generate final orchestrator-facing QA prose. When asked to curate an AssertionSet, call the curator MCP tool.
               includeRuntimeContext: false
 
+          - id: curator-bridge
+            name: './runtime/bridge-plugin.js'
+            config: {}
+
           - id: mcp-knowledge-curator
             name: '@deepseek-ai/dsh-mcp-client'
             config:
