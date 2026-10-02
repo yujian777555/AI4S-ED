@@ -68,6 +68,12 @@ class _TestSourceVersionRegistry:
 
     def append_source_version(self, record: SourceVersionRecord) -> SourceVersionRecord:
         self._failures.check_before("source_registry.append_source_version")
+        existing = self._versions.get(record.source_version_id)
+        if existing is not None:
+            # R1-14: same-ID replay must not overwrite contradictory material
+            if existing.ref_id != record.ref_id or existing.source_fingerprint != record.source_fingerprint:
+                raise ValueError(f"contradictory source version replay: {record.source_version_id}")
+            return copy.deepcopy(existing)
         self._versions[record.source_version_id] = copy.deepcopy(record)
         return copy.deepcopy(record)
 
@@ -113,15 +119,23 @@ class _TestSourceVersionRegistry:
 
 
 class _TestLifecycleStore:
-    """Test-local LifecycleStore (append-only)."""
+    """Test-local LifecycleStore (append-only, R1-13/14 hardened)."""
 
     def __init__(self, failures: Optional[TestFailureInjection] = None) -> None:
         self._doc_records: dict[str, DocumentLifecycleRecord] = {}
+        self._assertion_keys: dict[tuple[str, str], int] = {}  # (lifecycle_id, assertion_id) -> index
         self._assertion_records: list[AssertionLifecycleRecord] = []
         self._failures = failures or TestFailureInjection()
 
     def append_document_record(self, record: DocumentLifecycleRecord) -> DocumentLifecycleRecord:
         self._failures.check_before("lifecycle.append_document")
+        # R1-14: same lifecycle_id must not silently create contradictory duplicates
+        existing = self._doc_records.get(record.lifecycle_id)
+        if existing is not None:
+            # Idempotent replay: same material -> return existing; different -> fail
+            if existing.ref_id != record.ref_id or existing.status != record.status:
+                raise ValueError(f"contradictory lifecycle document replay: {record.lifecycle_id}")
+            return copy.deepcopy(existing)
         self._doc_records[record.lifecycle_id] = copy.deepcopy(record)
         return copy.deepcopy(record)
 
@@ -129,10 +143,19 @@ class _TestLifecycleStore:
         rec = self._doc_records.get(lifecycle_id)
         return copy.deepcopy(rec) if rec else None
 
-    def append_assertion_records(self, records: list[AssertionLifecycleRecord]) -> None:
+    def append_assertion_records(self, records: list[AssertionLifecycleRecord]) -> list[AssertionLifecycleRecord]:
         self._failures.check_before("lifecycle.append_assertions")
+        appended = []
         for r in records:
+            key = (r.lifecycle_id, r.assertion_id)
+            # R1-14: replay must not duplicate same lifecycle/assertion identity
+            if key in self._assertion_keys:
+                appended.append(copy.deepcopy(self._assertion_records[self._assertion_keys[key]]))
+                continue
+            self._assertion_keys[key] = len(self._assertion_records)
             self._assertion_records.append(copy.deepcopy(r))
+            appended.append(copy.deepcopy(r))
+        return appended  # R1-13: Port specifies return list
 
     def bind_effective_version(self, lifecycle_id: str, version_id: str) -> None:
         self._failures.check_before("lifecycle.bind_version")
@@ -147,12 +170,14 @@ class _TestLifecycleStore:
     def list_assertion_records_for_ref(self, ref_id: str) -> list[AssertionLifecycleRecord]:
         return [copy.deepcopy(r) for r in self._assertion_records if r.ref_id == ref_id]
 
-    def latest_document_state(self, ref_id: str) -> Optional[DocumentLifecycleRecord]:
+    def latest_document_state(self, ref_id: str, at_version_id: Optional[str] = None) -> Optional[DocumentLifecycleRecord]:
+        # R1-13: accept at_version_id argument per Port
         recs = self.list_records_for_ref(ref_id)
         return recs[-1] if recs else None
 
-    def latest_assertion_state(self, ref_id: str, assertion_id: str) -> Optional[AssertionLifecycleRecord]:
-        recs = [r for r in self._assertion_records if r.ref_id == ref_id and r.assertion_id == assertion_id]
+    def latest_assertion_state(self, assertion_id: str, at_version_id: Optional[str] = None) -> Optional[AssertionLifecycleRecord]:
+        # R1-13: Port signature is (assertion_id, at_version_id) not (ref_id, assertion_id)
+        recs = [r for r in self._assertion_records if r.assertion_id == assertion_id]
         return recs[-1] if recs else None
 
 
@@ -166,6 +191,10 @@ class _TestEventOutbox:
 
     def append(self, event: LifecycleEvent) -> LifecycleEvent:
         self._failures.check_before("outbox.append")
+        # R1-14: idempotent by event_id
+        for existing in self._events:
+            if existing.event_id == event.event_id:
+                return copy.deepcopy(existing)
         self._events.append(copy.deepcopy(event))
         return copy.deepcopy(event)
 
@@ -188,6 +217,12 @@ class _TestRevisionPublicationStore:
 
     def create(self, record: RevisionPublicationRecord) -> RevisionPublicationRecord:
         self._failures.check_before("publication.create")
+        existing = self._records.get(record.publication_id)
+        if existing is not None:
+            # R1-14: same-ID create must not overwrite contradictory material
+            if existing.package_id != record.package_id:
+                raise ValueError(f"contradictory publication create: {record.publication_id}")
+            return copy.deepcopy(existing)
         self._records[record.publication_id] = copy.deepcopy(record)
         return copy.deepcopy(record)
 

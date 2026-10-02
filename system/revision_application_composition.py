@@ -132,6 +132,15 @@ def _reject_split_brain(bundle: Any) -> None:
                     f"revision group must not provide '{key}' (split-brain risk); "
                     f"reuse the commit group's instance"
                 )
+    else:
+        # R1-12: object-shaped revision groups must also be checked.
+        for key in forbidden_keys:
+            attr_val = getattr(rev_raw, key, None)
+            if attr_val is not None:
+                raise RevisionCompositionError(
+                    f"revision group must not provide '{key}' (split-brain risk); "
+                    f"reuse the commit group's instance"
+                )
 
 
 def compose_revision_publication_application(
