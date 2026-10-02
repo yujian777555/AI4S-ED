@@ -4,6 +4,30 @@ Planner: ChatGPT
 Executor: MiMo / Kimi / Codex
 State: READY_FOR_EXECUTOR
 
+## Mandatory pinned-DSH source guide
+
+Before implementing any R6 change, read:
+
+`planner/SI4_R6_DSH_SOURCE_GUIDE.md`
+
+This guide is based on direct inspection of DeepSeek Harness
+`0.2.0-rc.1` at pinned SHA
+`4878cdabd87d4041bdaff61d04c966883b9fd07a`.
+
+Its source-level findings override earlier speculative R6 implementation advice
+where they conflict. In particular, Executor must follow the guide for:
+
+- actual `defineTool` usage and schema shape;
+- real `ctx.tools.execute(..., agent)` qualification;
+- official AgentPresetRegistry test harness structure;
+- the `config.plugins` relative-path resolution trap;
+- package-subpath product wiring for `curator-bridge`;
+- pinned DSH/Cordis peer dependencies;
+- qualification-provider and process-isolation rules.
+
+Do not proceed from memory or older chat instructions.
+
+
 ## 0. Verdict on SI-4-R5
 
 Reviewed implementation CODE SHA:
