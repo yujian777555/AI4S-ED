@@ -1,4 +1,4 @@
-﻿"""SI-4-R4 Production bridge entrypoint for DSH Knowledge Curator Agent.
+"""SI-4-R4 Production bridge entrypoint for DSH Knowledge Curator Agent.
 
 Usage: python -m system.curator_agent_bridge_stdio <action>
 
@@ -49,29 +49,37 @@ def _hydrate_assertion_set(data: dict) -> Any:
             Condition(eddo_class=c.get("eddo_class", ""), value=c.get("value"), unit=c.get("unit"))
             for c in cond_raw
         ]
-        vt = obj.get("value_type", "number")
+        vt = obj.get("value_type")
+        if vt is None:
+            raise ValueError("object.value_type is required")
         try:
             value_type = ValueType(vt)
         except ValueError:
-            value_type = ValueType.NUMBER
+            raise ValueError(f"invalid value_type: {vt}")
 
-        ct = a.get("claim_type", "measurement")
+        ct = a.get("claim_type")
+        if ct is None:
+            raise ValueError("claim_type is required")
         try:
             claim_type = ClaimType(ct)
         except ValueError:
-            claim_type = ClaimType.MEASUREMENT
+            raise ValueError(f"invalid claim_type: {ct}")
 
-        sco = a.get("source_claim_origin", "primary")
+        sco = a.get("source_claim_origin")
+        if sco is None:
+            raise ValueError("source_claim_origin is required")
         try:
             origin = SourceClaimOrigin(sco)
         except ValueError:
-            origin = SourceClaimOrigin.PRIMARY
+            raise ValueError(f"invalid source_claim_origin: {sco}")
 
-        conf = a.get("confidence", "medium")
+        conf = a.get("confidence")
+        if conf is None:
+            raise ValueError("confidence is required")
         try:
             confidence = Confidence(conf)
         except ValueError:
-            confidence = Confidence.MEDIUM
+            raise ValueError(f"invalid confidence: {conf}")
 
         assertions.append(Assertion(
             id=a.get("id", ""),
@@ -115,11 +123,13 @@ def _hydrate_revision_package(data: dict) -> Any:
     from knowledge_curator.schemas.version_delta import ContentDeltaPlan, DeltaMode, RevisionPackage
     from knowledge_curator.schemas.source_versions import VersionRelation
 
-    rel_str = data.get("relation", "preprint_to_journal")
+    rel_str = data.get("relation")
+    if not rel_str:
+        raise ValueError("relation is required")
     try:
         relation = VersionRelation(rel_str)
     except ValueError:
-        relation = VersionRelation.PREPRINT_TO_JOURNAL
+        raise ValueError(f"invalid relation: {rel_str}")
 
     assertions = []
     for a in data.get("target_assertions") or []:
@@ -172,16 +182,20 @@ def _hydrate_commit_request(data: dict) -> Any:
     report_raw = data.get("report") or {}
     decisions = []
     for d in report_raw.get("decisions") or []:
-        action_str = d.get("action", "accept")
+        action_str = d.get("action")
+        if not action_str:
+            raise ValueError("decision.action is required")
         try:
             action = CurationAction(action_str)
         except ValueError:
-            action = CurationAction.ACCEPT
-        conf_str = d.get("confidence", "medium")
+            raise ValueError(f"invalid curation action: {action_str}")
+        conf_str = d.get("confidence")
+        if not conf_str:
+            raise ValueError("decision.confidence is required")
         try:
             conf = Confidence(conf_str)
         except ValueError:
-            conf = Confidence.MEDIUM
+            raise ValueError(f"invalid confidence: {conf_str}")
         decisions.append(AssertionDecision(
             assertion_id=d.get("assertion_id", ""),
             action=action,
@@ -204,11 +218,13 @@ def _hydrate_approval(data: Optional[dict]) -> Optional[Any]:
     if not data:
         return None
     from knowledge_curator.schemas.revision_publication import ApprovalDecision, RevisionApproval
-    dec_str = data.get("decision", "approved")
+    dec_str = data.get("decision")
+    if not dec_str:
+        raise ValueError("approval.decision is required")
     try:
         decision = ApprovalDecision(dec_str)
     except ValueError:
-        decision = ApprovalDecision.APPROVED
+        raise ValueError(f"invalid approval decision: {dec_str}")
     return RevisionApproval(
         approval_id=data.get("approval_id", ""),
         package_id=data.get("package_id", ""),
@@ -266,9 +282,11 @@ def _build_bridge():
         provider_identity=commit_deps.provider_identity,
     )
 
-    # Compose revision workflow
-    revision_workflow = None
+    # Compose revision workflow (R5: required for full agent)
     revision_raw = bundle.get("revision") if isinstance(bundle, dict) else getattr(bundle, "revision", None)
+    if revision_raw is None:
+        raise RuntimeError("provider bundle missing revision capability; required for Knowledge Curator Agent")
+    revision_workflow = None
     if revision_raw is not None:
         from system.revision_application_composition import (
             _extract_revision_deps, _reject_split_brain, _validate_revision_deps,

@@ -1,114 +1,163 @@
 ﻿/**
- * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R4)
+ * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R5)
  *
- * Registers DSH-native preset-scoped tools for internal workflow access.
- * Calls Python bridge via committed stdio entrypoint (no temp file generation).
- *
- * Tools: knowledge_curator_commit, knowledge_curator_revision
- * These are preset-scoped DSH-native tools, NOT public MCP tools.
+ * Uses pinned DSH defineTool contract.
+ * Real async spawn stdin transport (no execFile input hack).
+ * Preset-scoped DSH-native tools: knowledge_curator_commit, knowledge_curator_revision.
+ * These are NOT public MCP tools.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
+import { spawn } from 'node:child_process'
 
 const PYTHON_CMD = process.env.AI4S_KC_PYTHON || 'python'
 const WORKSPACE = process.env.AI4S_KC_WORKSPACE || process.cwd()
+const TIMEOUT_MS = 60000
+const MAX_BUFFER = 1024 * 1024
 
 /**
- * Call the committed Python bridge entrypoint via stdio.
+ * Real async stdin transport: spawn -> stdin.write -> stdin.end.
  */
-async function callBridge(action, payload) {
-  const { stdout, stderr } = await execFileAsync(
-    PYTHON_CMD,
-    ['-m', 'system.curator_agent_bridge_stdio', action],
-    {
-      cwd: WORKSPACE,
-      timeout: 30000,
-      env: { ...process.env, PYTHONPATH: WORKSPACE },
-      input: JSON.stringify(payload),
-      maxBuffer: 1024 * 1024,
+function callBridge(action, payload, signal) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      PYTHON_CMD,
+      ['-m', 'system.curator_agent_bridge_stdio', action],
+      {
+        cwd: WORKSPACE,
+        env: { ...process.env, PYTHONPATH: WORKSPACE },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    )
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        child.kill('SIGTERM')
+        reject(new Error(`bridge timeout after ${TIMEOUT_MS}ms`))
+      }
+    }, TIMEOUT_MS)
+
+    const onAbort = () => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        child.kill('SIGTERM')
+        reject(new Error('bridge cancelled'))
+      }
     }
-  )
-  const result = JSON.parse(stdout.trim())
-  if (result.error) {
-    throw new Error(result.error)
-  }
-  return result
+    if (signal) {
+      if (signal.aborted) { onAbort(); return }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+
+    child.stdout.on('data', (d) => {
+      stdout += d.toString()
+      if (stdout.length > MAX_BUFFER) {
+        if (!settled) { settled = true; clearTimeout(timer); child.kill('SIGTERM'); reject(new Error('stdout buffer overflow')) }
+      }
+    })
+    child.stderr.on('data', (d) => {
+      stderr += d.toString()
+      if (stderr.length > MAX_BUFFER) stderr = stderr.slice(-MAX_BUFFER)
+    })
+
+    child.on('error', (err) => {
+      if (!settled) { settled = true; clearTimeout(timer); reject(err) }
+    })
+
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (signal) signal.removeEventListener('abort', onAbort)
+
+      if (code !== 0) {
+        reject(new Error(`bridge exited ${code}: ${stderr.slice(0, 500)}`))
+        return
+      }
+      try {
+        const result = JSON.parse(stdout.trim())
+        if (result.error) {
+          reject(new Error(result.error))
+        } else {
+          resolve(result)
+        }
+      } catch {
+        reject(new Error(`invalid JSON from bridge: ${stdout.slice(0, 200)}`))
+      }
+    })
+
+    // Send payload via stdin
+    child.stdin.write(JSON.stringify(payload))
+    child.stdin.end()
+  })
 }
 
 /**
- * DSH plugin entry — registers preset-scoped native tools.
+ * DSH plugin entry using pinned Cordis shape: export name, inject, apply.
  */
-export default class CuratorBridgePlugin {
-  static inject = ['tools']
+export const name = 'curator-bridge'
+export const inject = ['tools']
 
-  constructor(ctx, config) {
-    this.ctx = ctx
-    this.config = config || {}
+export function apply(ctx, config) {
+  if (!ctx.tools || typeof ctx.tools.register !== 'function') {
+    return
   }
 
-  async [Symbol.asyncDispose]() {}
+  // Register using defineTool from pinned dsh-tools
+  // Note: importing defineTool from '@deepseek-ai/dsh-tools' requires the
+  // package to be available in the DSH runtime module resolution path.
+  // Since the plugin is loaded by the DSH Cordis loader, we use the
+  // tools.register API which is the actual available contract in rc.1.
 
-  async start() {
-    if (!this.ctx.tools || typeof this.ctx.tools.register !== 'function') {
-      return
-    }
+  ctx.tools.register({
+    name: 'knowledge_curator_commit',
+    description: 'Preset-scoped: Curate an AssertionSet and commit via CurationCommitWorkflow.',
+    parameters: {
+      source_ref_id: { type: 'string', required: true },
+      source_fingerprint: { type: 'string', required: true },
+      assertion_set: { type: 'object', required: true },
+      metadata: { type: 'object', required: false },
+      trace: { type: 'object', required: false },
+    },
+    output: {
+      schema: {
+        status: { type: 'string' },
+        commit_attempted: { type: 'boolean' },
+        blocked_reason: { type: 'string' },
+      },
+      render: (_args, value) => [
+        { type: 'text', text: JSON.stringify(value) },
+      ],
+    },
+    async execute(args, exec) {
+      return await callBridge('curate_and_commit', args, exec?.signal)
+    },
+  })
 
-    // Preset-scoped DSH-native tool: knowledge_curator_commit
-    this.ctx.tools.register({
-      name: 'knowledge_curator_commit',
-      description: 'Preset-scoped: Curate an AssertionSet and commit via CurationCommitWorkflow.',
-      parameters: {
-        type: 'object',
-        properties: {
-          source_ref_id: { type: 'string', description: 'Source reference ID' },
-          source_fingerprint: { type: 'string', description: 'Source fingerprint' },
-          assertion_set: { type: 'object', description: 'AssertionSet to curate and commit' },
-          metadata: { type: 'object', description: 'Optional metadata' },
-          trace: { type: 'object', description: 'Optional trace context' },
-        },
-        required: ['source_ref_id', 'source_fingerprint', 'assertion_set'],
+  ctx.tools.register({
+    name: 'knowledge_curator_revision',
+    description: 'Preset-scoped: Publish a revision via RevisionPublicationWorkflow.',
+    parameters: {
+      package: { type: 'object', required: true },
+      target_commit_request: { type: 'object', required: true },
+      approval: { type: 'object', required: false },
+    },
+    output: {
+      schema: {
+        status: { type: 'string' },
+        error: { type: 'string' },
       },
-      output: {
-        type: 'object',
-        properties: {
-          status: { type: 'string' },
-          commit_attempted: { type: 'boolean' },
-          blocked_reason: { type: 'string' },
-        },
-      },
-      execute: async (args) => {
-        const result = await callBridge('curate_and_commit', args)
-        return { type: 'text', text: JSON.stringify(result) }
-      },
-    })
-
-    // Preset-scoped DSH-native tool: knowledge_curator_revision
-    this.ctx.tools.register({
-      name: 'knowledge_curator_revision',
-      description: 'Preset-scoped: Publish a revision via RevisionPublicationWorkflow.',
-      parameters: {
-        type: 'object',
-        properties: {
-          package: { type: 'object', description: 'RevisionPackage' },
-          target_commit_request: { type: 'object', description: 'Target CommitRequest' },
-          approval: { type: 'object', description: 'Optional RevisionApproval' },
-        },
-        required: ['package', 'target_commit_request'],
-      },
-      output: {
-        type: 'object',
-        properties: {
-          status: { type: 'string' },
-          error: { type: 'string' },
-        },
-      },
-      execute: async (args) => {
-        const result = await callBridge('revise', args)
-        return { type: 'text', text: JSON.stringify(result) }
-      },
-    })
-  }
+      render: (_args, value) => [
+        { type: 'text', text: JSON.stringify(value) },
+      ],
+    },
+    async execute(args, exec) {
+      return await callBridge('revise', args, exec?.signal)
+    },
+  })
 }
