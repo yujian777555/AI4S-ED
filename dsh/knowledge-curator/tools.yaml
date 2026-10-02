@@ -1,0 +1,40 @@
+﻿# Tool mapping for AI4S Knowledge Curator Agent
+# Maps to existing MCP tools only. No new tools.
+
+tools:
+  - id: "curate_assertion_set"
+    mcp_tool: "mcp__knowledge_curator__curate_assertion_set"
+    capability: "knowledge_curation"
+    input_schema: "schemas/curation_request.json"
+    description: >
+      Curate an AssertionSet through completeness check, conflict detection,
+      quality scoring, and decision. Returns CurationReport.
+
+  - id: "knowledge_curator_health"
+    mcp_tool: "mcp__knowledge_curator__knowledge_curator_health"
+    capability: "diagnostic"
+    description: >
+      Health check for Knowledge Curator. Returns adapter identity and
+      retrieval availability.
+
+  - id: "retrieve_evidence"
+    mcp_tool: "mcp__knowledge_curator__retrieve_evidence"
+    capability: "evidence_qa"
+    input_schema: "schemas/evidence_query.json"
+    description: >
+      Retrieve evidence bundle for a query. Returns EvidenceBundle with
+      coverage keys, abstain state, and guardable records.
+
+  - id: "validate_retrieved_claims"
+    mcp_tool: "mcp__knowledge_curator__validate_retrieved_claims"
+    capability: "evidence_qa"
+    description: >
+      Validate proposed claims against retrieved evidence. Returns policy,
+      abstain, and hallucination findings per claim.
+
+# Internal workflows (not exposed as MCP tools)
+internal_workflows:
+  - id: "curation_commit"
+    description: "CurationReport -> CommitRequest -> DocumentCommitCoordinator -> CommitResult"
+  - id: "revision_publication"
+    description: "RevisionPackage -> RevisionPublicationCoordinator -> new KB version"

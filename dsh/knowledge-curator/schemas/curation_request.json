@@ -1,0 +1,69 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CurationRequest",
+  "description": "Input for curate_assertion_set MCP tool",
+  "type": "object",
+  "required": ["assertion_set"],
+  "properties": {
+    "assertion_set": {
+      "type": "object",
+      "required": ["ref_id", "metadata", "assertions"],
+      "properties": {
+        "ref_id": {"type": "string"},
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "title": {"type": "string"},
+            "authors": {"type": "array", "items": {"type": "string"}},
+            "year": {"type": "integer"},
+            "source": {"type": "string"},
+            "doi": {"type": "string"},
+            "stable_id": {"type": "string"}
+          }
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "ref_id", "subject", "property", "object"],
+            "properties": {
+              "id": {"type": "string"},
+              "ref_id": {"type": "string"},
+              "subject": {
+                "type": "object",
+                "required": ["eddo_class", "resolved_entity"],
+                "properties": {
+                  "eddo_class": {"type": "string"},
+                  "resolved_entity": {"type": "string"},
+                  "original_mention": {"type": "string"}
+                }
+              },
+              "property": {"type": "string"},
+              "object": {
+                "type": "object",
+                "properties": {
+                  "value": {},
+                  "unit": {"type": ["string", "null"]},
+                  "value_type": {"type": "string"},
+                  "uncertainty": {"type": ["number", "null"]}
+                }
+              },
+              "conditions": {"type": "array"},
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "locator": {"type": "string"},
+                  "sentence": {"type": "string"}
+                }
+              },
+              "claim_type": {"type": "string"},
+              "source_claim_origin": {"type": "string"},
+              "confidence": {"type": "string"},
+              "quality": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

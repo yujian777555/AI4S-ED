@@ -1,4 +1,4 @@
-﻿# Phase SI-4 Executor Report — Scientific Workflow Orchestration
+﻿# Phase SI-4 Executor Report — DSH Knowledge Curator Agent Package
 
 **Executor:** MiMo
 **Date:** 2026-10-01
@@ -9,58 +9,55 @@
 
 ## Phase SI-4 implementation CODE SHA
 
-70ca1b3
+（见 commit）
 
-ExecutionPlan:
+DSH knowledge-curator package:
 PASS
 
-WorkflowPlanner:
+agent.yaml:
 PASS
 
-WorkflowExecutor:
+prompt.md:
 PASS
 
-ExecutionState:
+tools.yaml:
 PASS
 
-Multi-step workflow:
+MCP four tools:
 PASS
 
-Dependency ordering:
+Evidence QA:
 PASS
 
-Failure handling:
+Abstain:
 PASS
 
-Resume:
+Curation Agent:
 PASS
 
-State persistence:
+Revision Agent:
 PASS
 
-No direct coordinator/store access:
+DSH preset loading:
 PASS
 
-Agent Runtime integration:
+No direct store access:
 PASS
-
-MCP changed:
-NO
-
-DSH changed:
-NO
 
 Frozen files changed:
+NO
+
+MCP tools changed:
 NO
 
 knowledge_curator tests:
 522 passed / 0 skipped / 0 failed
 
-integration/system tests:
+integration/system:
 190 passed / 0 skipped / 0 failed
 
-integration/dsh tests:
-90 passed / 0 skipped / 0 failed
+integration/dsh:
+104 passed / 0 skipped / 0 failed
 
 deviations:
 NONE
@@ -69,18 +66,21 @@ NONE
 
 ## SI-4 新增文件
 
-- `system/workflow_orchestration/__init__.py` — 包导出
-- `system/workflow_orchestration/planner.py` — WorkflowPlanner（确定性）
-- `system/workflow_orchestration/execution_plan.py` — ExecutionPlan + PlanStep
-- `system/workflow_orchestration/executor.py` — WorkflowExecutor
-- `system/workflow_orchestration/state.py` — ExecutionState + ExecutionStatus
-- `system/workflow_orchestration/errors.py` — 错误
-- `integration/system/tests/test_workflow_orchestration.py` — 12 个测试
-
-## 修改文件
-
-- `system/agent_runtime/agent.py` — 扩展 run_orchestrated()
+- `dsh/knowledge-curator/agent.yaml` — Agent 定义
+- `dsh/knowledge-curator/prompt.md` — Agent 行为规范（证据优先/Abstain/策审/版本治理）
+- `dsh/knowledge-curator/tools.yaml` — MCP 四工具映射
+- `dsh/knowledge-curator/schemas/curation_request.json` — 策审请求 schema
+- `dsh/knowledge-curator/schemas/evidence_query.json` — 证据查询 schema
+- `dsh/knowledge-curator/schemas/revision_request.json` — 修订请求 schema
+- `dsh/knowledge-curator/runtime/agent.py` — KnowledgeCuratorAgent
+- `dsh/knowledge-curator/runtime/handlers.py` — CurationHandler / EvidenceQAHandler / RevisionHandler
+- `dsh/knowledge-curator/runtime/context.py` — CuratorContext
+- `integration/dsh/tests/test_knowledge_curator_agent.py` — 14 个测试
 
 ## 未修改 / SI-4
 
-- 全部 frozen 文件
+- `knowledge_curator/**`
+- `system/workflows/curation_commit.py` / `revision_publication.py`
+- `system/application_composition.py`
+- `dsh/knowledge-curator/cordis.patch.yml`
+- `dsh/knowledge-curator/package.json`
