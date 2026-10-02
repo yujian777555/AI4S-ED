@@ -1,28 +1,27 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-4-R4",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-4-R5",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-4-r4-executor-report.md",
+  "result_expected": "results/phase-si-4-r5-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
     "Deliver only the DSH Knowledge Curator Agent for document 03 sections 5, 6, and 7",
-    "SI-4-R3 54b2c22 is not accepted; R4 production bridge closure is required",
-    "Shipped runtime must not import integration test fixtures and must use deployment AI4S_SYSTEM_ADAPTER_FACTORY",
-    "Production bridge must configure both CurationCommitWorkflow and RevisionPublicationWorkflow",
-    "Mounted acceptance must invoke the actual shipped DSH-native plugin/tool path, not direct Python CuratorAgentBridge",
-    "Use the exact supported pinned DSH tool API and prove plugin registration/execution in runtime",
-    "No temporary generated _bridge_call.py transport; use a committed structured bridge entrypoint",
-    "Hydrate JSON payloads into frozen typed schemas before workflow invocation",
-    "Section 6 must abstain when evidence lacks scientific content or anchors mismatch",
+    "SI-4-R4 3e8d69c is not accepted; R5 executable plugin closure is required",
+    "Fix async JS-to-Python stdin transport; execFile input option is not a valid async stdin mechanism",
+    "Use the exact pinned DSH defineTool/output/execute contract and real plugin lifecycle",
+    "Native §5/§7 acceptance must execute registered tools through ctx.tools, not direct Python",
+    "Hydration must be strict fail-closed; never coerce invalid approval/action/relation/confidence enums",
+    "Missing revision provider capability must fail closed or be explicitly disabled, never silently advertised",
+    "Commit a real R5 DSH qualification artifact",
     "Public MCP remains exactly four tools",
-    "Do not modify frozen core/workflows or depend on generic workflow_orchestration/task_planner detours",
-    "STOP after SI-4-R4 completion"
+    "Do not modify frozen core/workflows or depend on workflow_orchestration/task_planner",
+    "STOP after SI-4-R5 completion"
   ],
-  "latest_commit": "3e8d69c"
+  "latest_commit": "c716cdae6ffd5b600e0e50084b49bc09f63aacf5"
 }
