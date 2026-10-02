@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R3 implementation CODE SHA
 
-（见 commit）
+54b2c22
 
 package manifest valid:
 PASS
