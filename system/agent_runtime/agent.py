@@ -108,6 +108,51 @@ class AI4SAgent:
 
         return await workflow.run(**call_kwargs)
 
+    async def run_orchestrated(
+        self,
+        task_plan: Any,
+        context: Optional[ExecutionContext] = None,
+    ) -> Any:
+        """SI-4: Execute a multi-step orchestration plan.
+
+        Flow: TaskPlan -> WorkflowPlanner -> ExecutionPlan -> WorkflowExecutor
+        """
+        from system.workflow_orchestration.planner import WorkflowPlanner
+        from system.workflow_orchestration.executor import WorkflowExecutor
+        from system.workflow_orchestration.state import ExecutionStatus
+
+        if context is None:
+            context = ExecutionContext.create(
+                trace_id=getattr(task_plan, 'trace_id', ''),
+                provenance_id=getattr(task_plan, 'provenance_id', ''),
+            )
+
+        planner = WorkflowPlanner()
+        plan = planner.plan_from_task(task_plan)
+
+        executor = WorkflowExecutor(self._registry)
+        state = await executor.execute(plan)
+
+        # Wrap orchestration state into AgentResult
+        from system.agent_runtime.result_protocol import AgentResult, AgentStatus
+
+        status = (
+            AgentStatus.SUCCESS
+            if state.status == ExecutionStatus.COMPLETED
+            else AgentStatus.FAILED
+        )
+        return AgentResult(
+            status=status,
+            workflow=f"orchestrated:{plan.goal}",
+            trace_id=context.trace_id,
+            artifacts={
+                'plan_id': plan.plan_id,
+                'completed_steps': state.completed_step_ids,
+                'step_results': {k: str(v)[:200] for k, v in state.step_results.items()},
+            },
+            error=state.error,
+        )
+
     def _wrap_result(
         self,
         workflow_name: str,
