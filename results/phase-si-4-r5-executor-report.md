@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R5 implementation CODE SHA
 
-（见 commit）
+18937db
 
 async JS->Python stdin transport proven:
 PASS
