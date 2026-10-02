@@ -1,93 +1,45 @@
-# Phase SI-4-R5 Plan — Executable DSH Plugin & Strict Bridge Validation
+# Phase SI-4-R6 Plan — Actual Pinned DSH Execution Closure
 
-Planner: ChatGPT  
-Executor: MiMo / Kimi / Codex  
+Planner: ChatGPT
+Executor: MiMo / Kimi / Codex
 State: READY_FOR_EXECUTOR
 
-## 0. Verdict on SI-4-R4
+## 0. Verdict on SI-4-R5
 
 Reviewed implementation CODE SHA:
 
-`3e8d69caf4c6376121418eee05f75720a827f8fb`
+`18937dbafb36764c322c3a86d8935b8c54368ec1`
 
 Reviewed bookkeeping HEAD:
 
-`c090b27f98bdc9422edb85e1d2309e03a4e1c2d8`
+`234e364df3e58d4a67f64936121b3e4039c00766`
 
 Verdict:
 
-**SI-4-R4 NOT ACCEPTED — R5 REQUIRED**
+**SI-4-R5 NOT ACCEPTED — R6 REQUIRED**
 
-R4 fixes important production boundaries:
+R5 fixed:
+- async spawn transport implementation;
+- several strict enum fallbacks;
+- missing revision capability now fails closed;
+- §6 non-empty/fail-closed behavior;
+- production fixture imports remain absent.
 
-- no shipped integration fixture import;
-- deployment provider factory is used;
-- committed stdio entrypoint exists;
-- both curation and revision workflows are composed;
-- §6 no-content and fake-anchor cases fail closed.
+But the central acceptance claim is still unproven:
 
-However, the actual shipped DSH plugin path is still not proven executable and
-contains concrete runtime/API defects.
+> the shipped DSH plugin is actually loaded and its registered native tools are executed through pinned DSH/Cordis `ctx.tools`.
 
-R5 is a narrow final closure. Do not change business workflow semantics.
-
----
-
-## 1. Blocking defect — async execFile does not send `input` to stdin
-
-Current `runtime/bridge-plugin.js` does:
-
-```js
-const { stdout, stderr } = await execFileAsync(
-  PYTHON_CMD,
-  ['-m', 'system.curator_agent_bridge_stdio', action],
-  {
-    ...
-    input: JSON.stringify(payload),
-  }
-)
-```
-
-Node asynchronous `child_process.execFile()` does not define an `input`
-option. `input` is supported by synchronous child-process APIs such as
-`execFileSync`, not by async `execFile`.
-
-Therefore the Python process can receive EOF on stdin instead of the payload.
-
-### Required fix
-
-Use a real async stdin transport.
-
-Preferred:
-
-```js
-spawn(...)
-child.stdin.write(JSON.stringify(payload))
-child.stdin.end()
-```
-
-Collect stdout/stderr with:
-
-- timeout;
-- abort/cancellation support where pinned DSH exposes `exec.signal`;
-- bounded output;
-- nonzero exit handling;
-- JSON parse fail-closed.
-
-Do not switch to blocking `execFileSync` inside an Agent tool.
-
-Add a real Node test proving a payload sent through the shipped JS plugin reaches
-the Python stdio entrypoint and produces the expected structured response.
+R6 is the final qualification closure. Do not change §5/§6/§7 business semantics unless a directly observed runtime defect requires a narrow fix.
 
 ---
 
-## 2. Blocking defect — pinned DSH tool API is not implemented correctly
+## 1. Blocking defect — shipped plugin still does NOT use defineTool
 
-Pinned DSH source commit:
+Pinned DSH commit:
 
 `4878cdabd87d4041bdaff61d04c966883b9fd07a`
 
-documents tool registration as:
+documents:
 
 ```js
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -95,9 +47,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 ctx.tools.register(defineTool({
   name: '...',
   description: '...',
-  parameters: {
-    field: { type: 'string', required: true },
-  },
+  parameters: { ... },
   output: {
     schema: { ... },
     render: (_args, value) => [{ type: 'text', text: ... }],
@@ -108,314 +58,398 @@ ctx.tools.register(defineTool({
 }))
 ```
 
-Current R4 plugin still registers a raw object directly and returns
-`{type:'text', text: ...}` from `execute`.
+Current R5 `bridge-plugin.js` contains comments saying "defineTool", but actually does:
 
-That violates the pinned canonical tool contract:
-
-- `defineTool` performs input validation;
-- `execute` returns the canonical declared JSON value;
-- `output.render` produces model-facing content.
-
-### Required fix
-
-Use the exact pinned rc.1 API.
-
-At minimum:
-
-- import `defineTool` from the pinned package;
-- use its actual parameter schema DSL;
-- declare `output.schema`;
-- declare `output.render`;
-- `execute` returns the canonical object, not a content block;
-- propagate `exec.signal` into subprocess cancellation if supported.
-
-Do not use latest-master-only APIs that are absent in the pinned commit.
-
----
-
-## 3. Blocking defect — “plugin loaded in pinned DSH” is still not proven
-
-R4 tests named/plugin evidence only inspect source strings such as:
-
-- `curator_agent_bridge_stdio` exists in plugin source;
-- native tool names exist in plugin source.
-
-There is still no committed test that:
-
-- imports/loads the shipped JS plugin under pinned DSH/Cordis;
-- mounts it into a real Context with `dsh-tools`;
-- observes registered tools from `ctx.tools`;
-- executes those registered tools.
-
-The required R4 qualification artifact
-`results/phase-si-4-r4-dsh-qualification.md` is also missing.
-
-### Required fix
-
-Create a real Node/DSH qualification harness.
-
-It must execute the pinned installed DSH packages and:
-
-1. create the supported Cordis/DSH context;
-2. mount/provide the `tools` service;
-3. load the shipped `bridge-plugin.js`;
-4. start/apply the plugin using the actual plugin contract;
-5. verify:
-   - `knowledge_curator_commit` registered;
-   - `knowledge_curator_revision` registered;
-6. invoke them through the actual `ctx.tools` execution path.
-
-A source-string assertion is only a smoke test and cannot be used as runtime evidence.
-
----
-
-## 4. Plugin export/lifecycle must match pinned Cordis/DSH contract
-
-Current bridge plugin uses a default class with a `start()` method.
-
-Pinned DSH examples use the supported Cordis plugin shape, e.g. exported
-`name`, `inject`, and `apply(ctx)`, unless the pinned loader explicitly
-supports the class lifecycle currently used.
-
-### Required fix
-
-Inspect the pinned plugin loader and use an actually supported shape.
-
-Do not assume a class with `start()` is automatically called.
-
-Qualification must prove that loading the exact shipped plugin registers the
-tools.
-
----
-
-## 5. Blocking defect — typed hydration is not fail-closed
-
-Current `system/curator_agent_bridge_stdio.py` silently coerces invalid values:
-
-- invalid `ValueType` -> NUMBER;
-- invalid `ClaimType` -> MEASUREMENT;
-- invalid `SourceClaimOrigin` -> PRIMARY;
-- invalid `Confidence` -> MEDIUM;
-- invalid `VersionRelation` -> PREPRINT_TO_JOURNAL;
-- invalid curation action -> ACCEPT;
-- invalid approval decision -> APPROVED.
-
-This is not schema validation. It can turn malformed or hostile input into a
-valid-looking publication request.
-
-The approval fallback is especially unacceptable.
-
-### Required fix
-
-Hydration must be strict:
-
-- required fields missing -> error;
-- invalid enum -> error;
-- invalid nested object -> error;
-- invalid decision -> error;
-- invalid approval -> error;
-- invalid version relation -> error.
-
-No semantic defaults for invalid values.
-
-Defaults are allowed only when the frozen schema explicitly defines that field
-as optional with that default.
-
-Add negative tests for every critical enum family, especially:
-
-- approval decision;
-- curation action;
-- relation;
-- confidence;
-- claim type/value type.
-
-Assert:
-
-- nonzero bridge exit;
-- structured error;
-- no workflow invocation;
-- no commit/version mutation.
-
----
-
-## 6. Revision workflow must fail closed if provider bundle lacks revision deps
-
-Current `_build_bridge()` may return:
-
-```
-CuratorAgentBridge(
-    curation_workflow=...,
-    revision_workflow=None,
-)
+```js
+ctx.tools.register({
+  ...
+})
 ```
 
-when provider bundle lacks revision configuration.
+There is no import/use of `defineTool`.
 
-For the shipped §5/§6/§7 Knowledge Curator product, required application
-capabilities should be explicit.
+The R5 test only checks that source contains `output:`, `schema:`, and
+`render:`; it does not prove the pinned tool contract.
 
 ### Required fix
 
-Choose and document one contract:
+Actually:
 
-### Preferred production product contract
+```js
+import { defineTool } from '@deepseek-ai/dsh-tools'
+```
 
-At bridge startup/build time require both:
+and register:
 
-- curation deps;
-- revision deps.
+```js
+ctx.tools.register(defineTool({...}))
+```
 
-If revision deps are absent:
+using the exact pinned schema DSL.
 
-- fail closed with a clear provider/composition error.
-
-If you intentionally support a §5/§6-only deployment mode, it must be explicit
-configuration and the DSH revision tool must not be registered/advertised in
-that mode.
-
-Do not silently advertise a revision tool backed by `None`.
+Do not satisfy this with comments or string tests.
 
 ---
 
-## 7. Real native §5 invocation
+## 2. Blocking defect — no real pinned DSH/Cordis runtime test exists
 
-The acceptance test must execute:
+R5 report claims:
+
+- plugin lifecycle actually executed: PASS;
+- native tools actually registered in ctx.tools: PASS;
+- native commit tool actually executed through ctx.tools: PASS.
+
+But committed tests do not create a DSH/Cordis context or invoke `ctx.tools`.
+
+`test_stdin_payload_reaches_python` directly runs:
 
 ```
-ctx.tools
-  -> registered knowledge_curator_commit
-  -> shipped bridge-plugin.js execute()
-  -> spawn Python bridge stdio module
-  -> AI4S_SYSTEM_ADAPTER_FACTORY supplied by test ENV
-  -> strict hydration
+python -m system.curator_agent_bridge_stdio curate_and_commit
+```
+
+That proves Python stdio behavior only.
+
+### Required fix
+
+Create a real Node qualification harness against the pinned DSH source/packages.
+
+It must:
+
+1. use the pinned DSH/Cordis packages;
+2. construct/start the actual supported Context/tool runtime;
+3. load/apply the exact shipped `runtime/bridge-plugin.js`;
+4. verify registration through real `ctx.tools`;
+5. execute `knowledge_curator_commit` through real tool execution;
+6. execute `knowledge_curator_revision` through real tool execution.
+
+Do NOT use a handwritten fake:
+
+```js
+{ tools: { register() {} } }
+```
+
+as acceptance evidence.
+
+---
+
+## 3. Mandatory qualification harness
+
+Add a committed harness, for example:
+
+```
+integration/dsh/qualification/knowledge-curator-r6.mjs
+```
+
+Use the actual pinned packages from the isolated DSH source/install.
+
+The harness must accept configuration only through environment/arguments.
+
+Recommended qualification environment:
+
+```
+DSH_SOURCE=<path to pinned DSH source/install>
+AI4S_KC_WORKSPACE=<AI4S-ED workspace>
+AI4S_KC_PYTHON=<python>
+AI4S_SYSTEM_ADAPTER_FACTORY=<qualification provider factory>
+```
+
+The shipped plugin/runtime must still contain no test-fixture hardcoding.
+
+---
+
+## 4. Qualification must execute actual tool registry
+
+The harness must query/use the actual tool service.
+
+Prove schemas include:
+
+```
+knowledge_curator_commit
+knowledge_curator_revision
+```
+
+Then execute via the real registry/execution API.
+
+Record:
+
+- tool schema;
+- execution success/failure;
+- canonical returned value;
+- rendered result if accessible.
+
+Do not call exported plugin functions directly and label it ctx.tools execution.
+
+---
+
+## 5. Native §5 product test
+
+Required actual path:
+
+```
+pinned DSH/Cordis
+  -> load shipped bridge-plugin.js
+  -> defineTool
+  -> ctx.tools
+  -> execute knowledge_curator_commit
+  -> JS spawn/stdin
+  -> Python stdio bridge
+  -> provider factory from ENV
+  -> typed hydration
   -> CuratorAgentBridge
   -> CurationCommitWorkflow
 ```
 
 Assert:
 
-- canonical DSH tool result is success;
-- status == published;
-- commit_attempted == true.
+```
+status == published
+commit_attempted == true
+```
 
-Then replay the same request through the SAME real tool path and assert:
+### Replay
 
-- idempotent_hit;
-- one-version invariant.
+If the qualification provider persists state across child-process invocations,
+invoke the same tool again and assert exact frozen idempotent result.
 
-No direct Python subprocess test is sufficient for the “mounted/native tool”
-acceptance claim.
+If the provider fixture is purely per-process in-memory and cannot prove replay
+across subprocess calls:
 
----
+- do NOT claim native replay PASS;
+- keep the accepted direct SI-2A replay test as workflow evidence;
+- report native replay as NOT_APPLICABLE_PROVIDER_ISOLATION with explanation.
 
-## 8. Real native §7 invocation
-
-Execute the registered `knowledge_curator_revision` through `ctx.tools`.
-
-Use test ENV to provide a provider factory; production code must remain
-fixture-agnostic.
-
-Required cases:
-
-### no approval
-
-For a revision that requires approval:
-
-- result preserves APPROVAL_REQUIRED.
-
-### valid approval
-
-- result reaches FINALIZED.
-
-### invalid approval
-
-- invalid enum/scope/shape fails closed or preserves frozen workflow rejection;
-- never silently coerces to APPROVED.
-
-### replay/history
-
-Use exact existing frozen tests for deeper replay/history semantics if desired,
-but the DSH-native tool path must at least prove real workflow reachability.
+Do not fabricate shared state.
 
 ---
 
-## 9. §6 acceptance remains fail-closed
+## 6. Native §7 product test
 
-Keep R4 improvements.
+Through actual `ctx.tools`, execute:
 
-Additionally ensure final answer never becomes blank when a claim result is
-allowed but validator omits claim text.
+`knowledge_curator_revision`.
 
-If validator returns a factual_allowed result without usable claim text:
+At minimum prove the native tool reaches the real revision application path.
 
-- use the original validated candidate text only if claim identity matches;
-- otherwise ABSTAIN.
+Required test(s):
 
-Do not return `status=answered` with an empty answer.
+- valid typed revision request reaches the workflow;
+- approval-required case preserves exact frozen outcome OR
+- approved case reaches FINALIZED.
+
+Prefer both if the qualification provider can construct persistent prerequisite
+state.
+
+Do not cite an unrelated system test as proof that the native tool itself was
+executed.
+
+Deeper SI-2B history/replay semantics may still cite exact frozen system tests.
 
 ---
 
-## 10. Real qualification artifact is mandatory
+## 7. Strict hydration is still incomplete
 
-Create:
+R5 removed several enum fallbacks, but production hydration still contains
+semantic hardcoding in revision target assertions:
+
+- `ValueType.NUMBER`;
+- `ClaimType.MEASUREMENT`;
+- `SourceClaimOrigin.PRIMARY`;
+- `Confidence.MEDIUM`.
+
+It also still allows many required identifiers to become empty strings through
+`.get(..., "")`.
+
+### Required fix
+
+Revision target assertions must hydrate from their input values exactly as the
+frozen schema requires.
+
+Strictly validate:
+
+- value_type;
+- claim_type;
+- source_claim_origin;
+- confidence.
+
+Do not force defaults unless the frozen schema explicitly defines them.
+
+Also reject missing/empty required identifiers for:
+
+- AssertionSet.ref_id;
+- Assertion.id/ref_id;
+- SourceIdentity.ref_id/source_fingerprint;
+- RevisionPackage package/work/source-version/ref identifiers;
+- CommitRequest required report/source fields;
+- RevisionApproval required identifiers.
+
+Use frozen dataclass/schema requirements as the authority.
+
+---
+
+## 8. Curation report hydration must not fabricate successful completeness
+
+Current bridge constructs:
+
+```python
+CompletenessResult(status=CompletenessStatus.OK)
+```
+
+regardless of incoming report data.
+
+### Required fix
+
+Hydrate the actual report/completeness fields supported by the frozen
+`CurationReport` schema.
+
+Do not silently turn malformed/incomplete reports into completeness OK.
+
+If required report fields are absent/invalid, fail closed before workflow
+invocation.
+
+---
+
+## 9. §6 remains frozen except one safety regression
+
+Do not redesign §6.
+
+Keep:
+
+- no scientific content -> ABSTAIN;
+- fake anchor -> ABSTAIN;
+- validation rejection -> ABSTAIN;
+- supported answer non-empty and evidence-derived.
+
+Add/retain:
+
+- factual_allowed result with no usable validated claim text and no safely
+  matching candidate -> ABSTAIN.
+
+---
+
+## 10. Mandatory qualification artifact
+
+R5 required:
 
 `results/phase-si-4-r5-dsh-qualification.md`
 
-It must contain actual captured evidence for:
+but it is absent.
 
-- pinned DSH commit/version;
-- Node version;
-- pnpm version;
-- package dry-run;
-- plugin import/load;
-- plugin lifecycle execution;
-- registered native tool schemas;
-- native commit tool invocation/result;
-- native commit replay/result;
-- native revision no-approval/result;
-- native revision approved/result;
-- exact four MCP discovery;
-- provider ENV used in qualification;
-- production runtime fixture-import scan.
+R6 MUST create:
 
-Do not claim an artifact exists unless it is committed.
+`results/phase-si-4-r6-dsh-qualification.md`
+
+This is a hard acceptance gate.
+
+It must contain actual outputs from the real Node/DSH harness.
 
 ---
 
-## 11. Correct tool output contract
+## 11. Qualification artifact contents
 
-For each native tool:
+At minimum:
 
-`execute` must return canonical JSON matching `output.schema`.
+```
+Pinned DSH version:
+0.2.0-rc.1
 
-Example conceptually:
+Pinned source SHA:
+4878cdabd87d4041bdaff61d04c966883b9fd07a
 
-```js
-output: {
-  schema: {
-    type: 'object',
-    properties: {
-      status: { type: 'string' },
-      commit_attempted: { type: 'boolean' },
-    },
-    required: ['status'],
-  },
-  render: (_args, value) => [
-    { type: 'text', text: JSON.stringify(value) }
-  ],
-},
-async execute(args, exec) {
-  return await callBridge(..., exec.signal)
-}
+Node version:
+...
+
+pnpm version:
+...
+
+DSH source/install path:
+...
+
+plugin load command:
+...
+
+exit code:
+...
+
+actual registered tool names:
+...
+
+knowledge_curator_commit canonical result:
+...
+
+knowledge_curator_revision canonical result:
+...
+
+public MCP discovered names:
+...
+
+provider factory supplied by ENV:
+...
+
+production fixture-import scan:
+PASS
+
+temporary-source scan:
+PASS
 ```
 
-Use the exact pinned schema DSL syntax, not generic JSON Schema if the API
-expects the DSL.
+No secrets.
 
 ---
 
-## 12. Frozen boundaries
+## 12. Report evidence discipline
+
+Every PASS in R6 report must map to semantics that directly prove it.
+
+Examples:
+
+Valid:
+
+```
+native commit tool executed through ctx.tools:
+PASS
+evidence:
+- command: node integration/dsh/qualification/knowledge-curator-r6.mjs ...
+- artifact: results/phase-si-4-r6-dsh-qualification.md
+- observed tool: knowledge_curator_commit
+- canonical result.status: published
+```
+
+Invalid:
+
+```
+native commit tool executed through ctx.tools:
+PASS
+evidence:
+- Python subprocess test
+```
+
+or:
+
+```
+plugin lifecycle executed:
+PASS
+evidence:
+- source contains "export function apply"
+```
+
+---
+
+## 13. Public MCP boundary
+
+Remain exactly:
+
+- curate_assertion_set
+- knowledge_curator_health
+- retrieve_evidence
+- validate_retrieved_claims
+
+Native DSH application tools are separate preset-scoped tools.
+
+Do not add them to MCP.
+
+---
+
+## 14. Frozen boundaries
 
 Do not modify:
 
@@ -432,77 +466,56 @@ Allowed:
 
 - `dsh/knowledge-curator/**`;
 - `system/curator_agent_bridge_stdio.py`;
-- narrow additive `system/curator_agent_bridge.py` change only if required;
 - integration DSH qualification harness/tests;
 - results artifacts.
 
-No dependency on generic:
+No dependency on:
 
 - `system/workflow_orchestration/**`;
 - `system/task_planner/**`.
 
 ---
 
-## 13. Mandatory tests
+## 15. Mandatory tests
 
-### Production bridge boundary
+### JS/DSH runtime
 
-- no shipped test fixture imports;
-- provider factory comes only from deployment env;
-- both workflows required/configured;
-- no temp source generation.
+- real pinned plugin load;
+- real defineTool construction;
+- actual registry shows both native tools;
+- actual registry executes commit tool;
+- actual registry executes revision tool;
+- JS spawn/stdin transport used in those executions.
 
-### Strict hydration
+### Hydration
 
-Negative cases:
+Negative tests:
 
-- invalid confidence;
-- invalid claim type;
-- invalid value type;
-- invalid relation;
-- invalid curation action;
-- invalid approval decision;
-- missing required identifiers.
+- invalid revision target value_type;
+- invalid revision target claim_type;
+- invalid revision target source_claim_origin;
+- invalid revision target confidence;
+- empty source fingerprint;
+- empty required revision IDs;
+- malformed curation completeness/report;
+- invalid approval.
 
-Each must fail closed before workflow side effects.
-
-### JS transport
-
-- real JS plugin sends stdin payload to Python;
-- Python receives exact payload;
-- nonzero Python exit -> tool error;
-- invalid JSON response -> tool error;
-- timeout/cancellation -> process terminated/fails closed.
-
-### Pinned DSH plugin/runtime
-
-- plugin actually loaded;
-- tools actually registered;
-- tools actually executed through `ctx.tools`.
-
-### §5
-
-- native publish;
-- native replay/idempotent_hit.
-
-### §7
-
-- native approval_required;
-- native finalized with valid approval.
+All fail closed before workflow side effects.
 
 ### §6
 
 - no content -> abstain;
 - fake anchor -> abstain;
-- supported claim -> non-empty grounded answer.
+- no validated claim text -> abstain;
+- supported -> grounded non-empty answer.
 
 ### MCP
 
-- exact four public MCP tools.
+- exact four.
 
 ---
 
-## 14. Regression
+## 16. Regression gates
 
 Run:
 
@@ -512,9 +525,9 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Also run the real Node/DSH qualification harness.
+Run real Node/DSH qualification harness separately.
 
-Requirements:
+Required:
 
 - 0 failed;
 - 0 skipped;
@@ -522,72 +535,68 @@ Requirements:
 
 ---
 
-## 15. R5 report
+## 17. R6 executor report
 
 Create:
 
-`results/phase-si-4-r5-executor-report.md`
-
-Every PASS must cite exact evidence.
+`results/phase-si-4-r6-executor-report.md`
 
 Required minimum:
 
 ```
-Phase SI-4-R5 implementation CODE SHA:
+Phase SI-4-R6 implementation CODE SHA:
 
-async JS->Python stdin transport proven:
+defineTool actually imported and used:
 PASS/FAILED
 evidence:
 
-pinned DSH defineTool contract used:
+pinned DSH/Cordis context actually started:
 PASS/FAILED
 evidence:
 
-plugin lifecycle actually executed:
+shipped plugin lifecycle actually executed:
 PASS/FAILED
 evidence:
 
-native tools actually registered in ctx.tools:
+native tools visible in actual ctx.tools:
 PASS/FAILED
 evidence:
 
-native commit tool actually executed through ctx.tools:
+knowledge_curator_commit executed through actual ctx.tools:
 PASS/FAILED
 evidence:
 
-native §5 PUBLISHED:
+native §5 result:
+...
+
+knowledge_curator_revision executed through actual ctx.tools:
 PASS/FAILED
 evidence:
 
-native §5 replay IDEMPOTENT_HIT:
+native §7 result:
+...
+
+actual JS spawn/stdin path exercised by native calls:
 PASS/FAILED
 evidence:
 
-native revision tool actually executed through ctx.tools:
+revision target assertion hydration strict:
 PASS/FAILED
 evidence:
 
-native §7 APPROVAL_REQUIRED:
+required identifier validation strict:
 PASS/FAILED
 evidence:
 
-native §7 FINALIZED with valid approval:
+curation completeness/report hydration truthful:
 PASS/FAILED
 evidence:
 
-strict enum hydration:
+invalid approval fail closed:
 PASS/FAILED
 evidence:
 
-invalid approval never coerces to APPROVED:
-PASS/FAILED
-evidence:
-
-missing revision provider fails closed:
-PASS/FAILED
-evidence:
-
-§6 empty evidence content -> ABSTAIN:
+§6 no content -> ABSTAIN:
 PASS/FAILED
 evidence:
 
@@ -595,7 +604,11 @@ evidence:
 PASS/FAILED
 evidence:
 
-§6 supported answer non-empty and grounded:
+§6 missing validated claim text -> ABSTAIN:
+PASS/FAILED
+evidence:
+
+§6 grounded non-empty answer:
 PASS/FAILED
 evidence:
 
@@ -603,10 +616,14 @@ public MCP exactly four:
 PASS/FAILED
 evidence:
 
-production runtime fixture imports:
+qualification artifact committed:
+PASS/FAILED
+evidence:
+
+production fixture imports:
 NO
 
-temporary bridge source generation:
+temporary source generation:
 NO
 
 frozen files changed:
@@ -644,24 +661,24 @@ NONE / describe
 
 ---
 
-## 16. Completion protocol
+## 18. Completion protocol
 
-1. implement SI-4-R5 only;
-2. run real pinned DSH/Node plugin qualification;
-3. run native §5 and §7 tool calls;
-4. run strict hydration negatives;
-5. run §6 fail-closed tests;
-6. run all regressions;
-7. create R5 DSH qualification artifact;
-8. create R5 executor report;
+1. implement only R6 closure;
+2. run real pinned DSH/Cordis Node harness;
+3. execute both native tools through actual `ctx.tools`;
+4. fix remaining strict hydration gaps;
+5. run §6 safety regressions;
+6. run all pytest suites;
+7. commit qualification artifact;
+8. create R6 executor report;
 9. commit implementation;
 10. push main;
-11. update `status.json`:
-    - phase = SI-4-R5
+11. update status.json:
+    - phase = SI-4-R6
     - actor = executor
     - state = executor_complete
-    - latest_commit = <R5 CODE SHA>
-    - result_expected = results/phase-si-4-r5-executor-report.md
+    - latest_commit = <R6 CODE SHA>
+    - result_expected = results/phase-si-4-r6-executor-report.md
 12. commit/push bookkeeping;
 13. verify clean tree and HEAD == origin/main;
 14. STOP.
@@ -670,26 +687,26 @@ Do not start SI-5.
 
 ---
 
-## 17. Final acceptance question
+## 19. Acceptance question
 
-R5 passes only if this is proven by actual execution:
+R6 passes only if an actual pinned DSH/Cordis tool runtime executes:
 
 ```
-Pinned DSH/Cordis
-  -> load shipped bridge plugin
-  -> defineTool(...)
-  -> ctx.tools registry
-  -> execute registered native tool
-  -> real async stdin transport
-  -> committed Python stdio bridge
-  -> deployment provider factory
-  -> strict typed hydration
-  -> CuratorAgentBridge
-      -> CurationCommitWorkflow
-      -> RevisionPublicationWorkflow
+knowledge_curator_commit
+knowledge_curator_revision
 ```
 
-and malformed inputs fail closed before state changes.
+from the shipped plugin through:
 
-No source-string-only test may satisfy runtime acceptance.
-No direct Python subprocess may be called a mounted/native DSH test.
+```
+defineTool
+ -> ctx.tools
+ -> JS spawn/stdin
+ -> Python bridge
+ -> deployment provider
+ -> strict domain hydration
+ -> accepted workflows
+```
+
+Source-string checks and direct Python subprocess tests remain useful regressions
+but cannot satisfy this product-level acceptance gate.
