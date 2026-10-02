@@ -1,4 +1,4 @@
-# Phase SI-3B Plan — Scientific Task Planner
+# Phase SI-4 Plan — DSH Knowledge Curator Agent Package
 
 Planner: ChatGPT  
 Executor: MiMo / Kimi / Codex  
@@ -6,148 +6,160 @@ State: READY_FOR_EXECUTOR
 
 ## Goal
 
-Extend the accepted SI-3A Agent Runtime with a deterministic Scientific Task Planner layer.
+Complete the original delivery target:
 
-SI-3B adds task understanding and workflow selection only. Do not redesign Agent Runtime, workflows, MCP, or DSH.
+Build a deployable DSH Agent package for AI4S-ED Knowledge Curator.
 
-## Architecture
+Scope is the curator part of the literature knowledge pipeline:
 
-```
-User Task
-    |
-    v
-ScientificTaskPlanner
-    |
-    v
-TaskPlan
-    |
-    v
-AI4SAgent Runtime
-    |
-    v
-WorkflowRegistry
-    |
-    +----------------+
-    |                |
-    v                v
-CurationCommit   RevisionPublication
-Workflow         Workflow
-```
+- Section 5: knowledge curation and evidence governance
+- Section 6: evidence-grounded anti-hallucination retrieval QA
+- Section 7: knowledge lifecycle update and incremental governance
 
-## Scope
+Do not redesign the whole AI4S-ED architecture.
 
-Create:
+## Target Package
+
+Create or complete:
 
 ```
-system/task_planner/
-    __init__.py
-    planner.py
-    task_classifier.py
-    plan_protocol.py
-    errors.py
+dsh/knowledge-curator/
+    agent.yaml
+    prompt.md
+    tools.yaml
+    schemas/
+    runtime/
+    README.md
 ```
 
-## Required capabilities
+The package must be loadable by DSH as an Agent.
 
-### TaskClassifier
+## Agent Responsibilities
 
-First version deterministic only.
+### 1. Knowledge Curation Agent
+
+Input:
+
+```
+AssertionSet
+```
+
+Process:
+
+```
+Completeness Check
+        |
+Conflict Detection
+        |
+Quality Scoring
+        |
+Decision
+        |
+Atomic Commit
+```
+
+Output:
+
+```
+CurationReport
+```
+
+Must preserve:
+
+- provenance_id
+- trace_id
+- evidence reference
+- confidence
+
+### 2. Evidence QA Agent
+
+Implement evidence-first answering:
+
+```
+Question
+   |
+Evidence Retrieval
+   |
+EvidenceBundle
+   |
+Validation
+   |
+Answer / Abstain
+```
+
+Requirements:
+
+- No unsupported claims
+- Confidence propagation
+- Evidence citation required
+- Abstain when evidence is insufficient
+
+### 3. Knowledge Lifecycle Governance
 
 Support:
 
-- RETRIEVE
-- CURATION_COMMIT
-- REVISION_PUBLICATION
-
-No LLM planner.
-
-### TaskPlan Protocol
-
-Must contain:
-
-- task_id
-- task_type
-- workflow_name
-- parameters
-- trace_id
-- provenance_id
-
-### Runtime integration
-
-Extend flow:
-
 ```
-AI4SAgent
-    |
-ScientificTaskPlanner
-    |
-TaskRouter
-    |
-WorkflowRegistry
-    |
-Workflow
+New Assertion
+      |
+Compare Existing Knowledge
+      |
+Revision / Conflict / Merge
+      |
+New Version Snapshot
 ```
 
-## Forbidden
+Reuse existing revision workflow where possible.
 
-Do not modify:
+## Integration Boundary
 
-- knowledge_curator/**
-- system/workflows/curation_commit.py
-- system/workflows/revision_publication.py
-- dsh/knowledge-curator/**
+Reuse existing:
 
-Do not add:
+- knowledge_curator core
+- EvidenceBundle
+- MCP tools
+- CurationCommitWorkflow
+- RevisionPublicationWorkflow
+- Agent Runtime
 
-- new MCP tools
-- DSH changes
-- multi-agent system
-- autonomous research loop
+Do not:
+
+- replace existing runtime
+- create unrelated autonomous research agents
+- modify lit_researcher implementation
 
 ## Tests
 
-Add:
+Add DSH-level verification:
 
 ```
-integration/system/tests/test_task_planner.py
+integration/dsh/tests/test_knowledge_curator_agent.py
 ```
 
 Verify:
 
-- retrieve classification
-- curation classification
-- revision classification
-- invalid task fail closed
-- provenance preservation
-- Agent Runtime consumes TaskPlan
-- WorkflowRegistry boundary preserved
-- MCP unchanged
-- DSH unchanged
+- Agent loading
+- Tool registration
+- Curation flow
+- Evidence QA flow
+- Abstain behavior
+- Revision flow
+- Existing regression tests remain passing
 
-## Regression
+## Deliverables
 
-Run:
+Required:
 
 ```
-pytest knowledge_curator/tests
-pytest integration/system/tests
-pytest integration/dsh/tests
+dsh/knowledge-curator/
+results/phase-si-4-curator-agent-report.md
 ```
-
-## Completion
 
 Update status.json:
 
 ```
-phase: SI-3B
+phase: SI-4
 actor: executor
 state: executor_complete
 ```
 
-Create:
-
-```
-results/phase-si-3b-executor-report.md
-```
-
-STOP after completion. Do not start SI-4 without Planner review.
+STOP after implementation. Wait for Planner review before further expansion.
