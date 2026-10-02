@@ -1,4 +1,4 @@
-﻿"""AI4S Agent Runtime — unified entry point.
+"""AI4S Agent Runtime — unified entry point.
 
 Agent -> TaskRouter -> WorkflowRegistry -> Workflow -> AgentResult
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from system.agent_runtime.errors import AgentInputError
+from system.task_planner.plan_protocol import TaskPlan
 from system.agent_runtime.execution_context import ExecutionContext
 from system.agent_runtime.result_protocol import AgentResult, AgentStatus
 from system.agent_runtime.task_router import TaskRouter, TaskType
@@ -32,22 +33,33 @@ class AI4SAgent:
 
     async def run(
         self,
-        task: TaskType | str,
+        task: Any,
         context: Optional[ExecutionContext] = None,
         **kwargs: Any,
     ) -> AgentResult:
         """Execute a task through the registered workflow.
 
         Args:
-            task: TaskType enum or its string value.
+            task: TaskType enum, string value, or TaskPlan.
             context: ExecutionContext. Created automatically if omitted.
             **kwargs: Passed through to the underlying workflow.run().
         """
-        if context is None:
-            context = ExecutionContext.create()
-
-        # 1. Route task to workflow name
-        workflow_name = self._router.resolve(task)
+        # SI-3B: accept TaskPlan directly
+        if isinstance(task, TaskPlan):
+            if context is None:
+                context = ExecutionContext.create(
+                    trace_id=task.trace_id,
+                    provenance_id=task.provenance_id,
+                )
+            workflow_name = task.workflow_name
+            # Merge plan parameters into kwargs
+            for k, v in task.parameters.items():
+                kwargs.setdefault(k, v)
+        else:
+            if context is None:
+                context = ExecutionContext.create()
+            # 1. Route task to workflow name
+            workflow_name = self._router.resolve(task)
 
         # 2. Get workflow from registry
         workflow = self._registry.get(workflow_name)
