@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-3B",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
@@ -17,5 +17,6 @@
     "Do not add new MCP tools",
     "Do not modify DSH preset",
     "Stop after SI-3B completion"
-  ]
+  ],
+  "latest_commit": "c59daff"
 }

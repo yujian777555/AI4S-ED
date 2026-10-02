@@ -9,7 +9,7 @@
 
 ## Phase SI-3B implementation CODE SHA
 
-（见 commit）
+c59daff
 
 retrieve classification:
 PASS
