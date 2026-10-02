@@ -11,9 +11,9 @@
     "./prompt.md": "./prompt.md",
     "./tools.yaml": "./tools.yaml",
     "./agent.yaml": "./agent.yaml",
-    "./runtime/agent.js": "./runtime/agent.js",
-    "./runtime/handlers.js": "./runtime/handlers.js",
-    "./runtime/context.js": "./runtime/context.js"
+    "./runtime/agent.py": "./runtime/agent.py",
+    "./runtime/handlers.py": "./runtime/handlers.py",
+    "./runtime/context.py": "./runtime/context.py"
   },
   "files": [
     "cordis.patch.yml",
@@ -24,10 +24,10 @@
     "schemas/curation_request.json",
     "schemas/evidence_query.json",
     "schemas/revision_request.json",
-    "runtime/agent.js",
-    "runtime/handlers.js",
-    "runtime/context.js",
-    "runtime/bridge.js"
+    "runtime/__init__.py",
+    "runtime/agent.py",
+    "runtime/handlers.py",
+    "runtime/context.py"
   ],
   "dsh": {
     "bundle": {
