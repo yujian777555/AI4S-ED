@@ -1,13 +1,13 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-3B",
+  "phase": "SI-4",
   "actor": "executor",
   "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-3b-executor-report.md",
+  "result_expected": "results/phase-si-4-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
@@ -18,5 +18,5 @@
     "Do not modify DSH preset",
     "Stop after SI-3B completion"
   ],
-  "latest_commit": "c59daff"
+  "latest_commit": "70ca1b3"
 }

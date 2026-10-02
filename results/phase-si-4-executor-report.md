@@ -9,7 +9,7 @@
 
 ## Phase SI-4 implementation CODE SHA
 
-（见 commit）
+70ca1b3
 
 ExecutionPlan:
 PASS
