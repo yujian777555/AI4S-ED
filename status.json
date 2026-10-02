@@ -1,67 +1,29 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-2B-R1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-3A",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
-  "authoritative_docs": [
-    "docs/01-总体架构与数据流设计.md",
-    "docs/03-文献自动调研与知识入库流水线.md"
-  ],
-  "boundary": "planner/KNOWLEDGE_CURATOR_BOUNDARY.md",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-2b-r1-executor-report.md",
+  "result_expected": "results/phase-si-3a-executor-report.md",
+  "latest_commit": "5b4b8cd",
   "constraints": [
-    "GitHub origin/main is the source of truth",
-    "knowledge_curator remains ACCEPTED / FROZEN / DELIVERABLE at CODE SHA 42e39121af5f6120174e088a521c9ad014abdcda",
-    "Phase SI-1 remains ACCEPTED / FROZEN at CODE SHA 073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7",
-    "Phase SI-1.5 remains ACCEPTED / FROZEN at closure SHA 0f014f0a3aad75a6cada18874fead10414469d6b",
-    "Phase SI-2A remains ACCEPTED / FROZEN at CODE SHA 95d55e71390a2e7266b2084243161101c5aff60a",
-    "SI-2B implementation d2d69f6 is under R1 qualification closure and is not yet accepted/frozen",
-    "SI-2B-R1 is qualification closure only; do not redesign revision publication",
-    "do not modify frozen Knowledge Curator, SI-1, SI-1.5, or SI-2A production files",
-    "do not add a global orchestrator or new public MCP tools",
-    "do not modify the DSH knowledge-curator preset",
-    "planner/CONTRACT_GAPS.md remains frozen"
+    "Build Agent Runtime Skeleton only",
+    "Do not modify frozen knowledge_curator core",
+    "Do not modify SI-1, SI-1.5, SI-2A frozen composition",
+    "Do not modify CurationCommitWorkflow",
+    "Do not modify RevisionPublicationWorkflow",
+    "Do not add new MCP tools",
+    "Do not modify DSH preset",
+    "Stop after SI-3A completion"
   ],
-  "latest_commit": "8296611",
-  "planner_review": "planner/phase-si-2a-final-acceptance.md",
-  "knowledge_curator_freeze": {
-    "verdict": "ACCEPTED",
-    "frozen": true,
-    "deliverable": true,
-    "implementation_code_sha": "42e39121af5f6120174e088a521c9ad014abdcda"
-  },
-  "si1_acceptance": {
-    "verdict": "ACCEPTED",
-    "frozen": true,
-    "implementation_code_sha": "073eb3efb1bf6616f2a68b6ef4f28df6a315f8f7"
-  },
-  "si15_acceptance": {
-    "verdict": "ACCEPTED",
-    "frozen": true,
-    "final_r2_sha": "0f014f0a3aad75a6cada18874fead10414469d6b"
-  },
-  "si2a_acceptance": {
-    "verdict": "ACCEPTED",
-    "frozen": true,
-    "implementation_code_sha": "95d55e71390a2e7266b2084243161101c5aff60a",
-    "accepted_capability": [
-      "CurationCommitWorkflow: SourceIdentity + AssertionSet -> CuratorRuntime -> CurationReport -> precommit gate -> CommitRequest -> DocumentCommitCoordinator -> CommitResult",
-      "application_composition.py: commit dependency composition with 5 Port validation, InMemory rejection",
-      "Provider bundle extended with commit group (commit_store, structural_store, vector_index, usdo_store, version_store)",
-      "Precommit gate: return_upstream / empty decisions / all REJECT -> commit_attempted=False",
-      "No auto-retry for PENDING_VECTOR / PENDING_FINALIZE / FAILED; recovery via same (ref_id, source_fingerprint)",
-      "Test-local si2a_provider.py with TestFailureInjection, zero forbidden InMemory adapters"
-    ],
-    "test_evidence": {
-      "knowledge_curator": "522 passed / 0 skipped / 0 failed",
-      "integration_system": "107 passed / 0 skipped / 0 failed",
-      "integration_dsh": "90 passed / 0 skipped / 0 failed"
-    },
-    "executor_bookkeeping_head_reviewed": "410d03a45c6c439f8971226386943221a7e06fa9",
-    "planner_acceptance_commit": "622e5799f4930f63a4999bc67b3023111f6af88d"
+  "previous_acceptance": {
+    "knowledge_curator": "ACCEPTED/FROZEN",
+    "SI-1": "ACCEPTED/FROZEN",
+    "SI-1.5": "ACCEPTED/FROZEN",
+    "SI-2A": "ACCEPTED/FROZEN",
+    "SI-2B-R1": "accepted by planner review"
   }
 }
