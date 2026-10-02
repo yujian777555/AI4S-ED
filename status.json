@@ -1,29 +1,21 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-3A",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-3B",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-3a-executor-report.md",
-  "latest_commit": "8eb5a5b",
+  "result_expected": "results/phase-si-3b-executor-report.md",
+  "previous_phase": "SI-3A",
+  "previous_commit": "8eb5a5b",
   "constraints": [
-    "Build Agent Runtime Skeleton only",
+    "Build Scientific Task Planner only",
     "Do not modify frozen knowledge_curator core",
-    "Do not modify SI-1, SI-1.5, SI-2A frozen composition",
-    "Do not modify CurationCommitWorkflow",
-    "Do not modify RevisionPublicationWorkflow",
+    "Do not modify SI-2A/SI-2B workflows",
     "Do not add new MCP tools",
     "Do not modify DSH preset",
-    "Stop after SI-3A completion"
-  ],
-  "previous_acceptance": {
-    "knowledge_curator": "ACCEPTED/FROZEN",
-    "SI-1": "ACCEPTED/FROZEN",
-    "SI-1.5": "ACCEPTED/FROZEN",
-    "SI-2A": "ACCEPTED/FROZEN",
-    "SI-2B-R1": "accepted by planner review"
-  }
+    "Stop after SI-3B completion"
+  ]
 }
