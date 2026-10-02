@@ -9,7 +9,7 @@
 
 ## Phase SI-4 implementation CODE SHA
 
-（见 commit）
+ec15f6c
 
 DSH knowledge-curator package:
 PASS
