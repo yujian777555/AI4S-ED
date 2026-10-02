@@ -1,22 +1,26 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-4",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-4-R1",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-4-executor-report.md",
+  "result_expected": "results/phase-si-4-r1-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
-    "Build Scientific Task Planner only",
-    "Do not modify frozen knowledge_curator core",
-    "Do not modify SI-2A/SI-2B workflows",
-    "Do not add new MCP tools",
-    "Do not modify DSH preset",
-    "Stop after SI-3B completion"
+    "Deliver only the DSH Knowledge Curator Agent package for document 03 sections 5, 6, and 7",
+    "SI-4 ec15f6c is not accepted/frozen; R1 closure is required",
+    "DSH package must be actually mountable on pinned DSH 0.2.0-rc.1",
+    "Section 5 must perform real curation-to-commit through accepted workflow",
+    "Section 6 must call retrieve_evidence then validate_retrieved_claims before supported answer; unsupported claims abstain",
+    "Section 7 must actually delegate to RevisionPublicationWorkflow and preserve immutable history",
+    "Public MCP surface remains exactly four tools; no public commit/revision MCP tools",
+    "Do not depend on generic system/workflow_orchestration or task-planner detour code",
+    "Do not modify frozen knowledge_curator core, SI-1/SI-1.5/SI-2A/SI-2B workflows, or planner/CONTRACT_GAPS.md",
+    "STOP after SI-4-R1 completion"
   ],
-  "latest_commit": "ec15f6c"
+  "latest_commit": "a0659cd99a8d6514183d10c15e1e70641612ca4f"
 }
