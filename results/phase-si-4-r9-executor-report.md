@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R9 implementation CODE SHA
 
-（见 commit）
+bc45aa9
 
 R8 real native DSH chain preserved:
 PASS
