@@ -13,3 +13,6 @@ _download_wheels.py
 node_modules/
 _fix_e2e.py
 
+
+# Package tarballs
+*.tgz
