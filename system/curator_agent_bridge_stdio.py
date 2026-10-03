@@ -81,15 +81,25 @@ def _hydrate_assertion_set(data: dict) -> Any:
         except ValueError:
             raise ValueError(f"invalid confidence: {conf}")
 
+        aid = a.get("id")
+        if not aid:
+            raise ValueError("assertion.id is required")
+        aref = a.get("ref_id")
+        if not aref:
+            raise ValueError("assertion.ref_id is required")
+        prop = a.get("property")
+        if not prop:
+            raise ValueError("assertion.property is required")
+
         assertions.append(Assertion(
-            id=a.get("id", ""),
-            ref_id=a.get("ref_id", ""),
+            id=aid,
+            ref_id=aref,
             subject=Subject(
                 eddo_class=subj.get("eddo_class", ""),
                 resolved_entity=subj.get("resolved_entity", ""),
                 original_mention=subj.get("original_mention", ""),
             ),
-            property=a.get("property", ""),
+            property=prop,
             object=ObjectValue(
                 value=obj.get("value"),
                 unit=obj.get("unit"),
@@ -104,8 +114,11 @@ def _hydrate_assertion_set(data: dict) -> Any:
             quality=a.get("quality", 0.5),
         ))
 
+    ref = data.get("ref_id")
+    if not ref:
+        raise ValueError("assertion_set.ref_id is required")
     return AssertionSet(
-        ref_id=data.get("ref_id", ""),
+        ref_id=ref,
         metadata=metadata,
         assertions=assertions,
     )
@@ -205,6 +218,25 @@ def _hydrate_revision_package(data: dict) -> Any:
         if not data.get(field):
             raise ValueError(f"package.{field} is required")
 
+    # R7: hydrate content_delta from input
+    cd_raw = data.get("content_delta") or {}
+    cd_mode_str = cd_raw.get("mode", "delta_safe")
+    try:
+        cd_mode = DeltaMode(cd_mode_str)
+    except ValueError:
+        raise ValueError(f"invalid content_delta.mode: {cd_mode_str}")
+
+    content_delta = ContentDeltaPlan(
+        mode=cd_mode,
+        unchanged_pairs=cd_raw.get("unchanged_pairs") or [],
+        modified_pairs=cd_raw.get("modified_pairs") or [],
+        added_unit_ids=cd_raw.get("added_unit_ids") or [],
+        removed_unit_ids=cd_raw.get("removed_unit_ids") or [],
+        extraction_unit_ids=cd_raw.get("extraction_unit_ids") or [],
+        diagnostics=cd_raw.get("diagnostics") or {},
+    )
+
+    # R7: preserve non-default revision fields
     return RevisionPackage(
         package_id=data["package_id"],
         work_id=data["work_id"],
@@ -214,8 +246,16 @@ def _hydrate_revision_package(data: dict) -> Any:
         prior_ref_id=data["prior_ref_id"],
         new_ref_id=data["new_ref_id"],
         prior_bound_kb_version_id=data.get("prior_bound_kb_version_id"),
-        content_delta=ContentDeltaPlan(mode=DeltaMode.DELTA_SAFE),
+        content_delta=content_delta,
         target_assertions=assertions,
+        supersede_actions=data.get("supersede_actions") or {},
+        archive_actions=data.get("archive_actions") or [],
+        added_assertion_ids=data.get("added_assertion_ids") or [],
+        requires_manual_review=data.get("requires_manual_review", False),
+        lifecycle_reason=data.get("lifecycle_reason", ""),
+        trace_id=data.get("trace_id", ""),
+        provenance_id=data.get("provenance_id", ""),
+        diagnostics=data.get("diagnostics") or {},
     )
 
 
@@ -260,7 +300,7 @@ def _hydrate_commit_request(data: dict) -> Any:
             reason=reason,
         ))
 
-    # R6: hydrate completeness from input, do not fabricate OK
+    # R7: faithful CompletenessResult hydration
     comp_raw = report_raw.get("completeness") or {}
     comp_status_str = comp_raw.get("status")
     if not comp_status_str:
@@ -269,6 +309,28 @@ def _hydrate_commit_request(data: dict) -> Any:
         comp_status = CompletenessStatus(comp_status_str)
     except ValueError:
         raise ValueError(f"invalid completeness status: {comp_status_str}")
+
+    # Hydrate CompletenessIssue list
+    from knowledge_curator.schemas.curation import CompletenessIssue
+    issues = []
+    for issue_raw in comp_raw.get("issues") or []:
+        if not issue_raw.get("code"):
+            raise ValueError("completeness issue.code is required")
+        issues.append(CompletenessIssue(
+            code=issue_raw["code"],
+            message=issue_raw.get("message", ""),
+            assertion_ids=issue_raw.get("assertion_ids") or [],
+        ))
+
+    completeness = CompletenessResult(
+        status=comp_status,
+        issues=issues,
+        metadata_valid=comp_raw.get("metadata_valid", True),
+        assertion_count=comp_raw.get("assertion_count", 0),
+        allows_formal_curation=comp_raw.get("allows_formal_curation", True),
+        requires_manual_review=comp_raw.get("requires_manual_review", False),
+        requires_return_upstream=comp_raw.get("requires_return_upstream", False),
+    )
 
     report_id = report_raw.get("report_id")
     if not report_id:
@@ -281,8 +343,15 @@ def _hydrate_commit_request(data: dict) -> Any:
         report_id=report_id,
         source_ref_id=report_raw.get("source_ref_id", source.ref_id),
         status=report_status,
-        completeness=CompletenessResult(status=comp_status),
+        completeness=completeness,
         decisions=decisions,
+        returned_upstream_count=report_raw.get("returned_upstream_count", 0),
+        accepted_count=report_raw.get("accepted_count", 0),
+        downgraded_count=report_raw.get("downgraded_count", 0),
+        rejected_count=report_raw.get("rejected_count", 0),
+        pending_count=report_raw.get("pending_count", 0),
+        superseded_count=report_raw.get("superseded_count", 0),
+        warnings=report_raw.get("warnings") or [],
     )
 
     return CommitRequest(source=source, assertion_set=assertion_set, report=report)
