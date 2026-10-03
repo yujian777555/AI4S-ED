@@ -1,5 +1,7 @@
 # Phase SI-4-R6 Plan — Actual Pinned DSH Execution Closure
 
+Formal R5 review: `planner/phase-si-4-r5-review.md`
+
 Planner: ChatGPT
 Executor: MiMo / Kimi / Codex
 State: READY_FOR_EXECUTOR
