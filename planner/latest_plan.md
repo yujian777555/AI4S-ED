@@ -1,241 +1,226 @@
-# Phase SI-4-R8 Plan — Exact Pinned DSH Runtime Execution
+# Phase SI-4-R9 Plan — Final Package & Semantic Closure
 
-Planner: ChatGPT
-Executor: MiMo / Kimi / Codex
+Planner: ChatGPT  
+Executor: MiMo / Kimi / Codex  
 State: READY_FOR_EXECUTOR
 
-Formal R7 review:
+Formal R8 review:
 
-`planner/phase-si-4-r7-review.md`
-
-Mandatory execution recipe:
-
-`planner/SI4_R8_EXACT_DSH_EXECUTION_RECIPE.md`
-
-Pinned-source background:
-
-- `planner/SI4_R7_NATIVE_HARNESS_BLUEPRINT.md`
-- `planner/SI4_R6_DSH_SOURCE_GUIDE.md`
+`planner/phase-si-4-r8-review.md`
 
 ## Goal
 
-This is the final product-qualification closure for SI-4.
+Preserve the now-proven real pinned DSH native execution chain from R8 and close
+only the remaining package-resolution and transport-semantic gaps.
 
-Do not add new Knowledge Curator features.
-
-Prove, using the actual pinned DeepSeek Harness runtime, that the exact shipped
-Knowledge Curator bridge plugin is mounted and executed through real
-`ctx.tools.execute(..., agent)`.
-
-If the pinned runtime cannot be executed in the available environment, STOP and
-report BLOCKER with exact command/error/stack. Do not simulate PASS.
+Do not redesign DSH integration.
+Do not redesign §5/§6/§7 workflows.
+Do not start SI-5.
 
 ---
 
-## 1. Real pinned DSH runtime only
+## 1. Preserve R8 native DSH proof
 
-Use:
+Keep the real pinned DSH harness architecture.
 
-- DeepSeek Harness `0.2.0-rc.1`
-- source SHA `4878cdabd87d4041bdaff61d04c966883b9fd07a`
+The following is now an accepted baseline and must not regress:
 
-Run qualification inside the pinned DSH workspace or an installed environment
-that genuinely resolves the pinned packages.
-
-The AI4S-side Node script from R7 is not sufficient because it never imported or
-started DSH.
-
----
-
-## 2. Execute exact shipped plugin bytes
-
-Qualification must execute:
-
-`dsh/knowledge-curator/runtime/bridge-plugin.js`
-
-If copied into the pinned DSH checkout for workspace resolution:
-- SHA-256 the shipped file;
-- SHA-256 the qualification copy;
-- require exact equality;
-- do not modify copied bytes;
-- remove temp DSH files after qualification.
-
----
-
-## 3. Use official AgentPresetRegistry harness architecture
-
-Mirror pinned:
-
-`packages/preset/agent-preset-registry/tests/harness.ts`
-
-Create/start actual:
-
-- Context
-- Loader
-- Group
-- LlmRuntime
-- SessionStore
-- SessionProjectionRegistry
-- SystemPrompt
-- ToolRuntime
-- AgentRegistry
-- AgentLoop
-- AgentPresetRegistry
-
-No fake ctx/tools.
-
----
-
-## 4. Mount real preset-scoped bridge tool
-
-Register/mount a `knowledge-curator` preset containing the exact shipped bridge
-plugin.
-
-Create a real Agent scope.
-
-Run:
-
-```ts
-ctx.tools.schemas(agent)
+```
+real pinned Context
+ -> real ToolRuntime
+ -> real AgentPresetRegistry
+ -> real Agent
+ -> exact shipped bridge plugin
+ -> ctx.tools.schemas(agent)
+ -> ctx.tools.execute
+ -> §5 published
+ -> real ToolRuntime output validation
 ```
 
-and prove both:
-
-- `knowledge_curator_commit`
-- `knowledge_curator_revision`
-
-are actually visible.
-
-Also record the unscoped global tool view.
+R9 may update the harness only to make assertions hard-fail and to obtain the
+exact §7 approval-required result.
 
 ---
 
-## 5. Execute real native §5 tool
+## 2. Make harness failures fatal
 
-Run:
+The qualification process MUST exit nonzero if any acceptance condition fails.
 
-```ts
-ctx.tools.execute({
-  signal,
-  callId,
-  name: 'knowledge_curator_commit',
-  arguments: commitPayload,
-  agent,
-})
-```
+At minimum hard-fail if:
+- native tool names are missing;
+- global visibility is wrong;
+- §5 `isError` is true;
+- §5 status != published;
+- §5 commit_attempted != true;
+- §7 `isError` is true;
+- §7 status != approval_required;
+- shipped/copy SHA mismatch;
+- DSH HEAD mismatch.
 
-Assert exact:
-
-- `isError === false`
-- canonical `value.status === 'published'`
-- canonical `value.commit_attempted === true`
-
-This execution must traverse:
-ToolRuntime validation -> plugin execute -> JS spawn/stdin -> Python bridge ->
-provider factory -> CuratorAgentBridge -> CurationCommitWorkflow -> ToolRuntime
-output validation/rendering.
+Do not only log `FAILED`.
 
 ---
 
-## 6. Execute real native §7 tool
+## 3. Fix native §7 qualification fixture/request
 
-Run through the same real ToolRuntime:
+Use the seeded qualification provider to construct a deterministic no-approval
+revision that reaches the frozen approval gate.
 
-`knowledge_curator_revision`
-
-Use a qualification provider with seeded revision state.
-
-For the no-approval fixture assert exact:
+Expected exact result through real `ctx.tools.execute`:
 
 `approval_required`
 
-If the fixture also supplies valid approval, assert exact:
+If it returns conflict, inspect the frozen SI-2B revision preconditions and seed
+the fixture/request accordingly.
 
-`finalized`.
-
-Do not use a multi-status acceptance set.
+Do not change frozen revision workflow/coordinator logic.
 
 ---
 
-## 7. Finish bridge transport strictness
+## 4. Real installed-package subpath qualification
 
-### CurationReport
+This is mandatory.
 
-Safety-relevant fields must not silently acquire permissive defaults when the
-serialized report is intended to carry them.
+From `dsh/knowledge-curator`:
 
-Either require or explicitly define/test optionality for:
+1. run `pnpm pack`;
+2. install the tarball into an isolated pinned DSH environment/profile;
+3. resolve:
+   `@ai4s-ed/knowledge-curator-dsh/runtime/bridge-plugin.js`;
+4. activate/use the package's own `cordis.patch.yml`;
+5. verify no broken plugin/preset diagnostic;
+6. record command, exit code and resolved file/module path.
 
-- completeness.metadata_valid
-- completeness.assertion_count
-- completeness.allows_formal_curation
-- completeness.requires_manual_review
-- completeness.requires_return_upstream
+Prefer additionally mounting the installed product preset and checking
+`ctx.tools.schemas(agent)`.
+
+A source/YAML string test is not sufficient.
+
+---
+
+## 5. CurationReport safety-field hydration
+
+For prepared serialized reports, fail closed on missing safety-relevant fields
+unless an existing accepted serialization contract explicitly defines them
+optional.
+
+Preferred required fields:
+
+### completeness
+- status
+- metadata_valid
+- assertion_count
+- allows_formal_curation
+- requires_manual_review
+- requires_return_upstream
+
+### report
+- report_id
+- source_ref_id
+- status
 - returned_upstream_count
+- decisions
 
-Hydrate supplied completeness issues faithfully.
+Hydrate issues faithfully.
 
-### RevisionPackage
-
-Do not let raw dicts leak into typed fields.
-
-Faithfully hydrate or explicitly reject supplied non-empty:
-
-- unchanged_pairs
-- modified_pairs
-- carried_records
-- transitions
-
-Preserve:
-- content_delta semantics
-- supersede/archive/added ids
-- diagnostics
-- manual-review/lifecycle flags
-- trace/provenance
-
-No silent rewrite to default-safe semantics.
+Add negative tests proving missing safety fields fail before workflow side
+effects.
 
 ---
 
-## 8. Real package-subpath qualification
+## 6. RevisionPackage nested typed hydration
 
-Pack/install the bundle into a pinned DSH environment/profile and prove the
-product row:
+Hydrate real frozen nested types.
 
-`@ai4s-ed/knowledge-curator-dsh/runtime/bridge-plugin.js`
+### ContentDeltaPlan
+`unchanged_pairs` / `modified_pairs`:
+- build `AlignedPair`;
+- validate `DeltaCategory`.
 
-resolves without broken preset/plugin diagnostics.
+### carried_records
+- build `CarriedAssertionRecord`.
 
-A YAML string assertion is not enough.
+### transitions
+- build `AssertionTransition`;
+- validate `TransitionAction`.
 
----
+Invalid/malformed -> fail closed.
 
-## 9. Qualification artifact
-
-Create:
-
-`results/phase-si-4-r8-dsh-qualification.md`
-
-It must include actual:
-
-- DSH source SHA;
-- Node/pnpm versions;
-- command(s);
-- exit code(s);
-- plugin SHA pair;
-- `ctx.tools.schemas(agent)` output;
-- global schema output;
-- commit ToolExecutionResult summary;
-- revision ToolExecutionResult summary;
-- package-resolution result;
-- public MCP exact-four result;
-- stderr/error details if any.
-
-No descriptive-only PASS lines.
+No raw dicts in typed fields.
+No silent dropping of non-empty supplied fields.
 
 ---
 
-## 10. Regression
+## 7. Preserve other RevisionPackage semantics
+
+Continue preserving:
+- content_delta.mode;
+- added/removed/extraction unit ids;
+- supersede_actions;
+- archive_actions;
+- added_assertion_ids;
+- diagnostics;
+- requires_manual_review;
+- lifecycle_reason;
+- trace_id;
+- provenance_id.
+
+Do not force default-safe values over supplied semantics.
+
+---
+
+## 8. §6 remains regression-only
+
+No redesign.
+
+Keep:
+- no content -> ABSTAIN;
+- fake anchor -> ABSTAIN;
+- invalid validation -> ABSTAIN;
+- supported evidence -> non-empty grounded answer.
+
+---
+
+## 9. Public MCP boundary
+
+Remain exactly four:
+
+- curate_assertion_set
+- knowledge_curator_health
+- retrieve_evidence
+- validate_retrieved_claims
+
+Native DSH tools remain separate preset-scoped tools.
+
+---
+
+## 10. Frozen boundaries
+
+Do not modify:
+- `knowledge_curator/**`;
+- `system/composition.py`;
+- `system/provider_loader.py`;
+- `system/mcp_stdio.py`;
+- `system/application_composition.py`;
+- `system/workflows/curation_commit.py`;
+- `system/workflows/revision_publication.py`;
+- `planner/CONTRACT_GAPS.md`.
+
+Allowed:
+- `dsh/knowledge-curator/**`;
+- `system/curator_agent_bridge_stdio.py`;
+- `integration/dsh/qualification/**`;
+- `integration/dsh/fixtures/**`;
+- `integration/dsh/tests/**`;
+- `results/**`.
+
+No dependency on:
+- `system/workflow_orchestration/**`;
+- `system/task_planner/**`.
+
+---
+
+## 11. Regression gates
 
 Run:
 
@@ -245,120 +230,108 @@ pytest integration/system/tests
 pytest integration/dsh/tests
 ```
 
-Also run the real pinned DSH qualification.
+Also run:
+- real pinned DSH native harness;
+- installed package/subpath qualification.
 
-Required mandatory regressions:
+Required:
 - 0 failed
 - 0 skipped
 - 0 xfailed
 
 ---
 
-## 11. Frozen boundaries
-
-Do not modify:
-
-- `knowledge_curator/**`
-- `system/composition.py`
-- `system/provider_loader.py`
-- `system/mcp_stdio.py`
-- `system/application_composition.py`
-- `system/workflows/curation_commit.py`
-- `system/workflows/revision_publication.py`
-- `planner/CONTRACT_GAPS.md`
-
-Allowed:
-- `dsh/knowledge-curator/**`
-- `system/curator_agent_bridge_stdio.py`
-- `integration/dsh/qualification/**`
-- `integration/dsh/fixtures/**`
-- DSH integration tests/results.
-
-Do not depend on:
-- `system/workflow_orchestration/**`
-- `system/task_planner/**`
-
----
-
-## 12. R8 executor report
+## 12. Qualification artifact
 
 Create:
 
-`results/phase-si-4-r8-executor-report.md`
+`results/phase-si-4-r9-dsh-qualification.md`
+
+Include actual:
+- pinned DSH SHA;
+- Node/pnpm;
+- native harness command + exit code;
+- `ctx.tools.schemas(agent)`;
+- §5 ToolExecutionResult;
+- §7 ToolExecutionResult == approval_required;
+- package pack/install command;
+- package subpath resolution output;
+- product preset activation result;
+- public MCP exact-four result.
+
+No descriptive-only PASS.
+
+---
+
+## 13. R9 executor report
+
+Create:
+
+`results/phase-si-4-r9-executor-report.md`
 
 Required minimum:
 
 ```
-Phase SI-4-R8 implementation CODE SHA:
+Phase SI-4-R9 implementation CODE SHA:
 
-real pinned DSH workspace/runtime executed:
-PASS / FAILED / BLOCKER
+R8 real native DSH chain preserved:
+PASS/FAILED
 evidence:
 
-exact shipped plugin bytes executed:
-PASS / FAILED
+native harness hard-fails on failed assertions:
+PASS/FAILED
 evidence:
 
-real Context started:
-PASS / FAILED
+native §5 exact PUBLISHED:
+PASS/FAILED
 evidence:
 
-real ToolRuntime mounted:
-PASS / FAILED
+native §7 exact APPROVAL_REQUIRED:
+PASS/FAILED
 evidence:
 
-real AgentPresetRegistry mounted:
-PASS / FAILED
+real ToolRuntime input/output validation:
+PASS/FAILED
 evidence:
 
-knowledge-curator mounted into real Agent:
-PASS / FAILED
+bundle pnpm pack:
+PASS/FAILED
 evidence:
 
-ctx.tools.schemas(agent) contains native curator tools:
-PASS / FAILED
+tarball installed into pinned DSH environment:
+PASS/FAILED
 evidence:
 
-knowledge_curator_commit executed via real ctx.tools:
-PASS / FAILED
+package subpath actually resolved:
+PASS/FAILED
 evidence:
 
-native §5 canonical result:
-...
-
-knowledge_curator_revision executed via real ctx.tools:
-PASS / FAILED
+product preset activated without broken diagnostic:
+PASS/FAILED
 evidence:
 
-native §7 canonical result:
-...
-
-real ToolRuntime input/output validation passed:
-PASS / FAILED
+CurationReport safety fields fail closed:
+PASS/FAILED
 evidence:
 
-installed package subpath resolved:
-PASS / FAILED
+AlignedPair typed hydration:
+PASS/FAILED
 evidence:
 
-CurationReport safety semantics faithfully hydrated:
-PASS / FAILED
+CarriedAssertionRecord typed hydration:
+PASS/FAILED
 evidence:
 
-RevisionPackage nested structured semantics faithful or explicitly rejected:
-PASS / FAILED
+AssertionTransition typed hydration:
+PASS/FAILED
 evidence:
 
 §6 regressions:
-PASS / FAILED
+PASS/FAILED
 evidence:
 
 public MCP exactly four:
-PASS / FAILED
-evidence:
-
-qualification artifact committed:
-PASS / FAILED
+PASS/FAILED
 evidence:
 
 frozen files changed:
@@ -385,6 +358,9 @@ integration/dsh:
 native DSH qualification:
 ...
 
+installed package qualification:
+...
+
 mandatory skipped:
 0
 mandatory xfailed:
@@ -399,72 +375,50 @@ NONE / describe
 
 ---
 
-## 13. Hard blocker rule
-
-If real pinned DSH execution cannot be performed:
-
-STOP and return:
-
-`BLOCKER`
-
-with:
-- exact command;
-- exact exit code;
-- stacktrace;
-- module/package resolution problem;
-- relevant pinned DSH source/API location.
-
-Do NOT replace the missing runtime proof with:
-- static Node source checks;
-- direct Python subprocess;
-- fake Context;
-- fake ToolRuntime;
-- report-only PASS.
-
----
-
 ## 14. Completion protocol
 
-1. read formal R7 review and R8 exact execution recipe;
-2. perform real pinned DSH qualification;
-3. fix only runtime defects exposed by that qualification;
-4. finish remaining faithful transport hydration;
-5. run package resolution qualification;
-6. run all regressions;
-7. commit `results/phase-si-4-r8-dsh-qualification.md`;
-8. create `results/phase-si-4-r8-executor-report.md`;
-9. commit implementation;
-10. push main;
-11. update status.json:
-   - phase = SI-4-R8
-   - actor = executor
-   - state = executor_complete OR blocker
-   - latest_commit = <R8 CODE SHA>
-   - result_expected = results/phase-si-4-r8-executor-report.md
-12. commit/push bookkeeping;
-13. verify clean tree and HEAD == origin/main;
-14. STOP.
+1. implement only SI-4-R9;
+2. make the real native harness fail hard on assertion failures;
+3. make native no-approval §7 return exact approval_required;
+4. perform real package pack/install/subpath qualification;
+5. finish fail-closed CurationReport safety hydration;
+6. finish typed RevisionPackage nested hydration;
+7. run all regressions;
+8. create R9 qualification artifact;
+9. create R9 executor report;
+10. commit implementation;
+11. push main;
+12. update `status.json`:
+    - phase = SI-4-R9
+    - actor = executor
+    - state = executor_complete
+    - latest_commit = <R9 CODE SHA>
+    - result_expected = results/phase-si-4-r9-executor-report.md
+13. commit/push bookkeeping;
+14. verify clean tree and HEAD == origin/main;
+15. STOP.
 
 Do not start SI-5.
 
 ## 15. Final acceptance question
 
-SI-4 is accepted only when the actual pinned DSH runtime itself executes the
-exact shipped plugin through:
+R9 passes only if:
 
 ```
-real Context
- -> real ToolRuntime
- -> real AgentPresetRegistry
- -> real Agent scope
- -> defineTool
- -> ctx.tools.schemas(agent)
- -> ctx.tools.execute(..., agent)
- -> JS spawn/stdin
- -> Python bridge
- -> deployment provider
- -> faithful typed hydration
- -> accepted §5/§7 workflows
+real pinned DSH native execution = proven
+AND
+native §5 = PUBLISHED
+AND
+native §7 no approval = APPROVAL_REQUIRED
+AND
+installed package subpath = actually resolved
+AND
+transport hydration = fail-closed/typed
+AND
+public MCP = exactly four
+AND
+frozen core = unchanged
 ```
 
-If that cannot be demonstrated, report BLOCKER rather than PASS.
+Then Planner may mark the Knowledge Curator DSH package
+ACCEPTED / FROZEN / DELIVERABLE.
