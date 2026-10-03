@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R7 implementation CODE SHA
 
-（见 commit）
+ce3baa4
 
 static real defineTool import, no fallback:
 PASS
