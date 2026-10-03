@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R8 implementation CODE SHA
 
-（见 commit）
+a9d8c3d
 
 real pinned DSH workspace/runtime executed:
 PASS
