@@ -113,10 +113,13 @@ def _hydrate_assertion_set(data: dict) -> Any:
 
 def _hydrate_source_identity(data: dict) -> Any:
     from knowledge_curator.schemas.commit import SourceIdentity
-    return SourceIdentity(
-        ref_id=data.get("ref_id", ""),
-        source_fingerprint=data.get("source_fingerprint", ""),
-    )
+    ref = data.get("ref_id")
+    fp = data.get("source_fingerprint")
+    if not ref:
+        raise ValueError("source.ref_id is required")
+    if not fp:
+        raise ValueError("source.source_fingerprint is required")
+    return SourceIdentity(ref_id=ref, source_fingerprint=fp)
 
 
 def _hydrate_revision_package(data: dict) -> Any:
@@ -140,28 +143,76 @@ def _hydrate_revision_package(data: dict) -> Any:
         subj = a.get("subject") or {}
         obj = a.get("object") or {}
         prov = a.get("provenance") or {}
+        # R6: strict hydration - no fabricated enum defaults
+        vt = obj.get("value_type")
+        if not vt:
+            raise ValueError("target assertion object.value_type is required")
+        try:
+            value_type = ValueType(vt)
+        except ValueError:
+            raise ValueError(f"invalid value_type: {vt}")
+
+        ct = a.get("claim_type")
+        if not ct:
+            raise ValueError("target assertion claim_type is required")
+        try:
+            claim_type = ClaimType(ct)
+        except ValueError:
+            raise ValueError(f"invalid claim_type: {ct}")
+
+        sco = a.get("source_claim_origin")
+        if not sco:
+            raise ValueError("target assertion source_claim_origin is required")
+        try:
+            origin = SourceClaimOrigin(sco)
+        except ValueError:
+            raise ValueError(f"invalid source_claim_origin: {sco}")
+
+        conf = a.get("confidence")
+        if not conf:
+            raise ValueError("target assertion confidence is required")
+        try:
+            confidence = Confidence(conf)
+        except ValueError:
+            raise ValueError(f"invalid confidence: {conf}")
+
+        aid = a.get("id")
+        if not aid:
+            raise ValueError("target assertion id is required")
+        aref = a.get("ref_id")
+        if not aref:
+            raise ValueError("target assertion ref_id is required")
+        prop = a.get("property")
+        if not prop:
+            raise ValueError("target assertion property is required")
+
         assertions.append(Assertion(
-            id=a.get("id", ""),
-            ref_id=a.get("ref_id", ""),
+            id=aid,
+            ref_id=aref,
             subject=Subject(eddo_class=subj.get("eddo_class", ""), resolved_entity=subj.get("resolved_entity", ""), original_mention=subj.get("original_mention", "")),
-            property=a.get("property", ""),
-            object=ObjectValue(value=obj.get("value"), unit=obj.get("unit"), value_type=ValueType.NUMBER, uncertainty=obj.get("uncertainty")),
+            property=prop,
+            object=ObjectValue(value=obj.get("value"), unit=obj.get("unit"), value_type=value_type, uncertainty=obj.get("uncertainty")),
             conditions=[Condition(eddo_class=c.get("eddo_class", ""), value=c.get("value"), unit=c.get("unit")) for c in (a.get("conditions") or [])],
             provenance=Provenance(locator=prov.get("locator", ""), sentence=prov.get("sentence")) if prov.get("locator") else None,
-            claim_type=ClaimType.MEASUREMENT,
-            source_claim_origin=SourceClaimOrigin.PRIMARY,
-            confidence=Confidence.MEDIUM,
+            claim_type=claim_type,
+            source_claim_origin=origin,
+            confidence=confidence,
             quality=a.get("quality", 0.5),
         ))
 
+    # R6: strict required fields
+    for field in ("package_id", "work_id", "prior_source_version_id", "new_source_version_id", "prior_ref_id", "new_ref_id"):
+        if not data.get(field):
+            raise ValueError(f"package.{field} is required")
+
     return RevisionPackage(
-        package_id=data.get("package_id", ""),
-        work_id=data.get("work_id", ""),
-        prior_source_version_id=data.get("prior_source_version_id", ""),
-        new_source_version_id=data.get("new_source_version_id", ""),
+        package_id=data["package_id"],
+        work_id=data["work_id"],
+        prior_source_version_id=data["prior_source_version_id"],
+        new_source_version_id=data["new_source_version_id"],
         relation=relation,
-        prior_ref_id=data.get("prior_ref_id", ""),
-        new_ref_id=data.get("new_ref_id", ""),
+        prior_ref_id=data["prior_ref_id"],
+        new_ref_id=data["new_ref_id"],
         prior_bound_kb_version_id=data.get("prior_bound_kb_version_id"),
         content_delta=ContentDeltaPlan(mode=DeltaMode.DELTA_SAFE),
         target_assertions=assertions,
@@ -196,18 +247,41 @@ def _hydrate_commit_request(data: dict) -> Any:
             conf = Confidence(conf_str)
         except ValueError:
             raise ValueError(f"invalid confidence: {conf_str}")
+        aid = d.get("assertion_id")
+        if not aid:
+            raise ValueError("decision.assertion_id is required")
+        reason = d.get("reason")
+        if not reason:
+            raise ValueError("decision.reason is required")
         decisions.append(AssertionDecision(
-            assertion_id=d.get("assertion_id", ""),
+            assertion_id=aid,
             action=action,
             confidence=conf,
-            reason=d.get("reason", ""),
+            reason=reason,
         ))
 
+    # R6: hydrate completeness from input, do not fabricate OK
+    comp_raw = report_raw.get("completeness") or {}
+    comp_status_str = comp_raw.get("status")
+    if not comp_status_str:
+        raise ValueError("report.completeness.status is required")
+    try:
+        comp_status = CompletenessStatus(comp_status_str)
+    except ValueError:
+        raise ValueError(f"invalid completeness status: {comp_status_str}")
+
+    report_id = report_raw.get("report_id")
+    if not report_id:
+        raise ValueError("report.report_id is required")
+    report_status = report_raw.get("status")
+    if not report_status:
+        raise ValueError("report.status is required")
+
     report = CurationReport(
-        report_id=report_raw.get("report_id", ""),
+        report_id=report_id,
         source_ref_id=report_raw.get("source_ref_id", source.ref_id),
-        status=report_raw.get("status", "successful"),
-        completeness=CompletenessResult(status=CompletenessStatus.OK),
+        status=report_status,
+        completeness=CompletenessResult(status=comp_status),
         decisions=decisions,
     )
 
@@ -225,12 +299,16 @@ def _hydrate_approval(data: Optional[dict]) -> Optional[Any]:
         decision = ApprovalDecision(dec_str)
     except ValueError:
         raise ValueError(f"invalid approval decision: {dec_str}")
+    for field in ("approval_id", "package_id", "scope_hash", "approver"):
+        if not data.get(field):
+            raise ValueError(f"approval.{field} is required")
+
     return RevisionApproval(
-        approval_id=data.get("approval_id", ""),
-        package_id=data.get("package_id", ""),
-        scope_hash=data.get("scope_hash", ""),
+        approval_id=data["approval_id"],
+        package_id=data["package_id"],
+        scope_hash=data["scope_hash"],
         decision=decision,
-        approver=data.get("approver", ""),
+        approver=data["approver"],
     )
 
 
@@ -342,6 +420,11 @@ def main() -> int:
 
     try:
         if action == "curate_and_commit":
+            # R6: validate required fields
+            if not payload.get("source_ref_id"):
+                raise ValueError("source_ref_id is required")
+            if not payload.get("source_fingerprint"):
+                raise ValueError("source_fingerprint is required")
             result = asyncio.run(bridge.curate_and_commit(
                 source_ref_id=payload.get("source_ref_id", ""),
                 source_fingerprint=payload.get("source_fingerprint", ""),

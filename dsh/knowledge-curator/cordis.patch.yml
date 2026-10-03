@@ -21,7 +21,7 @@
               includeRuntimeContext: false
 
           - id: curator-bridge
-            name: './runtime/bridge-plugin.js'
+            name: '@ai4s-ed/knowledge-curator-dsh/runtime/bridge-plugin.js'
             config: {}
 
           - id: mcp-knowledge-curator

@@ -1,10 +1,10 @@
 ﻿/**
- * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R5)
+ * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R6)
  *
- * Uses pinned DSH defineTool contract.
- * Real async spawn stdin transport (no execFile input hack).
+ * Uses pinned @deepseek-ai/dsh-tools defineTool contract.
+ * Real async spawn stdin transport.
  * Preset-scoped DSH-native tools: knowledge_curator_commit, knowledge_curator_revision.
- * These are NOT public MCP tools.
+ * NOT public MCP tools.
  */
 
 import { spawn } from 'node:child_process'
@@ -14,9 +14,6 @@ const WORKSPACE = process.env.AI4S_KC_WORKSPACE || process.cwd()
 const TIMEOUT_MS = 60000
 const MAX_BUFFER = 1024 * 1024
 
-/**
- * Real async stdin transport: spawn -> stdin.write -> stdin.end.
- */
 function callBridge(action, payload, signal) {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -34,20 +31,11 @@ function callBridge(action, payload, signal) {
     let settled = false
 
     const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true
-        child.kill('SIGTERM')
-        reject(new Error(`bridge timeout after ${TIMEOUT_MS}ms`))
-      }
+      if (!settled) { settled = true; child.kill('SIGTERM'); reject(new Error(`bridge timeout after ${TIMEOUT_MS}ms`)) }
     }, TIMEOUT_MS)
 
     const onAbort = () => {
-      if (!settled) {
-        settled = true
-        clearTimeout(timer)
-        child.kill('SIGTERM')
-        reject(new Error('bridge cancelled'))
-      }
+      if (!settled) { settled = true; clearTimeout(timer); child.kill('SIGTERM'); reject(new Error('bridge cancelled')) }
     }
     if (signal) {
       if (signal.aborted) { onAbort(); return }
@@ -91,44 +79,55 @@ function callBridge(action, payload, signal) {
       }
     })
 
-    // Send payload via stdin
     child.stdin.write(JSON.stringify(payload))
     child.stdin.end()
   })
 }
 
-/**
- * DSH plugin entry using pinned Cordis shape: export name, inject, apply.
- */
+// Lazy-load defineTool to handle module resolution in different contexts
+let _defineTool = null
+async function getDefineTool() {
+  if (_defineTool) return _defineTool
+  try {
+    const mod = await import('@deepseek-ai/dsh-tools')
+    _defineTool = mod.defineTool || mod.default?.defineTool
+  } catch {
+    // Fallback: identity function for environments where dsh-tools is not resolvable
+    _defineTool = (opts) => opts
+  }
+  return _defineTool
+}
+
 export const name = 'curator-bridge'
 export const inject = ['tools']
 
-export function apply(ctx, config) {
-  if (!ctx.tools || typeof ctx.tools.register !== 'function') {
-    return
-  }
+export async function apply(ctx) {
+  if (!ctx.tools || typeof ctx.tools.register !== 'function') return
 
-  // Register using defineTool from pinned dsh-tools
-  // Note: importing defineTool from '@deepseek-ai/dsh-tools' requires the
-  // package to be available in the DSH runtime module resolution path.
-  // Since the plugin is loaded by the DSH Cordis loader, we use the
-  // tools.register API which is the actual available contract in rc.1.
+  const defineTool = await getDefineTool()
 
-  ctx.tools.register({
+  const commitTool = defineTool({
     name: 'knowledge_curator_commit',
-    description: 'Preset-scoped: Curate an AssertionSet and commit via CurationCommitWorkflow.',
+    description: 'Commit a publishable curated AssertionSet through the accepted application workflow.',
     parameters: {
       source_ref_id: { type: 'string', required: true },
       source_fingerprint: { type: 'string', required: true },
-      assertion_set: { type: 'object', required: true },
-      metadata: { type: 'object', required: false },
-      trace: { type: 'object', required: false },
+      assertion_set: { type: 'object', required: true, additionalProperties: true },
+      metadata: { type: 'object', additionalProperties: true },
+      trace: { type: 'object', additionalProperties: true },
     },
     output: {
       schema: {
-        status: { type: 'string' },
-        commit_attempted: { type: 'boolean' },
-        blocked_reason: { type: 'string' },
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', required: true },
+          commit_attempted: { type: 'boolean', required: true },
+          blocked_reason: {
+            required: true,
+            oneOf: [{ type: 'string' }, { type: 'null' }],
+          },
+        },
       },
       render: (_args, value) => [
         { type: 'text', text: JSON.stringify(value) },
@@ -139,18 +138,22 @@ export function apply(ctx, config) {
     },
   })
 
-  ctx.tools.register({
+  const revisionTool = defineTool({
     name: 'knowledge_curator_revision',
-    description: 'Preset-scoped: Publish a revision via RevisionPublicationWorkflow.',
+    description: 'Apply a prepared revision through RevisionPublicationWorkflow.',
     parameters: {
-      package: { type: 'object', required: true },
-      target_commit_request: { type: 'object', required: true },
-      approval: { type: 'object', required: false },
+      package: { type: 'object', required: true, additionalProperties: true },
+      target_commit_request: { type: 'object', required: true, additionalProperties: true },
+      approval: { type: 'object', additionalProperties: true },
     },
     output: {
       schema: {
-        status: { type: 'string' },
-        error: { type: 'string' },
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', required: true },
+          error: { type: 'string' },
+        },
       },
       render: (_args, value) => [
         { type: 'text', text: JSON.stringify(value) },
@@ -160,4 +163,7 @@ export function apply(ctx, config) {
       return await callBridge('revise', args, exec?.signal)
     },
   })
+
+  ctx.effect(() => ctx.tools.register(commitTool))
+  ctx.effect(() => ctx.tools.register(revisionTool))
 }
