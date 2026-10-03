@@ -2,8 +2,8 @@
   "project": "AI4S-ED",
   "module": "system_integration",
   "phase": "SI-4-R6",
-  "actor": "planner",
-  "state": "ready_for_executor",
+  "actor": "executor",
+  "state": "executor_complete",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
@@ -22,7 +22,7 @@
     "Do not modify frozen core/workflows or depend on workflow_orchestration/task_planner",
     "STOP after SI-4-R6 completion"
   ],
-  "latest_commit": "bd982b4311247dc236628f983f00c7707104eaa3",
+  "latest_commit": "e1584c9",
   "r5_review": "planner/phase-si-4-r5-review.md",
   "r5_verdict": "NOT_ACCEPTED_R6_REQUIRED"
 }

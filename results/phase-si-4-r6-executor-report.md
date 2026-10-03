@@ -9,7 +9,7 @@
 
 ## Phase SI-4-R6 implementation CODE SHA
 
-（见 commit）
+e1584c9
 
 defineTool actually imported and used:
 PASS
