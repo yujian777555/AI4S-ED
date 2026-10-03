@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R7)
  *
  * Static import of pinned @deepseek-ai/dsh-tools defineTool.

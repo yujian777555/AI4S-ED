@@ -228,8 +228,8 @@ def _hydrate_revision_package(data: dict) -> Any:
 
     content_delta = ContentDeltaPlan(
         mode=cd_mode,
-        unchanged_pairs=cd_raw.get("unchanged_pairs") or [],
-        modified_pairs=cd_raw.get("modified_pairs") or [],
+        unchanged_pairs=[_hydrate_aligned_pair(x) for x in (cd_raw.get("unchanged_pairs") or [])],
+        modified_pairs=[_hydrate_aligned_pair(x) for x in (cd_raw.get("modified_pairs") or [])],
         added_unit_ids=cd_raw.get("added_unit_ids") or [],
         removed_unit_ids=cd_raw.get("removed_unit_ids") or [],
         extraction_unit_ids=cd_raw.get("extraction_unit_ids") or [],
@@ -251,6 +251,8 @@ def _hydrate_revision_package(data: dict) -> Any:
         supersede_actions=data.get("supersede_actions") or {},
         archive_actions=data.get("archive_actions") or [],
         added_assertion_ids=data.get("added_assertion_ids") or [],
+        carried_records=[_hydrate_carried_record(x) for x in (data.get("carried_records") or [])],
+        transitions=[_hydrate_transition(x) for x in (data.get("transitions") or [])],
         requires_manual_review=data.get("requires_manual_review", False),
         lifecycle_reason=data.get("lifecycle_reason", ""),
         trace_id=data.get("trace_id", ""),
@@ -322,14 +324,38 @@ def _hydrate_commit_request(data: dict) -> Any:
             assertion_ids=issue_raw.get("assertion_ids") or [],
         ))
 
+    # R9: safety fields must be explicitly provided (no permissive defaults)
+    def _require_bool(data, field, ctx):
+        if field not in data:
+            raise ValueError(f"{ctx}.{field} is required")
+        v = data[field]
+        if not isinstance(v, bool):
+            raise ValueError(f"{ctx}.{field} must be bool, got {type(v).__name__}")
+        return v
+
+    def _require_nonneg_int(data, field, ctx):
+        if field not in data:
+            raise ValueError(f"{ctx}.{field} is required")
+        v = data[field]
+        if not isinstance(v, int) or v < 0:
+            raise ValueError(f"{ctx}.{field} must be non-negative int")
+        return v
+
+    metadata_valid = _require_bool(comp_raw, "metadata_valid", "completeness")
+    assertion_count = _require_nonneg_int(comp_raw, "assertion_count", "completeness")
+    allows_formal_curation = _require_bool(comp_raw, "allows_formal_curation", "completeness")
+    requires_manual_review = _require_bool(comp_raw, "requires_manual_review", "completeness")
+    requires_return_upstream = _require_bool(comp_raw, "requires_return_upstream", "completeness")
+    returned_upstream_count = _require_nonneg_int(report_raw, "returned_upstream_count", "report")
+
     completeness = CompletenessResult(
         status=comp_status,
         issues=issues,
-        metadata_valid=comp_raw.get("metadata_valid", True),
-        assertion_count=comp_raw.get("assertion_count", 0),
-        allows_formal_curation=comp_raw.get("allows_formal_curation", True),
-        requires_manual_review=comp_raw.get("requires_manual_review", False),
-        requires_return_upstream=comp_raw.get("requires_return_upstream", False),
+        metadata_valid=metadata_valid,
+        assertion_count=assertion_count,
+        allows_formal_curation=allows_formal_curation,
+        requires_manual_review=requires_manual_review,
+        requires_return_upstream=requires_return_upstream,
     )
 
     report_id = report_raw.get("report_id")
@@ -345,7 +371,7 @@ def _hydrate_commit_request(data: dict) -> Any:
         status=report_status,
         completeness=completeness,
         decisions=decisions,
-        returned_upstream_count=report_raw.get("returned_upstream_count", 0),
+        returned_upstream_count=returned_upstream_count,
         accepted_count=report_raw.get("accepted_count", 0),
         downgraded_count=report_raw.get("downgraded_count", 0),
         rejected_count=report_raw.get("rejected_count", 0),
@@ -378,6 +404,66 @@ def _hydrate_approval(data: Optional[dict]) -> Optional[Any]:
         scope_hash=data["scope_hash"],
         decision=decision,
         approver=data["approver"],
+    )
+
+
+def _hydrate_aligned_pair(data: dict):
+    from knowledge_curator.schemas.version_delta import AlignedPair, DeltaCategory
+    prior = data.get("prior_unit_id")
+    new = data.get("new_unit_id")
+    cat_raw = data.get("category")
+    if not prior:
+        raise ValueError("aligned_pair.prior_unit_id is required")
+    if not new:
+        raise ValueError("aligned_pair.new_unit_id is required")
+    if not cat_raw:
+        raise ValueError("aligned_pair.category is required")
+    try:
+        category = DeltaCategory(cat_raw)
+    except ValueError:
+        raise ValueError(f"invalid DeltaCategory: {cat_raw}")
+    return AlignedPair(prior_unit_id=prior, new_unit_id=new, category=category)
+
+
+def _hydrate_carried_record(data: dict):
+    from knowledge_curator.schemas.version_delta import CarriedAssertionRecord
+    old_id = data.get("old_assertion_id")
+    carried_id = data.get("carried_assertion_id")
+    unit_id = data.get("unit_id")
+    if not old_id:
+        raise ValueError("carried_record.old_assertion_id is required")
+    if not carried_id:
+        raise ValueError("carried_record.carried_assertion_id is required")
+    if not unit_id:
+        raise ValueError("carried_record.unit_id is required")
+    return CarriedAssertionRecord(
+        old_assertion_id=old_id,
+        carried_assertion_id=carried_id,
+        unit_id=unit_id,
+    )
+
+
+def _hydrate_transition(data: dict):
+    from knowledge_curator.schemas.version_delta import AssertionTransition, TransitionAction
+    action_raw = data.get("action")
+    slot_key = data.get("slot_key")
+    reason = data.get("reason")
+    if not action_raw:
+        raise ValueError("transition.action is required")
+    if not slot_key:
+        raise ValueError("transition.slot_key is required")
+    if not reason:
+        raise ValueError("transition.reason is required")
+    try:
+        action = TransitionAction(action_raw)
+    except ValueError:
+        raise ValueError(f"invalid TransitionAction: {action_raw}")
+    return AssertionTransition(
+        action=action,
+        old_assertion_id=data.get("old_assertion_id"),
+        new_assertion_id=data.get("new_assertion_id"),
+        slot_key=slot_key,
+        reason=reason,
     )
 
 

@@ -195,8 +195,9 @@ class TestNativeToolExecution:
                     },
                     "report": {
                         "report_id": "r-r6v", "source_ref_id": "ED-NEW", "status": "successful",
-                        "completeness": {"status": "ok"},
+                        "completeness": {"status": "ok", "metadata_valid": True, "assertion_count": 1, "allows_formal_curation": True, "requires_manual_review": False, "requires_return_upstream": False},
                         "decisions": [{"assertion_id": "AS-001", "action": "accept", "confidence": "medium", "reason": "valid"}],
+                        "returned_upstream_count": 0,
                     },
                 },
             }),
