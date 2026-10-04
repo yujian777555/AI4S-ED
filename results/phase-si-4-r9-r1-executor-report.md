@@ -8,7 +8,7 @@
 
 ## Phase SI-4-R9-R1 CODE SHA
 
-（见 commit）
+9591cd3
 
 real pinned native chain preserved:
 PASS
