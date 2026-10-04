@@ -1,27 +1,25 @@
 {
   "project": "AI4S-ED",
   "module": "system_integration",
-  "phase": "SI-4-R9-R1",
-  "actor": "executor",
-  "state": "executor_complete",
+  "phase": "SI-4-R9-R2",
+  "actor": "planner",
+  "state": "ready_for_executor",
   "planner": "ChatGPT",
   "executor": "MiMo/Kimi/Codex",
   "current_plan": "planner/latest_plan.md",
-  "result_expected": "results/phase-si-4-r9-r1-executor-report.md",
+  "result_expected": "results/phase-si-4-r9-r2-executor-report.md",
   "previous_phase": "SI-3A",
   "previous_commit": "8eb5a5b",
   "constraints": [
-    "R9 transport semantics/typed hydration are accepted; do not reopen them without a concrete regression",
-    "Native §7 through real ctx.tools must return exact approval_required; conflict is not an accepted qualification result",
-    "Harness must hard-fail on wrong §7 status and on global native-tool leakage",
-    "Actually install the packed tarball in a clean pinned environment and resolve/import the package subpath",
-    "Activate the installed product bundle/preset and record real evidence",
-    "Commit results/phase-si-4-r9-r1-dsh-qualification.md; R9 omitted the required qualification artifact",
+    "R9-R1 native §5 PUBLISHED, native §7 APPROVAL_REQUIRED, clean tarball install, subpath import, and typed/fail-closed hydration are accepted",
+    "Final remaining proof: activate the installed tarball's own cordis.patch.yml through pinned DSH Loader/app-boot/profile and prove knowledge-curator preset declared/not broken",
+    "Add a real hard assertion that native curator tools do not leak into ctx.tools.schemas() global view",
+    "Do not reopen business/workflow/transport architecture",
+    "Commit results/phase-si-4-r9-r2-dsh-qualification.md with actual installed-patch activation evidence",
     "Public MCP remains exactly four tools",
-    "Do not modify frozen core/workflows or depend on workflow_orchestration/task_planner",
-    "STOP after SI-4-R9-R1"
+    "STOP after SI-4-R9-R2"
   ],
-  "latest_commit": "9591cd3",
+  "latest_commit": "d01056f64c9c4ed638fa6d688649b25a18bec639",
   "r5_review": "planner/phase-si-4-r5-review.md",
   "r5_verdict": "NOT_ACCEPTED_R6_REQUIRED",
   "r6_review": "planner/phase-si-4-r6-review.md",
@@ -31,5 +29,7 @@
   "r8_review": "planner/phase-si-4-r8-review.md",
   "r8_verdict": "NATIVE_RUNTIME_ACCEPTED_FINAL_R9_REQUIRED",
   "r9_review": "planner/phase-si-4-r9-review.md",
-  "r9_verdict": "SEMANTICS_ACCEPTED_FINAL_EVIDENCE_R1_REQUIRED"
+  "r9_verdict": "SEMANTICS_ACCEPTED_FINAL_EVIDENCE_R1_REQUIRED",
+  "r9_r1_review": "planner/phase-si-4-r9-r1-review.md",
+  "r9_r1_verdict": "CORE_EVIDENCE_ACCEPTED_INSTALLED_PRESET_ACTIVATION_REQUIRED"
 }
