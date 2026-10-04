@@ -8,7 +8,7 @@
 
 ## Phase SI-4-R9-R2 CODE SHA
 
-（见 commit）
+322e53e
 
 R9-R1 native baseline preserved:
 PASS
