@@ -110,6 +110,8 @@ async function main() {
   // global schemas
   const global = ctx.tools.schemas().map((row) => row.name)
   console.log('ctx.tools.schemas() global:', JSON.stringify(global))
+  assert(!global.includes('knowledge_curator_commit'), 'knowledge_curator_commit leaked into global scope')
+  assert(!global.includes('knowledge_curator_revision'), 'knowledge_curator_revision leaked into global scope')
 
   // Execute commit via real ctx.tools
   const { ToolCallId } = await import('@deepseek-ai/dsh-llm')
