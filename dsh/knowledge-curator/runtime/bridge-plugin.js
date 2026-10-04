@@ -1,5 +1,5 @@
 /**
- * AI4S Knowledge Curator — DSH Native Bridge Plugin (SI-4-R7)
+ * AI4S Knowledge Curator 鈥?DSH Native Bridge Plugin (SI-4-R7)
  *
  * Static import of pinned @deepseek-ai/dsh-tools defineTool.
  * No fallback. No identity shim. Fail closed on dependency error.
@@ -153,3 +153,4 @@ export function apply(ctx) {
   ctx.effect(() => ctx.tools.register(commitTool))
   ctx.effect(() => ctx.tools.register(revisionTool))
 }
+

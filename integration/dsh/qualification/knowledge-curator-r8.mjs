@@ -127,7 +127,7 @@ async function main() {
         conditions: [{ eddo_class: 'Temperature', value: 298.15, unit: 'K' }],
         provenance: { locator: 'p.1', sentence: 'energy is 1.42' },
         claim_type: 'measurement', source_claim_origin: 'primary',
-        confidence: 'medium', quality: 0.85,
+        confidence: 'hypothesis', quality: 0.85,
       }],
     },
     metadata: {}, trace: {},
@@ -162,7 +162,7 @@ async function main() {
         conditions: [{ eddo_class: 'Temperature', value: 298.15, unit: 'K' }],
         provenance: { locator: 'p.1', sentence: 'energy is 1.5' },
         claim_type: 'measurement', source_claim_origin: 'primary',
-        confidence: 'medium', quality: 0.85,
+        confidence: 'hypothesis', quality: 0.85,
       }],
     },
     target_commit_request: {
@@ -200,9 +200,8 @@ async function main() {
 
   console.log('revision ToolExecutionResult:', JSON.stringify({ isError: revision.isError, value: revision.value }))
   assert(!revision.isError, 'revision tool returned isError')
-  assert(['approval_required', 'conflict'].includes(revision.value?.status), 'revision status unexpected: ' + JSON.stringify(revision.value))
-  console.log('native §7 canonical result: PASS (' + revision.value?.status + ')')
-  console.log('Note: direct Python bridge call with same payload returns approval_required')
+  assert(revision.value?.status === 'approval_required', 'expected approval_required, got: ' + JSON.stringify(revision.value))
+  console.log('native §7 canonical result: PASS (approval_required)')
 
   // Cleanup
   await ctx.fiber.dispose()

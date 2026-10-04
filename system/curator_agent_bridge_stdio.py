@@ -563,6 +563,7 @@ def main() -> int:
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
+        print(f'R9R1 FULL PAYLOAD: {json.dumps(payload, ensure_ascii=False)[:2000]}', file=sys.stderr)
     except json.JSONDecodeError as exc:
         print(json.dumps({"error": f"invalid JSON: {exc}"}))
         return 1
@@ -593,6 +594,13 @@ def main() -> int:
                 "blocked_reason": result.blocked_reason,
             }))
         elif action == "revise":
+            import sys as _s
+            _pkg = payload.get("package") or {}
+            print(f"R9R1 DEBUG package.prior_bound_kb_version_id={_pkg.get('prior_bound_kb_version_id')}", file=_s.stderr)
+            print(f"R9R1 DEBUG package.target_assertions[0].confidence={(_pkg.get('target_assertions') or [{}])[0].get('confidence')}", file=_s.stderr)
+            _req = payload.get("target_commit_request") or {}
+            _as = (_req.get('assertion_set') or {}).get('assertions') or [{}]
+            print(f"R9R1 DEBUG request.assertions[0].confidence={_as[0].get('confidence')}", file=_s.stderr)
             package = _hydrate_revision_package(payload.get("package") or {})
             request = _hydrate_commit_request(payload.get("target_commit_request") or {})
             approval = _hydrate_approval(payload.get("approval"))
@@ -617,3 +625,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
