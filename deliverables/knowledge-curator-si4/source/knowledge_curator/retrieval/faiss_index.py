@@ -1,0 +1,92 @@
+"""FaissVectorSearch — correctness-first FAISS search (Phase 4.2.2).
+
+Searches ALL indexed rows then filters eligible ones. No oversampling gamble.
+Independent from §5 VectorIndex commit semantics.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from knowledge_curator.ports.retrieval import (
+    RetrievalCandidate,
+    RetrievalChannel,
+    RetrievalQuery,
+)
+from knowledge_curator.retrieval.embedder import DenseEmbedderPort
+from knowledge_curator.schemas.chunk import ChunkLevel, KnowledgeChunk
+
+
+class FaissVectorSearch:
+    """FAISS-backed vector search with exact filtered correctness."""
+
+    def __init__(self, embedder: DenseEmbedderPort) -> None:
+        self._embedder = embedder
+        self._chunks: list[KnowledgeChunk] = []
+        self._vectors = None
+        self._index = None
+
+    def add_chunks(self, chunks: list[KnowledgeChunk]) -> None:
+        import numpy as np
+
+        if not chunks:
+            return
+        texts = [c.payload for c in chunks]
+        vecs = self._embedder.embed(texts)
+        if vecs.shape[1] != self._embedder.dimension:
+            raise ValueError(
+                f"dimension mismatch: got {vecs.shape[1]}, expected {self._embedder.dimension}"
+            )
+        self._chunks.extend(chunks)
+        combined = vecs if self._vectors is None else np.vstack([self._vectors, vecs])
+        self._vectors = combined
+        self._rebuild_index()
+
+    def _rebuild_index(self):
+        try:
+            import faiss
+        except ImportError as exc:
+            raise RuntimeError(
+                "faiss is required for FaissVectorSearch. "
+                "Install: pip install faiss-cpu"
+            ) from exc
+        dim = self._embedder.dimension
+        self._index = faiss.IndexFlatIP(dim)
+        if self._vectors is not None and len(self._vectors) > 0:
+            self._index.add(self._vectors.astype("float32"))
+
+    def search(self, query: RetrievalQuery) -> list[RetrievalCandidate]:
+        """Search ALL rows then filter — correctness first (Phase 4.2.2)."""
+        import numpy as np
+
+        if self._index is None or not self._chunks:
+            return []
+        qvec = self._embedder.embed([query.text])
+        if qvec.shape[1] != self._embedder.dimension:
+            raise ValueError("query dimension mismatch")
+
+        n = len(self._chunks)
+        # Search ALL indexed rows — no oversampling gamble
+        scores, indices = self._index.search(qvec.astype("float32"), n)
+        results: list[RetrievalCandidate] = []
+        rank = 0
+        for score, idx in zip(scores[0], indices[0]):
+            if idx < 0 or idx >= n:
+                continue
+            chunk = self._chunks[idx]
+            if chunk.level != query.level:
+                continue
+            if query.allowed_ref_ids is not None and chunk.ref_id not in query.allowed_ref_ids:
+                continue
+            rank += 1
+            results.append(
+                RetrievalCandidate(
+                    chunk=chunk,
+                    channel=RetrievalChannel.VECTOR,
+                    rank=rank,
+                    raw_score=float(score),
+                )
+            )
+            if rank >= query.top_k:
+                break
+        return results

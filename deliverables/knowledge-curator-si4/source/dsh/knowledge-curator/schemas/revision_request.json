@@ -1,0 +1,49 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RevisionRequest",
+  "description": "Input for knowledge revision flow (internal workflow, not MCP tool)",
+  "type": "object",
+  "required": ["package", "target_commit_request"],
+  "properties": {
+    "package": {
+      "type": "object",
+      "required": ["package_id", "work_id", "prior_source_version_id", "new_source_version_id"],
+      "properties": {
+        "package_id": {"type": "string"},
+        "work_id": {"type": "string"},
+        "prior_source_version_id": {"type": "string"},
+        "new_source_version_id": {"type": "string"},
+        "relation": {"type": "string"},
+        "prior_ref_id": {"type": "string"},
+        "new_ref_id": {"type": "string"},
+        "requires_manual_review": {"type": "boolean", "default": false}
+      }
+    },
+    "target_commit_request": {
+      "type": "object",
+      "required": ["source", "assertion_set", "report"],
+      "properties": {
+        "source": {
+          "type": "object",
+          "required": ["ref_id", "source_fingerprint"],
+          "properties": {
+            "ref_id": {"type": "string"},
+            "source_fingerprint": {"type": "string"}
+          }
+        },
+        "assertion_set": {"type": "object"},
+        "report": {"type": "object"}
+      }
+    },
+    "approval": {
+      "type": ["object", "null"],
+      "properties": {
+        "approval_id": {"type": "string"},
+        "package_id": {"type": "string"},
+        "scope_hash": {"type": "string"},
+        "decision": {"type": "string", "enum": ["approved", "rejected"]},
+        "approver": {"type": "string"}
+      }
+    }
+  }
+}

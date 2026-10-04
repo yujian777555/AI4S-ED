@@ -1,0 +1,19 @@
+﻿AI4S-ED Knowledge Curator
+
+Delivery:
+SI-4
+
+Status:
+ACCEPTED / FROZEN / DELIVERABLE
+
+Final Implementation CODE SHA:
+322e53e3ac8319082188049e5e61e0ee13666540
+
+Pinned DeepSeek Harness:
+0.2.0-rc.1
+
+Pinned DSH SHA:
+4878cdabd87d4041bdaff61d04c966883b9fd07a
+
+Delivery Date:
+2026-10-04

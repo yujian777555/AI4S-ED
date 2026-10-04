@@ -1,0 +1,35 @@
+﻿# AI4S-ED Knowledge Curator Agent
+# DSH Agent Package definition
+
+name: "AI4S Knowledge Curator"
+description: >
+  Scientific knowledge curation agent for AI4S-ED.
+  Handles knowledge curation (Section 5), evidence-grounded anti-hallucination
+  retrieval QA (Section 6), and knowledge lifecycle governance (Section 7).
+version: "0.1.0"
+
+runtime:
+  entry: "runtime/agent.py"
+  context: "runtime/context.py"
+  handlers: "runtime/handlers.py"
+
+tools:
+  - name: "mcp__knowledge_curator__curate_assertion_set"
+    description: "Curate an AssertionSet through completeness, conflict, quality, and decision checks."
+  - name: "mcp__knowledge_curator__knowledge_curator_health"
+    description: "Integration diagnostic for Knowledge Curator health status."
+  - name: "mcp__knowledge_curator__retrieve_evidence"
+    description: "Retrieve evidence bundle for a query with coverage and abstain state."
+  - name: "mcp__knowledge_curator__validate_retrieved_claims"
+    description: "Validate proposed claims against retrieved evidence."
+
+capabilities:
+  - knowledge_curation
+  - evidence_qa
+  - lifecycle_governance
+
+boundaries:
+  no_direct_store_access: true
+  workflow_delegation_only: true
+  evidence_first: true
+  abstain_when_unsupported: true
