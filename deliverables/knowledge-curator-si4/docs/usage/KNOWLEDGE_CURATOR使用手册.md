@@ -252,6 +252,21 @@ pytest integration/dsh/tests          # 109 passed
 
 **This delivery is frozen.** 除非 confirmed bug 或 new explicitly approved contract，否则不修改核心代码。
 
-## 25. Scope
+## 25. DeepSeek Harness 接入
+
+DSH 接入的完整步骤（安装、环境变量、preset 加载、工具验证）详见：
+
+**[DSH接入指南.md](DSH接入指南.md)**
+
+该指南包含：
+- 整体接入架构图
+- Public MCP Tools vs Native DSH Tools 区别
+- 环境变量配置
+- DSH 包安装方式
+- Loader 验证命令
+- 典型用户流程
+- 故障排查
+
+## 26. Scope
 
 本包是 Knowledge Curator / SI-4 的完整交付包，**不是**整个 AI4S-ED 项目所有模块的完整代码包。

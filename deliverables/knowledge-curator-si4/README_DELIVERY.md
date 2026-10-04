@@ -124,6 +124,12 @@ Verified: `pnpm pack` → clean install → package subpath import → installed
 1. A confirmed bug is found; or
 2. A new explicitly approved contract is required.
 
-## 15. Known Scope
+## 15. DeepSeek Harness Integration
+
+See: docs/usage/DSH接入指南.md
+
+This guide covers installation, environment variables, preset loading, tool verification, and troubleshooting for DSH integration.
+
+## 16. Known Scope
 
 This delivery covers **Knowledge Curator / SI-4** only. It does not represent the entire AI4S-ED project.

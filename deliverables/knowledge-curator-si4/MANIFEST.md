@@ -37,6 +37,8 @@
 | File | Purpose | Required | Source |
 |---|---|---|---|
 | README_DELIVERY.md | Delivery entry point | Yes | Generated |
+| docs/usage/DSH接入指南.md | DSH integration guide | Yes | Generated |
+| docs/usage/KNOWLEDGE_CURATOR使用手册.md | Main usage manual | Yes | Generated |
 | VERSION.txt | Version info | Yes | Generated |
 | docs/architecture/ | Architecture docs | Yes | docs/*.md |
 | docs/acceptance/SI4_FINAL_ACCEPTANCE.md | Final acceptance | Yes | planner/SI4_FINAL_ACCEPTANCE.md |

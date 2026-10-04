@@ -90,3 +90,13 @@ deliverables/knowledge-curator-si4/docs/acceptance/SI4_FINAL_ACCEPTANCE.md
 ## Qualification Evidence
 
 deliverables/knowledge-curator-si4/evidence/qualification/
+
+## DSH Integration Guide
+
+Repository relative path:
+
+deliverables/knowledge-curator-si4/docs/usage/DSH接入指南.md
+
+Local absolute path:
+
+C:\Users\于舰\XiaomiMiMoProjects\AI4S-ED\deliverables\knowledge-curator-si4\docs\usage\DSH接入指南.md
